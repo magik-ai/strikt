@@ -292,7 +292,7 @@ def _meal_line(meal: MealView, tz: str, *, detailed: bool) -> str:
             if item.flags:
                 text += " [" + ",".join(item.flags) + "]"
         parts.append(text)
-    line = f"- {when} {meal.slot} #{meal.id}: " + ", ".join(parts) or "—"
+    line = f"- {when} {meal.slot} #{meal.id}: " + (", ".join(parts) or "—")
     line += f" = {_n(meal.macros.kcal)} kcal, P {_n(meal.macros.protein_g)}"
     if meal.note and detailed:
         line += f" — {_short(meal.note, 60)}"

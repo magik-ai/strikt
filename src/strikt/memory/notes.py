@@ -11,7 +11,7 @@ from __future__ import annotations
 import re
 from collections.abc import Iterable, Sequence
 from dataclasses import dataclass
-from datetime import datetime
+from datetime import UTC, datetime
 
 import structlog
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -122,6 +122,20 @@ STOPWORDS: frozenset[str] = frozenset(
         "up",
         "out",
         "off",
+        # domain question words: every food question contains them, they select nothing
+        "eat",
+        "ate",
+        "eaten",
+        "eating",
+        "had",
+        "have",
+        "ел",
+        "ела",
+        "ели",
+        "съел",
+        "съела",
+        "поел",
+        "поела",
         "и",
         "в",
         "во",
@@ -284,6 +298,11 @@ def overlap(a: Iterable[str], b: Iterable[str]) -> int:
     return len(set(a) & set(b))
 
 
+def _now(now: datetime | None) -> datetime:
+    """Callers with a ``Clock`` pass ``now``; tool handlers without one get wall-clock UTC."""
+    return ensure_utc(now) if now is not None else datetime.now(UTC)
+
+
 # ------------------------------------------------------------------------------------- write
 
 
@@ -303,7 +322,7 @@ async def add_note(
     text: str,
     confidence: float,
     *,
-    now: datetime,
+    now: datetime | None = None,
     source_turn_id: int | None = None,
     expires_at: datetime | None = None,
     supersedes_id: int | None = None,
@@ -315,6 +334,7 @@ async def add_note(
     ``supersede_note``); when the new text duplicates another active note the old one is still
     retired and linked to the survivor.
     """
+    now = _now(now)
     kind_enum = NoteKind(kind)
     cleaned = " ".join(text.split())
     if not cleaned:
@@ -400,12 +420,12 @@ async def active_notes(
     session: AsyncSession,
     user: User,
     *,
-    now: datetime,
+    now: datetime | None = None,
     kinds: Iterable[NoteKind | str] | None = None,
     limit: int = DEFAULT_ACTIVE_LIMIT,
 ) -> list[Note]:
     """Active, unexpired notes ordered by kind then most recently confirmed first."""
-    rows = await queries.active_notes_of_kinds(session, user.id, now=now, kinds=kinds)
+    rows = await queries.active_notes_of_kinds(session, user.id, now=_now(now), kinds=kinds)
     rows.sort(key=lambda n: (n.kind.value, -_recency(n).timestamp(), -n.id))
     return rows[:limit]
 
@@ -415,14 +435,14 @@ async def relevant_notes(
     user: User,
     text: str,
     *,
-    now: datetime,
+    now: datetime | None = None,
     limit: int = DEFAULT_RELEVANT_LIMIT,
 ) -> list[Note]:
     """Active notes sharing content words with ``text``, best overlap first, then recency."""
     query = keywords(text)
     if not query:
         return []
-    rows = await queries.active_notes_of_kinds(session, user.id, now=now)
+    rows = await queries.active_notes_of_kinds(session, user.id, now=_now(now))
     scored = [(overlap(query, keywords(n.text)), n) for n in rows]
     hits = [(score, n) for score, n in scored if score > 0]
     hits.sort(key=lambda pair: (-pair[0], -_recency(pair[1]).timestamp(), -pair[1].id))

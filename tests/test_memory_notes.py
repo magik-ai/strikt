@@ -21,7 +21,6 @@ def test_normalise_and_stem() -> None:
     assert stem("skipped") == "skipp"
     assert stem("chia") == "chia"  # too short to strip
     assert keywords("What did I eat with the chia pudding yesterday?") == [
-        "eat",
         "chia",
         "pudd",  # crude suffix stripping is fine for overlap matching
         "yesterday",
@@ -54,6 +53,16 @@ async def test_add_note_dedupes_and_refreshes(
     assert len(active) == 1
 
 
+async def test_notes_api_defaults_to_wall_clock(session: AsyncSession, user: User) -> None:
+    """PLAN §6.4 handlers have no clock: ``now`` may be omitted everywhere."""
+    written = await notes.add_note(session, user, NoteKind.commitment, "lunch by 14:00", 0.9)
+    assert written.created and written.note.last_confirmed_at is not None
+    assert [n.id for n in await notes.active_notes(session, user)] == [written.note.id]
+    assert [n.id for n in await notes.relevant_notes(session, user, "lunch today?")] == [
+        written.note.id
+    ]
+
+
 async def test_add_note_different_kind_is_not_a_duplicate(
     session: AsyncSession, user: User, clock: FakeClock
 ) -> None:
@@ -79,7 +88,7 @@ async def test_supersede_retires_old_and_links(
         supersedes_id=old.note.id,
     )
     assert new.created and new.superseded_id == old.note.id
-    session.expire_all()
+    await session.refresh(old.note)
     old_row = await repo.get_note(session, user.id, old.note.id)
     assert old_row is not None and not old_row.active and old_row.superseded_by == new.note.id
     active = await notes.active_notes(session, user, now=clock.now())
@@ -106,7 +115,7 @@ async def test_supersede_into_existing_duplicate(
     )
     assert not result.created and result.note.id == keep.note.id
     assert result.superseded_id == old.note.id
-    session.expire_all()
+    await session.refresh(old.note)
     old_row = await repo.get_note(session, user.id, old.note.id)
     assert old_row is not None and not old_row.active and old_row.superseded_by == keep.note.id
 

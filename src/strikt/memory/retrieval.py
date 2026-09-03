@@ -454,44 +454,52 @@ async def search_history(
 ) -> list[HistoryRow]:
     """Answer a free-text question about the past.
 
-    1. If the text names a period, read every kind in that range (narrowed by the remaining
-       keywords when there are any; if that yields nothing, the period alone).
-    2. Otherwise (or when the period path found nothing) search turns, notes, summaries and
-       food names by each content keyword, ranked by how many keywords a row matched.
+    1. If the text names a period, read every kind in that range narrowed by the remaining
+       keywords. When nothing in the period matches them, return the period's typed rows
+       (so the model can say what *did* happen) plus keyword hits from the whole history
+       (so "ramen 10 days ago" still finds the ramen from last Tuesday).
+    2. Without a period, search turns, notes, summaries and food names by each content
+       keyword, ranked by how many keywords a row matched.
     """
     lang = resolve_lang(user.language)
     match = find_period(text, now_local=now_local, lang=lang)
-    rows: list[HistoryRow] = []
-    if match is not None:
-        rest = strip_period(text, match)
-        terms = keywords(rest)[:MAX_SEARCH_KEYWORDS]
-        typed_kinds: list[HistoryKind] = [k for k in ALL_HISTORY_KINDS if k != "turns"]
-        if terms:
-            for term in terms:
-                rows += await get_history(
-                    session,
-                    user,
-                    kinds=[*typed_kinds, "turns"],
-                    date_from=match.start,
-                    date_to=match.end,
-                    text=term,
-                    limit=limit,
-                )
-            rows = _dedupe(rows)
-        if not rows:
-            rows = await get_history(
-                session,
-                user,
-                kinds=typed_kinds,
-                date_from=match.start,
-                date_to=match.end,
-                limit=limit,
-            )
-        log.debug("history_period", user_id=user.id, label=match.label, rows=len(rows))
-    if rows:
-        return rows[-limit:]
+    if match is None:
+        return await _keyword_search(session, user, keywords(text)[:MAX_SEARCH_KEYWORDS], limit)
 
-    terms = keywords(text)[:MAX_SEARCH_KEYWORDS]
+    rest = strip_period(text, match)
+    terms = keywords(rest)[:MAX_SEARCH_KEYWORDS]
+    typed_kinds: list[HistoryKind] = [k for k in ALL_HISTORY_KINDS if k != "turns"]
+    rows: list[HistoryRow] = []
+    for term in terms:
+        rows += await get_history(
+            session,
+            user,
+            kinds=[*typed_kinds, "turns"],
+            date_from=match.start,
+            date_to=match.end,
+            text=term,
+            limit=limit,
+        )
+    rows = _dedupe(rows)
+    if not rows:
+        rows = await get_history(
+            session,
+            user,
+            kinds=typed_kinds,
+            date_from=match.start,
+            date_to=match.end,
+            limit=limit,
+        )
+        if terms:
+            rows = _dedupe([*rows, *await _keyword_search(session, user, terms, limit)])
+    log.debug("history_period", user_id=user.id, label=match.label, rows=len(rows))
+    return rows[-limit:]
+
+
+async def _keyword_search(
+    session: AsyncSession, user: User, terms: Sequence[str], limit: int
+) -> list[HistoryRow]:
+    """Rows of ``TEXT_KINDS`` matching any term, best match count first, then chronological."""
     if not terms:
         return []
     hits: dict[tuple[str, Any], tuple[int, HistoryRow]] = {}
@@ -504,7 +512,7 @@ async def search_history(
     ranked = sorted(hits.values(), key=lambda pair: (-pair[0], pair[1].at))
     top = [row for _, row in ranked[:limit]]
     top.sort(key=lambda r: r.at)
-    log.debug("history_search", user_id=user.id, terms=terms, rows=len(top))
+    log.debug("history_search", user_id=user.id, terms=list(terms), rows=len(top))
     return top
 
 

@@ -497,6 +497,7 @@ async def update_week_summary(
     targets = repo.protocol_targets(protocol)
     start, end = local_day_bounds(start_day, tz)[0], local_day_bounds(end_day, tz)[1]
     workouts = await queries.workouts_range(session, user.id, start=start, end=end, limit=100)
+    workouts.sort(key=lambda w: (ensure_utc(w.started_at), w.id))  # chronological in the digest
     measurements = await queries.measurements_range(
         session, user.id, start=start, end=end, limit=100
     )
