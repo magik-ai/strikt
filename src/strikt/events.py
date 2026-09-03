@@ -115,12 +115,13 @@ class EventBus:
         return _unsubscribe
 
     def handlers_for(self, event: Event) -> list[Callable[[Any], Awaitable[None]]]:
-        found: list[Callable[[Any], Awaitable[None]]] = []
-        for cls in type(event).__mro__:
-            if cls is object:
-                continue
-            found.extend(self._handlers.get(cls, ()))
-        return found
+        """Handlers for the event's class and its base classes (most specific first)."""
+        return [
+            handler
+            for cls in type(event).__mro__
+            if cls is not object
+            for handler in self._handlers.get(cls, ())
+        ]
 
     async def publish(self, event: Event) -> int:
         """Run every matching handler concurrently. Returns how many handlers ran."""
@@ -132,7 +133,7 @@ class EventBus:
             if isinstance(result, BaseException):
                 log.error(
                     "event_handler_failed",
-                    event=type(event).__name__,
+                    event_type=type(event).__name__,
                     handler=getattr(handler, "__qualname__", repr(handler)),
                     error=repr(result),
                 )

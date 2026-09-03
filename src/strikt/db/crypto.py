@@ -20,7 +20,9 @@ class TokenCipher:
         try:
             return self._fernet.decrypt(ciphertext.encode("ascii")).decode("utf-8")
         except InvalidToken as exc:
-            raise ValueError("token ciphertext is invalid or was encrypted with another key") from exc
+            raise ValueError(
+                "token ciphertext is invalid or was encrypted with another key"
+            ) from exc
 
     def encrypt_optional(self, plaintext: str | None) -> str | None:
         return None if plaintext is None else self.encrypt(plaintext)

@@ -4,14 +4,14 @@ from __future__ import annotations
 
 import logging
 import sys
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, Any, cast
 
 import structlog
 
 if TYPE_CHECKING:
     from collections.abc import MutableMapping
 
-    from strogo.config import LogFormat
+    from strikt.config import LogFormat
 
 _SECRET_MARKERS = ("token", "secret", "api_key", "apikey", "password", "authorization", "cookie")
 _NOISY_LOGGERS = ("httpx2", "httpx", "httpcore", "aiogram.event", "apscheduler", "asyncio")
@@ -67,4 +67,7 @@ def configure_logging(level: str = "INFO", fmt: LogFormat = "pretty") -> None:
 
 def get_logger(name: str | None = None) -> structlog.stdlib.BoundLogger:
     """Shortcut so modules write ``log = get_logger(__name__)``."""
-    return structlog.get_logger(name) if name else structlog.get_logger()
+    return cast(
+        "structlog.stdlib.BoundLogger",
+        structlog.get_logger(name) if name else structlog.get_logger(),
+    )

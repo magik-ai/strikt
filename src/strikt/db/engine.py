@@ -13,7 +13,7 @@ from sqlalchemy.ext.asyncio import (
 )
 from sqlalchemy.pool import StaticPool
 
-from strogo.db.models import Base
+from strikt.db.models import Base
 
 SQLITE_MEMORY_URL = "sqlite+aiosqlite:///:memory:"
 

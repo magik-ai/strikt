@@ -1,6 +1,6 @@
 """Pydantic value types shared by the nutrition engine, the agent tools and the Telegram layer.
 
-These are *views* and *inputs*; the ORM rows live in ``strogo.db.models``.
+These are *views* and *inputs*; the ORM rows live in ``strikt.db.models``.
 """
 
 from __future__ import annotations

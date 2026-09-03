@@ -490,9 +490,7 @@ class Recovery(Base):
 
 class Measurement(Base):
     __tablename__ = "measurements"
-    __table_args__ = (
-        sa.Index("ix_measurements_user_type_at", "user_id", "type", "measured_at"),
-    )
+    __table_args__ = (sa.Index("ix_measurements_user_type_at", "user_id", "type", "measured_at"),)
 
     id: Mapped[int] = mapped_column(BigIntPK, primary_key=True, autoincrement=True)
     user_id: Mapped[int] = mapped_column(sa.BigInteger, user_fk(), nullable=False)

@@ -1,0 +1,58 @@
+name: strikt
+
+services:
+  bot:
+    build: .
+    image: strikt:latest
+    restart: unless-stopped
+    env_file: .env
+    environment:
+      DATABASE_URL: postgresql+asyncpg://strikt:${POSTGRES_PASSWORD:-strikt}@postgres:5432/strikt
+      LOG_FORMAT: json
+    depends_on:
+      postgres:
+        condition: service_healthy
+    ports:
+      - "${WEB_PORT:-8080}:8080"
+    volumes:
+      - media_cache:/app/media_cache
+
+  postgres:
+    image: postgres:18
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: strikt
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-strikt}
+      POSTGRES_DB: strikt
+    volumes:
+      # postgres:18 moved PGDATA to /var/lib/postgresql/18/docker; mount the parent.
+      - pgdata:/var/lib/postgresql
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U strikt -d strikt"]
+      interval: 5s
+      timeout: 5s
+      retries: 12
+      start_period: 10s
+
+  # Optional HTTPS on a domain: `docker compose --profile tls up -d` with CADDY_DOMAIN set.
+  caddy:
+    image: caddy:2
+    profiles: ["tls"]
+    restart: unless-stopped
+    environment:
+      CADDY_DOMAIN: ${CADDY_DOMAIN:?set CADDY_DOMAIN in .env for the tls profile}
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy_data:/data
+      - caddy_config:/config
+    depends_on:
+      - bot
+
+volumes:
+  pgdata:
+  media_cache:
+  caddy_data:
+  caddy_config:

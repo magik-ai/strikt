@@ -21,7 +21,7 @@ LogFormat = Literal["json", "pretty"]
 LogLevel = Literal["DEBUG", "INFO", "WARNING", "ERROR", "CRITICAL"]
 
 DEFAULT_MODEL = "claude-sonnet-5"
-DEFAULT_DATABASE_URL = "postgresql+asyncpg://strogo:strogo@postgres:5432/strogo"
+DEFAULT_DATABASE_URL = "postgresql+asyncpg://strikt:strikt@postgres:5432/strikt"
 
 
 class ModelPrice(BaseModel):
@@ -86,7 +86,8 @@ class Settings(BaseSettings):
 
     # --- OpenAI (voice transcription only) ----------------------------------------------------
     openai_api_key: SecretStr | None = None
-    transcription_model: str = "gpt-4o-transcribe"
+    openai_transcription_model: str = "gpt-transcribe"
+    openai_transcription_fallback_model: str = "whisper-1"
 
     # --- Storage ------------------------------------------------------------------------------
     database_url: str = DEFAULT_DATABASE_URL
@@ -102,7 +103,7 @@ class Settings(BaseSettings):
     withings_client_id: str | None = None
     withings_client_secret: SecretStr | None = None
     usda_api_key: SecretStr | None = None
-    off_user_agent: str = "Strogo/0.1 (https://github.com/magik-ai/bomiso)"
+    off_user_agent: str = "Strikt/0.1 (https://github.com/magik-ai/bomiso)"
 
     # --- Logging ------------------------------------------------------------------------------
     log_level: LogLevel = "INFO"
