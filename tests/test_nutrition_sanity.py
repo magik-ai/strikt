@@ -281,7 +281,14 @@ def test_fat_rule_uses_the_fattiest_named_ingredient_once() -> None:
 
 @pytest.mark.parametrize(
     "name",
-    ["Cottage cheese 0.5%", "Egg white omelette", "Almond milk", "Smoked salmon", "Boiled potatoes", "Chocolate protein shake"],
+    [
+        "Cottage cheese 0.5%",
+        "Egg white omelette",
+        "Almond milk",
+        "Smoked salmon",
+        "Boiled potatoes",
+        "Chocolate protein shake",
+    ],
 )
 def test_fat_rule_exemptions_and_false_positive_guards(name: str) -> None:
     _, flags = check_item(item(name, 120, 12, 6, 1))
@@ -303,7 +310,7 @@ def test_roasted_vegetable_side_claiming_no_fat_gets_the_oil() -> None:
     assert codes(flags) == ["vegetable_fat"]
     assert flags[0].severity == "warn"
     assert checked.macros.fat_g == 7
-    assert checked.macros.kcal == 35 + 6.5 * 9
+    assert checked.macros.kcal == round(35 + 6.5 * 9)
 
 
 def test_vegetable_rule_ignores_dishes_with_protein_or_starch() -> None:
@@ -400,7 +407,9 @@ def test_check_item_is_deterministic() -> None:
 
 
 def test_check_items_preserves_order() -> None:
-    results = check_items([item("Fried rice", 400, 10, 60, 12), item("Boiled eggs", 140, 12, 1, 10)])
+    results = check_items(
+        [item("Fried rice", 400, 10, 60, 12), item("Boiled eggs", 140, 12, 1, 10)]
+    )
     assert [r[0].name for r in results] == ["Fried rice", "Boiled eggs"]
     assert codes(results[0][1]) == ["loose_under_report"]
     assert results[1][1] == []

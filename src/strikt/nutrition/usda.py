@@ -24,6 +24,7 @@ import structlog
 
 from strikt.core.types import FoodHit, Macros
 from strikt.nutrition.math import kcal_from_kj, kcal_from_macros
+from strikt.nutrition.units import singularize
 
 log = structlog.get_logger(__name__)
 
@@ -180,9 +181,13 @@ def parse_search_food(food: dict[str, Any]) -> FoodHit | None:
 _WORD_RE: Final[re.Pattern[str]] = re.compile(r"[a-zа-яё0-9%]+", re.IGNORECASE)
 
 
+def _tokens(text: str) -> set[str]:
+    """Lower-cased, singularized words ("Avocados, raw" → {"avocado", "raw"})."""
+    return {singularize(word) for word in _WORD_RE.findall(text.lower())}
+
+
 def _score(food: dict[str, Any], query_words: set[str]) -> tuple[int, int, int]:
-    description = str(food.get("description") or "").lower()
-    words = set(_WORD_RE.findall(description))
+    words = _tokens(str(food.get("description") or ""))
     overlap = len(query_words & words)
     # Prefer plain/raw/cooked descriptions over long processed variants: fewer words is better.
     penalty = len(words)
@@ -194,7 +199,7 @@ def pick_best(foods: Sequence[dict[str, Any]], query: str) -> dict[str, Any] | N
     """The result whose description shares most words with ``query`` (ties → shortest)."""
     if not foods:
         return None
-    query_words = set(_WORD_RE.findall(query.lower()))
+    query_words = _tokens(query)
     return max(foods, key=lambda food: _score(food, query_words))
 
 

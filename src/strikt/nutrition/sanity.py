@@ -1022,11 +1022,11 @@ def classify_countable(name: str) -> tuple[bool, str]:
     lowered = _norm(name)
     if _has(lowered, _COUNTABLE_EXCEPTIONS):
         return True, "slice"
+    if ("salad" in lowered or "салат" in lowered) and _has(lowered, _LOOSE_SALAD_MARKERS):
+        return False, "dressed_salad"
     for category, words in LOOSE_CATEGORIES.items():
         if _has(lowered, words):
             return False, category
-    if ("salad" in lowered or "салат" in lowered) and _has(lowered, _LOOSE_SALAD_MARKERS):
-        return False, "dressed_salad"
     for category, words in COUNTABLE_CATEGORIES.items():
         if _has(lowered, words):
             return True, category

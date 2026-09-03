@@ -333,12 +333,12 @@ _WORD_NUMBERS: Final[Mapping[str, float]] = {
 }
 
 _QTY_RE: Final[re.Pattern[str]] = re.compile(
-    r"^\s*(?P<num>\d+(?:[.,]\d+)?(?:\s*/\s*\d+)?|[½¼¾⅓⅔]|\d+\s*[½¼¾])"
+    r"^\s*(?P<num>\d+\s*[½¼¾]|\d+(?:[.,]\d+)?(?:\s*/\s*\d+)?|[½¼¾⅓⅔])"
     r"\s*(?:x\s*)?(?P<unit>[a-zA-Zа-яА-ЯёЁ]+(?:\.[a-zA-Zа-яА-ЯёЁ]+)*)?",
     re.UNICODE,
 )
 _WORD_RE: Final[re.Pattern[str]] = re.compile(
-    r"^\s*(?P<word>[a-zA-Zа-яА-ЯёЁ]+)\s+(?:of\s+|an?\s+)?(?P<unit>[a-zA-Zа-яА-ЯёЁ]+)?",
+    r"^\s*(?P<word>[a-zA-Zа-яА-ЯёЁ]+)(?:\s+(?:of\s+|an?\s+)?(?P<unit>[a-zA-Zа-яА-ЯёЁ]+))?",
     re.UNICODE,
 )
 

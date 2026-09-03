@@ -56,7 +56,15 @@ def test_parse_quantity_without_a_number(text: str) -> None:
 
 @pytest.mark.parametrize(
     ("word", "expected"),
-    [("eggs", "egg"), ("slices", "slice"), ("tomatoes", "tomato"), ("berries", "berry"), ("glass", "glass"), ("cups", "cup"), ("g", "g")],
+    [
+        ("eggs", "egg"),
+        ("slices", "slice"),
+        ("tomatoes", "tomato"),
+        ("berries", "berry"),
+        ("glass", "glass"),
+        ("cups", "cup"),
+        ("g", "g"),
+    ],
 )
 def test_singularize(word: str, expected: str) -> None:
     assert singularize(word) == expected
