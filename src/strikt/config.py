@@ -7,12 +7,13 @@ preferences live in the ``profiles`` table and are changed by conversation, neve
 
 from __future__ import annotations
 
+import os
 import re
 from datetime import time
 from functools import lru_cache
 from typing import Annotated, Literal
 
-from pydantic import BaseModel, Field, SecretStr, field_validator
+from pydantic import BaseModel, Field, SecretStr, field_validator, model_validator
 from pydantic_settings import BaseSettings, NoDecode, SettingsConfigDict
 
 Effort = Literal["low", "medium", "high", "xhigh", "max"]
@@ -148,6 +149,29 @@ class Settings(BaseSettings):
 
     # --- Nutrition ----------------------------------------------------------------------------
     loose_food_buffer: float = 0.25
+
+    @field_validator("database_url", mode="before")
+    @classmethod
+    def _async_database_url(cls, value: object) -> object:
+        """Accept the plain ``postgresql://`` URL managed hosts hand out (Railway, Neon, Supabase).
+
+        SQLAlchemy needs the asyncpg driver in the scheme; ``sqlite`` and explicit driver URLs pass
+        through untouched.
+        """
+        if isinstance(value, str):
+            for prefix in ("postgresql://", "postgres://"):
+                if value.startswith(prefix):
+                    return "postgresql+asyncpg://" + value[len(prefix) :]
+        return value
+
+    @model_validator(mode="after")
+    def _port_from_platform(self) -> Settings:
+        """Managed hosts set ``PORT``; honour it when ``WEB_PORT`` was not set explicitly."""
+        if "web_port" not in self.model_fields_set:
+            port = os.environ.get("PORT")
+            if port and port.isdigit():
+                self.web_port = int(port)
+        return self
 
     @field_validator("allowed_telegram_ids", "admin_telegram_ids", mode="before")
     @classmethod

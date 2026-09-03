@@ -5,9 +5,9 @@ package `strikt`, `src/` layout, GitHub repo `magik-ai/bomiso` (to be renamed).
 
 ## Laws
 
-1. **The brief is product law**: `/root/.claude/uploads/.../b739469c-coachbotbrief.md` (copied
-   into the planning scratchpad). Voice, food method, proactivity and onboarding come from it.
-2. **PLAN.md is engineering law** (scratchpad `PLAN.md`): module contracts, data model, tools.
+1. **The brief is product law**: `docs/BRIEF.md` (the public copy; two lines of the owner's body
+   numbers are removed). Voice, food method, proactivity and onboarding come from it.
+2. **`docs/PLAN.md` is engineering law**: module contracts, data model, tools.
    Where they disagree, the brief wins and you say so in your report.
 3. Nothing hard-codes the first user's numbers. Everything personal enters via onboarding/import.
 4. **Bring-your-own-key**: every model call for a user is billed to that user's Anthropic key

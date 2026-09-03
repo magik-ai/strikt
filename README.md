@@ -167,6 +167,27 @@ You need a Linux machine with Docker Compose and a Telegram account. Each user n
 
 To invite someone: `/invite`, pass on the code, they send `/start <code>`. A code works once.
 
+## Deploy on Railway
+
+The same image runs on Railway with a managed Postgres, a public HTTPS domain (so WHOOP and
+Withings webhooks work without Caddy) and secrets kept in the Variables tab. `railway.json` in the
+repository tells Railway to build the Dockerfile, check `/health` and run one replica (the
+scheduler must not run twice).
+
+1. In your Railway project add a **Postgres** service.
+2. Add a service from this GitHub repository (the branch you want to run). Railway picks up `railway.json`.
+3. Variables of the bot service: `DATABASE_URL` = `${{Postgres.DATABASE_URL}}` (the plain
+   `postgresql://` URL is accepted and switched to asyncpg), `TELEGRAM_BOT_TOKEN`,
+   `TOKEN_ENCRYPTION_KEY` (from `make keygen`), `ALLOWED_TELEGRAM_IDS`, `ADMIN_TELEGRAM_IDS`,
+   `LLM_KEY_MODE=user`, `TELEGRAM_MODE=polling`, `LOG_FORMAT=json`, then the optional keys from the
+   table below. Do not set `WEB_PORT`: the server binds Railway's `PORT`.
+4. Settings → Networking → Generate domain, then set `PUBLIC_BASE_URL=https://<that domain>` so the
+   OAuth callbacks and webhook URLs are right. Redeploy.
+5. Watch the deploy logs for `strikt_started`; migrations run at container start.
+
+Secrets never leave Railway: they are variables of the service, encrypted at rest, and the users'
+Anthropic keys and wearable tokens sit encrypted in the Railway Postgres.
+
 ## Environment variables
 
 The list from `.env.example`. Compose sets `DATABASE_URL` from `POSTGRES_PASSWORD` and forces `LOG_FORMAT=json`. Effort values: `low | medium | high | xhigh | max`.
