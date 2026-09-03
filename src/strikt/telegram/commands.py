@@ -8,9 +8,12 @@ short description ≤ 120, description ≤ 512.
 
 from __future__ import annotations
 
+import asyncio
+from collections.abc import Awaitable, Callable
 from typing import Protocol
 
 import structlog
+from aiogram.exceptions import TelegramRetryAfter
 from aiogram.types import BotCommand
 
 from strikt.telegram.copy import DEFAULT_LANG, LANGUAGES, t
@@ -21,6 +24,9 @@ COMMAND_NAMES: tuple[str, ...] = ("start", "today", "forget_me")
 MAX_SHORT_DESCRIPTION = 120
 MAX_DESCRIPTION = 512
 MAX_COMMAND_DESCRIPTION = 256
+#: Telegram flood-controls ``setMyCommands``. Twenty languages are sixty calls, so they are
+#: spaced out; the whole thing runs in the background and nothing waits for it.
+PROFILE_PAUSE_S = 1.0
 
 
 class BotProfileAPI(Protocol):
@@ -54,11 +60,35 @@ def description(lang: str | None) -> str:
     return t(lang, "bot.description")[:MAX_DESCRIPTION]
 
 
-async def apply_bot_profile(bot: BotProfileAPI) -> None:
+async def _patiently(call: Callable[[], Awaitable[bool]]) -> None:
+    """One retry after the exact wait Telegram asks for. Anything else is the caller's problem."""
+    try:
+        await call()
+    except TelegramRetryAfter as exc:
+        log.info("bot_profile_throttled", seconds=exc.retry_after)
+        await asyncio.sleep(exc.retry_after + 1)
+        await call()
+
+
+async def apply_bot_profile(bot: BotProfileAPI, *, pause_s: float = PROFILE_PAUSE_S) -> None:
     """Set commands and descriptions for every language (English is the default profile)."""
-    for lang in LANGUAGES:
+    for index, lang in enumerate(LANGUAGES):
         code = None if lang == DEFAULT_LANG else lang
-        await bot.set_my_commands(bot_commands(lang), language_code=code)
-        await bot.set_my_short_description(short_description(lang), language_code=code)
-        await bot.set_my_description(description(lang), language_code=code)
+        if index and pause_s:
+            await asyncio.sleep(pause_s)
+        await _patiently(
+            lambda lang=lang, code=code: bot.set_my_commands(  # type: ignore[misc]
+                bot_commands(lang), language_code=code
+            )
+        )
+        await _patiently(
+            lambda lang=lang, code=code: bot.set_my_short_description(  # type: ignore[misc]
+                short_description(lang), language_code=code
+            )
+        )
+        await _patiently(
+            lambda lang=lang, code=code: bot.set_my_description(  # type: ignore[misc]
+                description(lang), language_code=code
+            )
+        )
     log.info("bot_profile_applied", languages=list(LANGUAGES), commands=list(COMMAND_NAMES))

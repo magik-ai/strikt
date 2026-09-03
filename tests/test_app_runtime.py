@@ -12,10 +12,12 @@ from collections.abc import AsyncIterator
 from datetime import UTC, date, datetime, timedelta
 from pathlib import Path
 from typing import Any
+from unittest.mock import Mock
 
 import aiohttp
 import pytest
 from aiogram import Bot
+from aiogram.exceptions import TelegramRetryAfter
 from aiogram.types import BotCommand, Chat, Message, Update, User as TgUser
 from aiohttp import web
 from aiohttp.test_utils import TestClient, TestServer
@@ -345,7 +347,7 @@ async def test_apply_bot_profile_covers_every_language() -> None:
     """English is the profile Telegram falls back to, so it goes without a language code; every
     other locale gets its own."""
     recorder = ProfileRecorder()
-    await commands.apply_bot_profile(recorder)
+    await commands.apply_bot_profile(recorder, pause_s=0)
     kinds = [(kind, lang) for kind, _, lang in recorder.calls]
     assert kinds[:3] == [("commands", None), ("short", None), ("description", None)]
     assert len(kinds) == 3 * len(LANGUAGES)
@@ -364,6 +366,29 @@ async def test_apply_bot_profile_covers_every_language() -> None:
 
 
 # ------------------------------------------------------------------------- config & deploy
+
+
+async def test_the_profile_waits_out_telegram_flood_control() -> None:
+    """Sixty calls at once trip ``Flood control exceeded on setMyCommands``. One retry after the
+    exact wait Telegram names is enough; the profile task is in the background anyway."""
+    recorder = ProfileRecorder()
+    tripped = {"count": 0}
+    original = recorder.set_my_commands
+
+    async def throttled_once(commands_: list[Any], *, language_code: str | None = None) -> bool:
+        if tripped["count"] == 0:
+            tripped["count"] += 1
+            raise TelegramRetryAfter(method=Mock(), message="Flood control exceeded", retry_after=0)
+        return await original(commands_, language_code=language_code)
+
+    recorder.set_my_commands = throttled_once  # type: ignore[method-assign]
+
+    await commands.apply_bot_profile(recorder, pause_s=0)
+
+    assert tripped["count"] == 1
+    kinds = [(kind, lang) for kind, _, lang in recorder.calls]
+    assert kinds.count(("commands", None)) == 1, "the retry replaced the call, not added one"
+    assert len(kinds) == 3 * len(LANGUAGES)
 
 
 def test_env_example_documents_every_setting() -> None:
