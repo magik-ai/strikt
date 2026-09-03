@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import logging
+import re
 import sys
 from typing import TYPE_CHECKING, Any, cast
 
@@ -15,6 +16,10 @@ if TYPE_CHECKING:
 
 _SECRET_MARKERS = ("token", "secret", "api_key", "apikey", "password", "authorization", "cookie")
 _NOISY_LOGGERS = ("httpx2", "httpx", "httpcore", "aiogram.event", "apscheduler", "asyncio")
+#: Values that *look* like an Anthropic API key are masked wherever they appear (a user pasted
+#: one into the chat and some log line quotes the message, an exception repr carries a header).
+_KEY_LIKE = re.compile(r"sk-ant-[A-Za-z0-9_\-]{8,}")
+_KEY_MASK = "sk-ant-***"
 
 
 def _is_secret_key(key: object) -> bool:
@@ -22,10 +27,17 @@ def _is_secret_key(key: object) -> bool:
     return any(marker in lowered for marker in _SECRET_MARKERS)
 
 
+def mask_key_like(text: str) -> str:
+    """``"key sk-ant-api03-abc…"`` → ``"key sk-ant-***"``; other text passes through."""
+    return _KEY_LIKE.sub(_KEY_MASK, text)
+
+
 def _redact(value: Any, depth: int = 0) -> Any:
     """Recurse into dicts and lists (a logged request body, a headers mapping)."""
     if depth > 6:
         return value
+    if isinstance(value, str):
+        return mask_key_like(value)
     if isinstance(value, dict):
         return {
             k: ("***" if _is_secret_key(k) and v else _redact(v, depth + 1))
@@ -33,6 +45,8 @@ def _redact(value: Any, depth: int = 0) -> Any:
         }
     if isinstance(value, list | tuple):
         return type(value)(_redact(v, depth + 1) for v in value)
+    if isinstance(value, BaseException):
+        return mask_key_like(repr(value))
     return value
 
 

@@ -19,6 +19,9 @@ Effort = Literal["low", "medium", "high", "xhigh", "max"]
 TelegramMode = Literal["polling", "webhook"]
 LogFormat = Literal["json", "pretty"]
 LogLevel = Literal["DEBUG", "INFO", "WARNING", "ERROR", "CRITICAL"]
+#: ``user``: every user pastes their own Anthropic key into the chat and is billed on it; the
+#: server key (if any) serves only ``ADMIN_TELEGRAM_IDS``. ``server``: one key for everyone.
+LlmKeyMode = Literal["user", "server"]
 
 DEFAULT_MODEL = "claude-sonnet-5"
 DEFAULT_DATABASE_URL = "postgresql+asyncpg://strikt:strikt@postgres:5432/strikt"
@@ -81,7 +84,10 @@ class Settings(BaseSettings):
     telegram_webhook_secret: SecretStr | None = None
 
     # --- Anthropic ----------------------------------------------------------------------------
+    # Optional: in ``user`` mode (the default) each user brings their own key and this one is
+    # only the fallback for admins; in ``server`` mode it is required and used for everyone.
     anthropic_api_key: SecretStr = SecretStr("")
+    llm_key_mode: LlmKeyMode = "user"
     anthropic_model: str = DEFAULT_MODEL
     effort_turn: Effort = "medium"
     effort_verify: Effort = "low"
@@ -184,12 +190,17 @@ class Settings(BaseSettings):
     def is_admin(self, telegram_id: int) -> bool:
         return telegram_id in self.admin_telegram_ids
 
+    @property
+    def server_api_key(self) -> str | None:
+        """The operator's Anthropic key, or None when unset (``user`` mode needs none)."""
+        return self.anthropic_api_key.get_secret_value().strip() or None
+
     def missing_for_runtime(self) -> list[str]:
         """Names of settings that must be present to run the real bot (not needed for tests)."""
         missing: list[str] = []
         if not self.telegram_bot_token.get_secret_value():
             missing.append("TELEGRAM_BOT_TOKEN")
-        if not self.anthropic_api_key.get_secret_value():
+        if self.llm_key_mode == "server" and self.server_api_key is None:
             missing.append("ANTHROPIC_API_KEY")
         if not self.token_encryption_key.get_secret_value():
             missing.append("TOKEN_ENCRYPTION_KEY")

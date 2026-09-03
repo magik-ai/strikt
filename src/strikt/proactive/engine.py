@@ -27,7 +27,7 @@ import dataclasses
 from collections.abc import Callable, Sequence
 from dataclasses import dataclass
 from datetime import UTC, date, datetime, time, timedelta
-from typing import Any, Literal, Protocol
+from typing import TYPE_CHECKING, Any, Literal, Protocol
 
 import structlog
 
@@ -57,6 +57,9 @@ from strikt.proactive.types import (
     TriggerFire,
     TriggerName,
 )
+
+if TYPE_CHECKING:
+    from strikt.agent.client import LLMResolver
 
 log = structlog.get_logger(__name__)
 
@@ -155,6 +158,7 @@ class ProactiveEngine:
         bus: EventBus | None = None,
         *,
         followups: FollowupPlanner | None = None,
+        llm_factory: LLMResolver | None = None,
     ) -> None:
         self._session_factory = session_factory
         self._decider = decider
@@ -164,6 +168,9 @@ class ProactiveEngine:
         self._settings = settings
         self._bus = bus
         self._followups = followups
+        #: Bring-your-own-key: a user without a usable key is skipped before any decision, so
+        #: the model is never called (and nothing billed to the operator) for them.
+        self._llm_factory = llm_factory
         self._locks: dict[int, asyncio.Lock] = {}
         self._unsubscribe: list[Callable[[], None]] = []
         self.outcomes: list[FireOutcome] = []
@@ -233,6 +240,11 @@ class ProactiveEngine:
                 return FireOutcome(name=name, status="skipped", reason="no_profile")
             if not profile.proactive_enabled and not requested:
                 return FireOutcome(name=name, status="skipped", reason="proactive_disabled")
+            if (
+                self._llm_factory is not None
+                and await self._llm_factory.for_user(session, user) is None
+            ):
+                return FireOutcome(name=name, status="skipped", reason="llm_key_missing")
             protocol = await repo.get_active_protocol(session, user_id)
             local_now = to_local(now, user.timezone)
             state = await self._day_state(session, user, local_now.date())

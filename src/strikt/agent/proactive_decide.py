@@ -32,7 +32,7 @@ from strikt.telegram.copy import resolve_lang
 if TYPE_CHECKING:
     from sqlalchemy.ext.asyncio import AsyncSession
 
-    from strikt.agent.client import LLMClient
+    from strikt.agent.client import LLMResolver
     from strikt.config import Settings
     from strikt.core.clock import Clock
     from strikt.core.types import DayState
@@ -111,10 +111,16 @@ def _short(text: str, limit: int) -> str:
 
 
 class LLMDecider:
-    """Writes the proactive message with the model; every decision is fresh, never a template."""
+    """Writes the proactive message with the model; every decision is fresh, never a template.
 
-    def __init__(self, llm: LLMClient, settings: Settings, *, clock: Clock | None = None) -> None:
-        self._llm = llm
+    The model call is billed to the user's own key (``LLMResolver.for_user``); a user without
+    a key gets no message at all — the engine skips them before this is reached, and this is
+    the second guard."""
+
+    def __init__(
+        self, llm_factory: LLMResolver, settings: Settings, *, clock: Clock | None = None
+    ) -> None:
+        self._llm_factory = llm_factory
         self._settings = settings
         self._clock: Clock = clock or SystemClock()
 
@@ -127,8 +133,11 @@ class LLMDecider:
         state: DayState | None,
     ) -> ProactiveDecision:
         step = max(MIN_STEP, min(ladder.step, MAX_STEP))
+        llm = await self._llm_factory.for_user(session, user)
+        if llm is None:
+            return ProactiveDecision(send=False, step=step, reason="llm_key_missing")
         prompt = await self._render_prompt(session, user, fire, ladder, state, step)
-        result = await self._llm.message(
+        result = await llm.message(
             purpose="proactive",
             system=[
                 {"type": "text", "text": load_prompt("proactive"), "cache_control": dict(CACHE_5M)}

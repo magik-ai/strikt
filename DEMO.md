@@ -5,7 +5,8 @@ been run live yet, and it is not a log. Times are Dubai local (Asia/Dubai). The 
 with English food names; the bot mirrors. Small italic notes name the tool calls the loop would
 make. Cards are the exact output of `render_day_card` for these numbers. Protocol picked in
 onboarding: 2 000 kcal · 210 P / 75 C / 105 F · fiber 30. Nothing below is hard-coded; every
-number entered through the interview or a tool.
+number entered through the interview or a tool, and every model call is billed to the key Ilya
+pastes in the first minute (`LLM_KEY_MODE=user`).
 
 ## 1. Onboarding — Thursday 3 September, 08:31
 
@@ -14,8 +15,25 @@ number entered through the interview or a tool.
 **08:31 · Strikt** *(code, `start.welcome`)*: Strikt. Одно окно, без настроек. Присылай фото еды,
 скриншоты, голос или текст — я записываю, считаю и подгоняю.
 
-**08:31 · Strikt:** Десять вопросов, минут десять, можно прерываться — еду присылай по ходу. Имя
-и город?
+**08:31 · Strikt** *(code, `key.needed`; no model call yet)*:
+Тренер работает на твоём ключе Anthropic. Сам тренер бесплатный; Anthropic списывает с ключа за
+то, что он потратил.
+1. Открой console.anthropic.com. Войди или создай аккаунт.
+2. Billing → пополни баланс. Платишь только за то, что тренер израсходовал.
+3. Settings → API keys → Create key. Назови strikt, скопируй ключ (начинается с sk-ant-).
+4. Вставь ключ сюда сообщением.
+Я проверю его, сохраню в зашифрованном виде, удалю твоё сообщение и больше не покажу.
+Новый ключ заменяет старый. /forget_me удаляет его вместе со всем остальным.
+
+**08:30 · Ilya:** `sk-ant-api03-…7Q2f` *(one call checks it — `GET /v1/models/claude-sonnet-5`
+on that key — then it is Fernet-encrypted into `users`; the message is deleted from the chat and
+never becomes a turn)*
+
+**08:31 · Strikt** *(code, `key.saved`)*: Ключ сохранён, заканчивается на …7Q2f. Твоё сообщение с
+ключом удалено.
+
+**08:31 · Strikt** *(the interview starts on Ilya's key: the `/start` turn runs now)*: Десять
+вопросов, минут десять, можно прерываться — еду присылай по ходу. Имя и город?
 
 **08:32 · Ilya:** Илья, Дубай.
 

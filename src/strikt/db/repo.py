@@ -165,6 +165,51 @@ async def list_users(
     return list((await session.scalars(stmt)).all())
 
 
+# --------------------------------------------------------------------------- user's LLM key
+# Bring-your-own-key: the Anthropic API key a user pasted into the chat. Only the Fernet
+# ciphertext and the last four characters are stored; the plaintext is never logged.
+
+
+async def set_llm_key(
+    session: AsyncSession, user_id: int, key: str, cipher: TokenCipher, *, now: datetime
+) -> str:
+    """Encrypt and store ``key`` for the user (a new key replaces the old one); returns last4."""
+    key = key.strip()
+    if not key:
+        raise ValueError("empty API key")
+    user = await session.get(User, user_id)
+    if user is None:
+        raise ValueError(f"user {user_id} does not exist")
+    # Set on the ORM object (not a bulk UPDATE) so a ``User`` already loaded in this session —
+    # the handler's — sees the new key at once.
+    user.llm_key_enc = cipher.encrypt(key)
+    user.llm_key_last4 = key[-4:]
+    user.llm_key_set_at = now
+    await session.flush()
+    return user.llm_key_last4
+
+
+async def clear_llm_key(session: AsyncSession, user_id: int) -> bool:
+    """Forget the user's key (the row stays). True when a key was stored."""
+    user = await session.get(User, user_id)
+    if user is None or user.llm_key_enc is None:
+        return False
+    user.llm_key_enc = None
+    user.llm_key_last4 = None
+    user.llm_key_set_at = None
+    await session.flush()
+    return True
+
+
+async def get_llm_key(session: AsyncSession, user_id: int, cipher: TokenCipher) -> str | None:
+    """The user's plaintext key, or None when none is stored. Raises ``ValueError`` when the
+    ciphertext cannot be decrypted (``TOKEN_ENCRYPTION_KEY`` changed)."""
+    user = await session.get(User, user_id)
+    if user is None or not user.llm_key_enc:
+        return None
+    return cipher.decrypt(user.llm_key_enc)
+
+
 # ----------------------------------------------------------------------------------- profiles
 
 PROFILE_FIELDS: frozenset[str] = frozenset(

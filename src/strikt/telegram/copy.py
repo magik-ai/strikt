@@ -10,6 +10,28 @@ from typing import Any
 
 Lang = str
 
+# Bring-your-own-key walkthrough (brief voice: fact first, no emoji). Shared by ``key.needed``
+# (a keyless user's first message, and the second message after /start) and ``key.help`` (a
+# keyless user asking about the key). Plain text: no < > & — the messenger sends HTML.
+_KEY_STEPS: dict[str, str] = {
+    "en": (
+        "1. Open console.anthropic.com. Sign in or create an account.\n"
+        "2. Billing → add credit. You pay only for what the coach uses.\n"
+        "3. Settings → API keys → Create key. Name it strikt, copy the key (it starts with sk-ant-).\n"
+        "4. Paste the key here as a message.\n"
+        "I check it, store it encrypted, delete your message and never show it again.\n"
+        "A new key replaces the old one. /forget_me deletes it with everything else."
+    ),
+    "ru": (
+        "1. Открой console.anthropic.com. Войди или создай аккаунт.\n"
+        "2. Billing → пополни баланс. Платишь только за то, что тренер израсходовал.\n"
+        "3. Settings → API keys → Create key. Назови strikt, скопируй ключ (начинается с sk-ant-).\n"
+        "4. Вставь ключ сюда сообщением.\n"
+        "Я проверю его, сохраню в зашифрованном виде, удалю твоё сообщение и больше не покажу.\n"
+        "Новый ключ заменяет старый. /forget_me удаляет его вместе со всем остальным."
+    ),
+}
+
 STRINGS: dict[str, dict[str, str]] = {
     "en": {
         # Today card
@@ -66,9 +88,20 @@ STRINGS: dict[str, dict[str, str]] = {
         # /today
         "today.reposted": "Card re-posted.",
         # /forget_me
-        "forget.question": "Delete everything about you — profile, meals, training, notes, chat history? This cannot be undone.",
-        "forget.done": "Deleted {rows} rows. Nothing about you remains. Send /start to begin again.",
+        "forget.question": "Delete everything about you — profile, meals, training, notes, chat history, your API key? This cannot be undone.",
+        "forget.done": "Deleted {rows} rows, your API key included. Nothing about you remains. Send /start to begin again.",
         "forget.cancelled": "Kept everything.",
+        # the user's Anthropic key (bring-your-own-key; code-rendered, the model never sees a key)
+        "key.needed": (
+            "This coach runs on your own Anthropic API key. The coach is free; Anthropic bills the key for what it uses.\n"
+            + _KEY_STEPS["en"]
+        ),
+        "key.help": "The key, step by step:\n" + _KEY_STEPS["en"],
+        "key.saved": "Key saved, ends in …{last4}. Your message with the key is deleted.",
+        "key.saved_keep": "Key saved, ends in …{last4}. I could not delete your message with the key — delete it yourself.",
+        "key.unchecked": "Anthropic did not answer the check; the key is checked on your next message.",
+        "key.invalid": "Anthropic rejected this key. Usual causes: a key from another console account, or an account with no credit. Redo step 3 — console.anthropic.com → Settings → API keys → Create key — top up Billing if needed, and send the new key here.",
+        "key.rejected": "Anthropic rejected your key; nothing was sent. Create a new key at console.anthropic.com (Settings → API keys), check that Billing has credit, and paste it here.",
         # admin
         "invite.created": "Invite code: {code}",
         # misc
@@ -143,9 +176,19 @@ STRINGS: dict[str, dict[str, str]] = {
         "start.resume": "С возвращением. Остановились здесь:",
         "start.invite_ok": "Приглашение принято.",
         "today.reposted": "Карточка обновлена.",
-        "forget.question": "Удалить всё о тебе — профиль, еду, тренировки, заметки, историю чата? Отменить нельзя.",
-        "forget.done": "Удалено строк: {rows}. О тебе ничего не осталось. /start — начать заново.",
+        "forget.question": "Удалить всё о тебе — профиль, еду, тренировки, заметки, историю чата, твой API-ключ? Отменить нельзя.",
+        "forget.done": "Удалено строк: {rows}. API-ключ удалён вместе с ними. О тебе ничего не осталось. /start — начать заново.",
         "forget.cancelled": "Оставил всё как есть.",
+        "key.needed": (
+            "Тренер работает на твоём ключе Anthropic. Сам тренер бесплатный; Anthropic списывает с ключа за то, что он потратил.\n"
+            + _KEY_STEPS["ru"]
+        ),
+        "key.help": "Ключ, по шагам:\n" + _KEY_STEPS["ru"],
+        "key.saved": "Ключ сохранён, заканчивается на …{last4}. Твоё сообщение с ключом удалено.",
+        "key.saved_keep": "Ключ сохранён, заканчивается на …{last4}. Удалить твоё сообщение с ключом не смог — удали его сам.",
+        "key.unchecked": "Anthropic не ответил на проверку; ключ проверится на твоём следующем сообщении.",
+        "key.invalid": "Anthropic отклонил этот ключ. Обычные причины: ключ из другого аккаунта консоли или аккаунт без баланса. Повтори шаг 3 — console.anthropic.com → Settings → API keys → Create key — при необходимости пополни Billing и пришли новый ключ сюда.",
+        "key.rejected": "Anthropic отклонил твой ключ; ничего не отправлено. Создай новый ключ на console.anthropic.com (Settings → API keys), проверь баланс в Billing и вставь его сюда.",
         "invite.created": "Код приглашения: {code}",
         "queue.busy": "Ещё обрабатываю предыдущее сообщение — отвечу по порядку.",
         "synthetic.recalc": "Пересчитай день.",

@@ -187,7 +187,10 @@ class FakeMessenger:
     actions: list[tuple[int, str]] = field(default_factory=list)
     callbacks: list[tuple[str, str | None]] = field(default_factory=list)
     next_message_id: int = 1000
+    #: Message ids Telegram "refuses" to delete (a test seam for the keep-your-message path).
+    undeletable: set[int] = field(default_factory=set)
     _texts: dict[tuple[int, int], str] = field(default_factory=dict)
+    _deleted: set[tuple[int, int]] = field(default_factory=set)
 
     async def send(
         self,
@@ -239,8 +242,16 @@ class FakeMessenger:
         return (chat_id, message_id) in self._texts
 
     async def delete(self, chat_id: int, message_id: int) -> bool:
-        self.deletes.append((chat_id, message_id))
-        return self._texts.pop((chat_id, message_id), None) is not None
+        """Like Telegram in a private chat: the bot may delete its own and the user's messages
+        (the user's are not in ``_texts``) once; a second delete, or an id a test marks
+        ``undeletable``, is refused."""
+        key = (chat_id, message_id)
+        self.deletes.append(key)
+        if message_id in self.undeletable or key in self._deleted:
+            return False
+        self._deleted.add(key)
+        self._texts.pop(key, None)
+        return True
 
     async def chat_action(self, chat_id: int, action: str = "typing") -> None:
         self.actions.append((chat_id, action))

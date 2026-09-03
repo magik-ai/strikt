@@ -4,14 +4,23 @@ Every call goes through ``LLM.message``: it sets adaptive thinking and the effor
 purpose, forwards the caller's cache-controlled system blocks, adds top-level automatic caching
 for the conversation tail, records token usage (with cost) and normalises the response into an
 ``LLMResult`` whose content blocks are plain dicts (ready to store and to send back).
+
+Bring-your-own-key: one ``LLM`` per API key. ``LLMFactory.for_user`` hands out the client that
+bills the right key for a user — the user's own key (``LLM_KEY_MODE=user``, the default; the
+server key serves only admins) or the server key for everyone (``LLM_KEY_MODE=server``) — and
+``None`` when the user has no key yet, so nothing is ever billed to the operator for a keyless
+user. ``AnthropicKeyValidator`` is the one cheap call that checks a pasted key before it is
+stored. ``FakeLLM`` / ``FakeLLMFactory`` / ``FakeKeyValidator`` are the test doubles.
 """
 
 from __future__ import annotations
 
+import hashlib
 import json
-from collections.abc import Mapping, Sequence
+from collections import OrderedDict
+from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass, field
-from typing import TYPE_CHECKING, Any, Protocol, cast
+from typing import TYPE_CHECKING, Any, Literal, Protocol, cast
 
 import anthropic
 import structlog
@@ -26,6 +35,8 @@ if TYPE_CHECKING:
     from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
     from strikt.config import Effort, Settings
+    from strikt.db.crypto import TokenCipher
+    from strikt.db.models import User
 
 log = structlog.get_logger(__name__)
 
@@ -36,6 +47,11 @@ STOP_PAUSE_TURN = "pause_turn"
 STOP_REFUSAL = "refusal"
 STOP_CONTEXT_EXCEEDED = "model_context_window_exceeded"
 
+#: Clients kept alive per process (one per distinct API key, least recently used evicted).
+MAX_CLIENTS = 64
+#: Wall-clock cap for the one call that checks a pasted key (no SDK retries on top).
+KEY_CHECK_TIMEOUT_S = 10.0
+
 
 class LLMError(RuntimeError):
     """The API call failed after the SDK's own retries. ``retryable`` hints the caller."""
@@ -44,6 +60,13 @@ class LLMError(RuntimeError):
         super().__init__(message)
         self.retryable = retryable
         self.status = status
+
+
+class LLMAuthError(LLMError):
+    """Anthropic rejected the API key (401/403). Never retried: the user must send a new key."""
+
+    def __init__(self, message: str, *, status: int | None = None) -> None:
+        super().__init__(message, retryable=False, status=status)
 
 
 @dataclass(frozen=True)
@@ -195,18 +218,22 @@ class LLMClient(Protocol):
 
 
 class LLM:
-    """Real client. Retries are the SDK defaults (2 retries, exponential backoff)."""
+    """Real client. Retries are the SDK defaults (2 retries, exponential backoff).
+
+    ``api_key`` is the key every call is billed to (a user's own key through ``LLMFactory``);
+    without it the server key from settings is used."""
 
     def __init__(
         self,
         settings: Settings,
         *,
+        api_key: str | None = None,
         client: AsyncAnthropic | None = None,
         recorder: UsageRecorder | None = None,
     ) -> None:
         self._settings = settings
         self._client = client or AsyncAnthropic(
-            api_key=settings.anthropic_api_key.get_secret_value() or None,
+            api_key=api_key or settings.server_api_key,
             timeout=settings.llm_timeout_s,
         )
         self._recorder: UsageRecorder = recorder or MemoryUsageRecorder()
@@ -277,6 +304,14 @@ class LLM:
             raise LLMError(f"connection error: {exc}", retryable=True) from exc
         except anthropic.RateLimitError as exc:
             raise LLMError("rate limited", retryable=True, status=429) from exc
+        except (anthropic.AuthenticationError, anthropic.PermissionDeniedError) as exc:
+            # the key this call was billed to is dead or forbidden: the user has to send a new one
+            log.warning(
+                "llm_key_rejected", purpose=purpose_str, user_id=user_id, status=exc.status_code
+            )
+            raise LLMAuthError(
+                f"api key rejected ({exc.status_code})", status=exc.status_code
+            ) from exc
         except anthropic.APIStatusError as exc:
             raise LLMError(
                 f"api error {exc.status_code}: {exc.message}",
@@ -414,3 +449,173 @@ class FakeLLM:
             model="fake-model",
             refusal=RefusalInfo(category=None, explanation=explanation),
         )
+
+
+# --------------------------------------------------------------------------- one LLM per key
+
+
+class LLMResolver(Protocol):
+    """Hands out the ``LLMClient`` that bills the right key for a user (``LLMFactory`` in the
+    app, ``FakeLLMFactory`` in tests). ``None`` means the user has no usable key: the caller
+    replies with the key walkthrough (a turn) or skips silently (proactive, summaries)."""
+
+    def for_key(self, api_key: str) -> LLMClient: ...
+
+    async def for_user(self, session: AsyncSession, user: User) -> LLMClient | None: ...
+
+
+class LLMFactory:
+    """One ``LLM`` per distinct API key (LRU, ``MAX_CLIENTS``), keyed by the key's sha256 so the
+    key itself is never a dict key or a log field.
+
+    ``for_user`` applies ``settings.llm_key_mode``:
+
+    - ``user`` (default): the user's stored key; a user without one gets ``None`` — except an
+      admin (``ADMIN_TELEGRAM_IDS``), who falls back to the server key when it is set, so the
+      operator can use their own bot without pasting a key;
+    - ``server``: the server key for everyone (private deployments).
+
+    ``build`` is the seam for tests (``lambda key: fake_llm``); the default builds a real ``LLM``
+    that records usage through ``recorder``."""
+
+    def __init__(
+        self,
+        settings: Settings,
+        recorder: UsageRecorder | None = None,
+        cipher: TokenCipher | None = None,
+        *,
+        build: Callable[[str], LLMClient] | None = None,
+    ) -> None:
+        self._settings = settings
+        self._recorder: UsageRecorder = recorder or MemoryUsageRecorder()
+        self._cipher = cipher
+        self._build: Callable[[str], LLMClient] = build or self._build_real
+        self._clients: OrderedDict[str, LLMClient] = OrderedDict()
+
+    def _build_real(self, api_key: str) -> LLMClient:
+        return LLM(self._settings, api_key=api_key, recorder=self._recorder)
+
+    @property
+    def mode(self) -> str:
+        return self._settings.llm_key_mode
+
+    def __len__(self) -> int:
+        return len(self._clients)
+
+    def for_key(self, api_key: str) -> LLMClient:
+        """The client for this key, built on first use and reused afterwards."""
+        digest = hashlib.sha256(api_key.encode("utf-8")).hexdigest()
+        client = self._clients.get(digest)
+        if client is None:
+            client = self._build(api_key)
+            self._clients[digest] = client
+            while len(self._clients) > MAX_CLIENTS:
+                self._clients.popitem(last=False)
+        else:
+            self._clients.move_to_end(digest)
+        return client
+
+    def server(self) -> LLMClient | None:
+        """The client on the operator's ``ANTHROPIC_API_KEY``, or None when it is not set."""
+        key = self._settings.server_api_key
+        return self.for_key(key) if key else None
+
+    async def for_user(self, session: AsyncSession, user: User) -> LLMClient | None:
+        if self._settings.llm_key_mode == "server":
+            llm = self.server()
+            if llm is None:
+                log.error("llm_server_key_missing", user_id=user.id)
+            return llm
+        key = await self._user_key(session, user)
+        if key:
+            return self.for_key(key)
+        if self._settings.is_admin(user.telegram_id):
+            llm = self.server()
+            if llm is not None:
+                log.debug("llm_admin_fallback", user_id=user.id)
+                return llm
+        log.info("llm_key_missing", user_id=user.id, mode=self._settings.llm_key_mode)
+        return None
+
+    async def _user_key(self, session: AsyncSession, user: User) -> str | None:
+        if self._cipher is None:
+            if user.llm_key_enc:
+                log.error("llm_key_no_cipher", user_id=user.id)
+            return None
+        from strikt.db import repo
+
+        try:
+            return await repo.get_llm_key(session, user.id, self._cipher)
+        except ValueError as exc:
+            # TOKEN_ENCRYPTION_KEY changed: the stored key is unreadable; ask for it again
+            log.warning("llm_key_undecryptable", user_id=user.id, error=str(exc))
+            return None
+
+
+class FakeLLMFactory:
+    """Every user gets the same ``FakeLLM`` (tests that are not about keys). ``llm=None`` makes
+    every user keyless."""
+
+    def __init__(self, llm: LLMClient | None) -> None:
+        self.llm = llm
+        self.resolved: list[int] = []
+
+    def for_key(self, api_key: str) -> LLMClient:
+        if self.llm is None:
+            raise AssertionError("FakeLLMFactory has no LLM")
+        return self.llm
+
+    async def for_user(self, session: AsyncSession, user: User) -> LLMClient | None:
+        self.resolved.append(user.id)
+        return self.llm
+
+
+# ------------------------------------------------------------------------- key validation
+
+KeyCheck = Literal["valid", "invalid", "unknown"]
+
+
+class KeyValidator(Protocol):
+    async def check(self, api_key: str) -> KeyCheck: ...
+
+
+class AnthropicKeyValidator:
+    """One cheap authenticated call, ``GET /v1/models/{settings.model}``, on a client built from
+    the pasted key with a ``KEY_CHECK_TIMEOUT_S`` timeout and no retries. 401/403 → ``invalid``;
+    anything else that fails (network, 5xx, 429, a model the key cannot see) → ``unknown``: the
+    key is stored anyway and verified by the user's next real call, which answers with
+    ``key.rejected`` if it is bad."""
+
+    def __init__(
+        self, settings: Settings, *, make_client: Callable[[str], AsyncAnthropic] | None = None
+    ) -> None:
+        self._settings = settings
+        self._make_client = make_client or self._default_client
+
+    @staticmethod
+    def _default_client(api_key: str) -> AsyncAnthropic:
+        return AsyncAnthropic(api_key=api_key, timeout=KEY_CHECK_TIMEOUT_S, max_retries=0)
+
+    async def check(self, api_key: str) -> KeyCheck:
+        client = self._make_client(api_key)
+        try:
+            await client.models.retrieve(self._settings.model)
+        except (anthropic.AuthenticationError, anthropic.PermissionDeniedError) as exc:
+            log.info("llm_key_check_rejected", status=exc.status_code)
+            return "invalid"
+        except Exception as exc:
+            log.warning("llm_key_check_failed", error=type(exc).__name__)
+            return "unknown"
+        return "valid"
+
+
+class FakeKeyValidator:
+    """Scripted: ``result`` for every key; every checked key is recorded."""
+
+    def __init__(self, result: KeyCheck = "valid") -> None:
+        self.result: KeyCheck = result
+        self.checked: list[str] = []
+
+    async def check(self, api_key: str) -> KeyCheck:
+        self.checked.append(api_key)
+        return self.result

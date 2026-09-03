@@ -44,7 +44,7 @@ from typing import TYPE_CHECKING, Any, Protocol
 
 import structlog
 
-from strikt.agent.client import LLMError, LLMResult, ToolUse
+from strikt.agent.client import LLMAuthError, LLMError, LLMResult, ToolUse
 from strikt.agent.context import ContextBundle, build_context, user_blocks
 from strikt.agent.tools.registry import ToolContext
 from strikt.agent.usage import LLMUsage
@@ -481,6 +481,11 @@ async def run_turn(deps: TurnDeps, incoming: Incoming) -> TurnResult:
     error: str | None = None
     try:
         outcome = await _model_loop(deps, user, bundle, ctx)
+    except LLMAuthError as exc:
+        # the user's own key was rejected: no retry, no "Claude is down" — ask for a new key
+        log.warning("turn_key_rejected", user_id=user.id, status=exc.status)
+        error = str(exc)
+        outcome = _LoopOutcome(t(lang, "key.rejected"), [], LLMUsage(), 0.0, 0)
     except LLMError as exc:
         log.error("turn_llm_failed", user_id=user.id, error=str(exc), retryable=exc.retryable)
         error = str(exc)

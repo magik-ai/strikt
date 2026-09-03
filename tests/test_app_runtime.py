@@ -22,7 +22,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncEngine, AsyncSession
 
 from strikt import app as app_mod
-from strikt.agent.client import FakeLLM
+from strikt.agent.client import FakeLLM, FakeLLMFactory
 from strikt.config import Settings
 from strikt.core.clock import FakeClock
 from strikt.db import repo
@@ -57,11 +57,12 @@ class Harness:
         self.decider = FakeDecider()
         self.messenger = messenger
         self.llm = fake_llm
+        self.llm_factory = FakeLLMFactory(fake_llm)
         self.runtime = app_mod.build_runtime(
             self.settings,
             engine=engine,
             bot=Bot(token=FAKE_TOKEN),
-            llm=fake_llm,
+            llm_factory=self.llm_factory,
             messenger=messenger,
             clock=clock,
             transcriber=FakeTranscriber(),
@@ -92,7 +93,9 @@ async def client(harness: Harness) -> AsyncIterator[TestClient[web.Request, web.
 
 def test_import_and_wiring(harness: Harness) -> None:
     rt = harness.runtime
-    assert rt.deps.llm is harness.llm and rt.deps.messenger is harness.messenger
+    assert rt.deps.llm_factory is harness.llm_factory and rt.llm_factory is harness.llm_factory
+    assert rt.deps.messenger is harness.messenger
+    assert rt.deps.cipher is not None and rt.deps.key_validator is not None
     assert rt.deps.card is rt.card and rt.deps.scheduler is rt.scheduler
     assert rt.deps.integrations is rt.integrations and set(rt.integrations) == {
         "apple_health",
@@ -281,7 +284,9 @@ async def test_runtime_start_and_stop(
 async def test_nightly_summary_writes_day_and_week_once(
     harness: Harness, user: User, session: AsyncSession, fake_llm: FakeLLM, clock: FakeClock
 ) -> None:
-    nightly = app_mod.make_nightly_summary(harness.runtime.sessions, fake_llm, clock)
+    nightly = app_mod.make_nightly_summary(
+        harness.runtime.sessions, FakeLLMFactory(fake_llm), clock
+    )
     yesterday = date(2026, 9, 2)
     fake_llm.queue(FakeLLM.text("not json"), FakeLLM.text("not json"))  # → deterministic fallbacks
     await nightly(user.id, yesterday)

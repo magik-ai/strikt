@@ -1,6 +1,6 @@
 # Strikt
 
-Strikt is a personal health coach that lives in one Telegram chat. You send it what you eat (a photo, a delivery-app screenshot, a label, a voice note, text), what you trained (a WHOOP screenshot, or a live WHOOP connection) and what you measured (a scale photo, "weighed 104.2"). It logs everything into Postgres, answers with the numbers first (kcal, protein, carbs, fat and fiber per item, the day so far, what is left), keeps a pinned "Today" card current, and writes first when you go quiet. It runs on Claude Sonnet 5, remembers from day one, and starts every new user with a ten-step interview instead of a settings screen. Three commands: `/start`, `/today`, `/forget_me`. Everything else is a message.
+Strikt is a personal health coach that lives in one Telegram chat. You send it what you eat (a photo, a delivery-app screenshot, a label, a voice note, text), what you trained (a WHOOP screenshot, or a live WHOOP connection) and what you measured (a scale photo, "weighed 104.2"). It logs everything into Postgres, answers with the numbers first (kcal, protein, carbs, fat and fiber per item, the day so far, what is left), keeps a pinned "Today" card current, and writes first when you go quiet. It runs on Claude Sonnet 5 on each user's own Anthropic key (pasted once into the chat; the coach itself is free), remembers from day one, and starts every new user with a ten-step interview instead of a settings screen. Three commands: `/start`, `/today`, `/forget_me`. Everything else is a message.
 
 ## How it feels
 
@@ -69,7 +69,7 @@ flowchart LR
   A --> B
 ```
 
-A message: album parts are gathered for 1.2 s and merged; HEIC becomes JPEG, PDFs go in as documents, voice is transcribed; the message waits in its chat's queue (never dropped); the loop stores the turn, builds the context, calls the model with tools for up to 12 rounds (a response cut off inside a tool call is retried once with a doubled output cap), verifies, stores the reply, refreshes the card of every day the tools touched, picks the buttons for the meal this turn logged or corrected. A proactive trigger, from a timer or a webhook event, goes through one engine: precondition on real data, ladder step, quiet hours, daily cap, then the model writes the text or stays silent.
+A message: album parts are gathered for 1.2 s and merged; a pasted Anthropic key is checked, stored encrypted and deleted from the chat before anything else looks at the text, and a user without a key gets the walkthrough instead of a model call; HEIC becomes JPEG, PDFs go in as documents, voice is transcribed; the message waits in its chat's queue (never dropped); the loop stores the turn, builds the context, calls the model on the user's own key with tools for up to 12 rounds (a response cut off inside a tool call is retried once with a doubled output cap), verifies, stores the reply, refreshes the card of every day the tools touched, picks the buttons for the meal this turn logged or corrected. A proactive trigger, from a timer or a webhook event, goes through one engine: precondition on real data, ladder step, quiet hours, daily cap, then the model writes the text or stays silent.
 
 ### Module map
 
@@ -77,7 +77,8 @@ A message: album parts are gathered for 1.2 s and merged; HEIC becomes JPEG, PDF
 |---|---|
 | `app.py` | wiring, migrations on boot, start/stop |
 | `config.py` | settings from `.env`, price table |
-| `telegram/` | aiogram bot, handlers, per-chat queue, media (HEIC, albums, PDFs), voice, the card, buttons, ru/en copy |
+| `telegram/` | aiogram bot, handlers, per-chat queue, media (HEIC, albums, PDFs), voice, the card, buttons, ru/en copy, the key flow (`keys.py`) |
+| `agent/client.py` | one `LLM` per API key (`LLMFactory`, `LLM_KEY_MODE`), usage recording, the key validator |
 | `agent/loop.py`, `context.py`, `verify.py` | the turn loop, context assembly and caching, the Reflexion check |
 | `agent/tools/` | 27 tools: strict schemas, registry, handlers for food, training, body, state, profile, research, memory |
 | `agent/prompts/` | coach, onboarding, proactive, verify, summarize, import (rendered into `PROMPTS.md`) |
@@ -124,19 +125,42 @@ A message: album parts are gathered for 1.2 s and merged; HEIC becomes JPEG, PDF
 | Immutable snapshots, traces, regression conversations | adopt | prompts versioned in the repo; every send and every token logged; fixtures from the brief |
 | Constellation of models | minimal | one model, two effort levels |
 
+## Keys: who enters what
+
+Strikt bills every model call to the key of the person it works for. The operator's keys stay in `.env` on the server; the Anthropic key is each user's own and enters through the chat.
+
+| Key | Who enters it | Where it lives | Get it at | Needed for |
+|---|---|---|---|---|
+| Anthropic API key (`sk-ant-…`) | **each user**, pasted into the chat | `users.llm_key_enc`, Fernet-encrypted; only the last four characters in clear | console.anthropic.com → Settings → API keys (credit under Billing) | every model call made for that user: turns, the verify rewrite, proactive decisions, day and week summaries (nightly and on `close_day`), `web_research` |
+| `TELEGRAM_BOT_TOKEN` | operator | `.env` | @BotFather, `/newbot` | the bot itself |
+| `TOKEN_ENCRYPTION_KEY` | operator | `.env` | `make keygen` | encrypting users' Anthropic keys and WHOOP/Withings tokens at rest |
+| `ANTHROPIC_API_KEY` | operator, optional | `.env` | console.anthropic.com → Settings → API keys | `server` mode: everyone; `user` mode: only the ids in `ADMIN_TELEGRAM_IDS` |
+| `OPENAI_API_KEY` | operator, optional | `.env` | platform.openai.com → API keys | voice-note transcription; without it voice notes get "send text" |
+| `USDA_API_KEY` | operator, optional | `.env` | api.data.gov/signup (`DEMO_KEY` works with low limits) | generic-food lookups after the cache and Open Food Facts |
+| `WHOOP_CLIENT_ID` / `WHOOP_CLIENT_SECRET` | operator, optional | `.env` | developer.whoop.com | the WHOOP integration |
+| `WITHINGS_CLIENT_ID` / `WITHINGS_CLIENT_SECRET` | operator, optional | `.env` | developer.withings.com | the Withings integration |
+| `TELEGRAM_WEBHOOK_SECRET` | operator, webhook mode | `.env` | any random string | authenticating Telegram's webhook calls |
+
+**Two modes** (`LLM_KEY_MODE`):
+
+- `user` (default). Each user brings their own key. A new user's `/start` ends with the walkthrough (console → Billing → API keys → paste it here); any message from a user without a key gets the same walkthrough and no model call; a question about the key gets it too; proactive nudges and the nightly summary skip keyless users (`llm_key_missing` in the log). `ANTHROPIC_API_KEY` is optional and, when set, serves only `ADMIN_TELEGRAM_IDS`, so you can use your own bot without pasting a key. The server key is never used for a keyless non-admin.
+- `server`. One operator key for everyone — a private deployment for yourself or your family. `ANTHROPIC_API_KEY` is required; pasted keys are still stored but not used.
+
+**The key in the chat.** A message containing `sk-ant-…` is handled before anything else and never becomes conversation history. The bot checks the key with one call (`GET /v1/models/<model>` on a client built from that key, 10 s, no retries): a 401 or 403 means "Anthropic rejected this key" and nothing is stored; a network or server error stores the key anyway and says so, and the next real call is the check. The key is Fernet-encrypted into `users`, the message that carried it is deleted from the chat (when Telegram refuses, the reply asks you to delete it), and the reply names only the last four characters. A new key replaces the old one. If Anthropic rejects the stored key later, mid-turn, the reply says so and nothing is retried. `/forget_me` deletes the key with everything else. The key never reaches the logs: any `sk-ant-…` string is masked by the log processor.
+
 ## Deploy in fifteen minutes
 
-You need a Linux machine with Docker Compose, a Telegram account and an Anthropic account with billing.
+You need a Linux machine with Docker Compose and a Telegram account. Each user needs an Anthropic account with credit; the bot walks them through it.
 
 1. **Create the bot.** In Telegram open @BotFather, send `/newbot`, follow the prompts, copy the token. Then `/mybots` → the bot → *Bot Settings* → *Allow Groups?* → **Turn off**: the coach is a private chat, and it drops group updates anyway.
-2. **Get an Anthropic key** from the Claude Console.
+2. **The Anthropic key is per user.** Nothing to do here: every user pastes their own key into the chat after `/start`. Put yours in `ANTHROPIC_API_KEY` only if you want the admin ids to skip that step, or set `LLM_KEY_MODE=server` to pay for everyone yourself.
 3. **Clone.** `git clone https://github.com/magik-ai/bomiso.git && cd bomiso`
-4. **Configure.** `cp .env.example .env`. Fill `TELEGRAM_BOT_TOKEN`, `ANTHROPIC_API_KEY`, `ALLOWED_TELEGRAM_IDS` (your numeric Telegram id) and `ADMIN_TELEGRAM_IDS` (the same id, so you can mint invites). Change `POSTGRES_PASSWORD`. If you do not know your id, finish the steps, send `/start`, and read it from the `start_rejected` log line.
+4. **Configure.** `cp .env.example .env`. Fill `TELEGRAM_BOT_TOKEN`, `ALLOWED_TELEGRAM_IDS` (your numeric Telegram id) and `ADMIN_TELEGRAM_IDS` (the same id, so you can mint invites). Change `POSTGRES_PASSWORD`. If you do not know your id, finish the steps, send `/start`, and read it from the `start_rejected` log line.
 5. **Encryption key.** `make keygen` prints a `TOKEN_ENCRYPTION_KEY`; paste it into `.env`. It needs `uv`; without it, after step 6: `docker compose run --rm --no-deps bot python -c "from strikt.db.crypto import generate_key; print(generate_key())"`.
 6. **Start.** `docker compose up -d --build`. Compose starts Postgres 18, waits for it to be healthy, runs `alembic upgrade head`, starts the bot.
 7. **Check.** `docker compose logs -f bot` should show `migrations_done` and `strikt_started`; `curl localhost:8080/health` answers `{"status": "ok", ...}` (the port is published on 127.0.0.1 only; `WEB_PORT` in `.env` changes the host side).
 8. **Name and avatar.** `TELEGRAM_BOT_TOKEN=... uv run python scripts/setup_telegram.py` sets the name, descriptions, commands and the avatar (`brand/avatar/avatar-512.jpg`). The bot sets commands and descriptions itself at start; this adds name and picture.
-9. **Send `/start`.** Ten questions, resumable at any message, food logged along the way.
+9. **Send `/start`.** The bot explains where to get an Anthropic key; paste it, the message with the key disappears, and the ten questions begin — resumable at any message, food logged along the way.
 
 **Optional: a domain, HTTPS and webhooks.** WHOOP, Withings and Apple Health need a public HTTPS URL. Point a DNS record at the machine, open ports 80 and 443, set `CADDY_DOMAIN=coach.example.com` and `PUBLIC_BASE_URL=https://coach.example.com`, then `docker compose --profile tls up -d`. Caddy gets a Let's Encrypt certificate and proxies to the bot. For Telegram updates by webhook instead of polling, also set `TELEGRAM_MODE=webhook` and a `TELEGRAM_WEBHOOK_SECRET`; the bot registers `<PUBLIC_BASE_URL>/telegram` on start.
 
@@ -153,7 +177,8 @@ The list from `.env.example`. Compose sets `DATABASE_URL` from `POSTGRES_PASSWOR
 | `ADMIN_TELEGRAM_IDS` | no | empty | ids that may `/invite`; admins are also allowed |
 | `TELEGRAM_MODE` | no | `polling` | `polling` or `webhook` (needs HTTPS `PUBLIC_BASE_URL`) |
 | `TELEGRAM_WEBHOOK_SECRET` | in webhook mode | — | secret Telegram sends with each webhook |
-| `ANTHROPIC_API_KEY` | yes | — | Claude API key |
+| `LLM_KEY_MODE` | no | `user` | `user`: each user pastes their own Anthropic key into the chat; `server`: `ANTHROPIC_API_KEY` pays for everyone |
+| `ANTHROPIC_API_KEY` | in server mode | — | the operator's Claude key: everyone's in `server` mode, the fallback for `ADMIN_TELEGRAM_IDS` in `user` mode |
 | `ANTHROPIC_MODEL` | no | `claude-sonnet-5` | model id for every call |
 | `EFFORT_TURN` | no | `medium` | effort for chat turns |
 | `EFFORT_VERIFY` | no | `low` | effort for the verify rewrite |
@@ -246,18 +271,19 @@ Rules: everything is stored with `source=imported`; unknown values are omitted, 
 
 ## Costs
 
-Every model call is priced from `PRICE_TABLE` and written to the `token_usage` table per user, day and purpose (`turn`, `verify`, `proactive`, `summary`, `research`); the `llm_call` and `turn_done` log lines carry `cost_usd`. The default table prices `claude-sonnet-5` at $2.00 per million input tokens, $10.00 output, $0.20 cache read, $2.50 cache write ($4.00 for the one-hour cache the coach prompt uses) and $10 per 1,000 web searches.
+Every model call runs on the key of the user it serves (`user` mode), so Anthropic bills each user directly and the operator pays for hosting only; in `server` mode the operator's key pays for everyone. Either way the call is priced from `PRICE_TABLE` and written to the `token_usage` table per user, day and purpose (`turn`, `verify`, `proactive`, `summary`, `research`); the `llm_call` and `turn_done` log lines carry `cost_usd`. The default table prices `claude-sonnet-5` at $2.00 per million input tokens, $10.00 output, $0.20 cache read, $2.50 cache write ($4.00 for the one-hour cache the coach prompt uses) and $10 per 1,000 web searches.
 
 The coach prompt and the profile block come from cache on almost every turn, so most of a turn's roughly 12,500 input tokens (`RESEARCH.md` §7) bill at the cache-read rate. At these prices 500 output tokens are half a cent and a fully uncached 12,500-token turn is 2.5 cents; images add input tokens. A day is a handful of turns, up to five proactive decisions at effort `low`, one nightly summary, and a verify rewrite only when a total was wrong. `web_research` adds $10 per 1,000 searches on top of its tokens (counted in the same rows, `RESEARCH.md` §2); voice bills at OpenAI's per-minute rate. The total depends on the day; `token_usage` has yours.
 
 ## Security and privacy
 
 - **Invite-only.** Unknown users get one line and nothing else. Access is by `ALLOWED_TELEGRAM_IDS` or a one-time code from `/invite`.
+- **Your Anthropic key.** Pasted once into the chat, checked with one call, Fernet-encrypted with `TOKEN_ENCRYPTION_KEY`; the message that carried it is deleted; only the last four characters are kept in clear and ever logged, and any `sk-ant-…` string is masked by the log processor; never a conversation turn, never shown to the model; deleted with `/forget_me`.
 - **Tokens at rest.** WHOOP and Withings tokens are Fernet-encrypted with `TOKEN_ENCRYPTION_KEY`. OAuth start links are HMAC-signed per user and expire; the OAuth state is single-use. WHOOP webhooks are signature-checked; Apple Health pushes are keyed by a random per-user token.
 - **Per-user isolation.** Every database query filters by `user_id`. The food cache (`foods`) is shared and holds no personal data.
 - **No files kept.** Photos and PDFs go to the model and stay in the conversation log only as a hash stub (`[image: <sha256>]`). Voice audio is transcribed and dropped.
 - **`/forget_me`.** A confirmation button, then the pinned card is unpinned and every row you own (profile, meals, training, sleep, measurements, labs, notes, reminders, summaries, chat history, tokens, usage and send logs, the user row) is deleted in one transaction; the count is reported and your scheduled jobs are removed.
-- **What is logged.** structlog, JSON in Docker: event names, user ids, tool names, token counts and costs, not the text of your messages or your photos. Any key whose name contains `token`, `secret`, `api_key`, `password`, `authorization` or `cookie` is masked.
+- **What is logged.** structlog, JSON in Docker: event names, user ids, tool names, token counts and costs, not the text of your messages or your photos. Any key whose name contains `token`, `secret`, `api_key`, `password`, `authorization` or `cookie` is masked, and so is any value that looks like an Anthropic key.
 - **Where data goes.** Messages and images to the Anthropic API; voice to OpenAI if enabled; food names and barcodes to Open Food Facts and USDA; research queries to Anthropic's web search. Nothing is used for training; no screen, location or keystroke capture.
 - **Inbound content is data.** Forwarded messages, fetched pages and tool results are never treated as instructions.
 
@@ -275,7 +301,7 @@ The coach prompt and the profile block come from cache on almost every turn, so 
 | `make migrate` / `make revision m="add x"` | apply migrations / autogenerate one |
 | `make keygen` | a fresh `TOKEN_ENCRYPTION_KEY` |
 
-Tests fake everything external: `FakeLLM` (scripted responses), `FakeMessenger`, `FakeClock`, an in-memory SQLite engine built from the same models; `tests/test_migration.py` checks that `0001_initial` matches them. CI (`.github/workflows/ci.yml`) runs lint, format, mypy, the prompts check and pytest on Python 3.14 and 3.13. Dependencies are pinned exactly.
+Tests fake everything external: `FakeLLM` (scripted responses), `FakeLLMFactory` (every user "has a key") or a real `LLMFactory` building fakes (the key flow in `tests/test_byok_*.py`), `FakeKeyValidator`, `FakeMessenger`, `FakeClock`, an in-memory SQLite engine built from the same models; `tests/test_migration.py` checks that the migrations (`0001_initial`, `0002_user_llm_key`) match them. CI (`.github/workflows/ci.yml`) runs lint, format, mypy, the prompts check and pytest on Python 3.14 and 3.13. Dependencies are pinned exactly.
 
 Python: `.python-version` pins 3.13 locally. 3.13 or 3.14 both work, but 3.14.0rc2 fails with pydantic 2.13.5 (`typing._eval_type(..., prefer_fwd_module=)` is 3.14-final only). Docker uses `python:3.14-slim`.
 
@@ -286,7 +312,7 @@ To add a tool: input model in `agent/tools/schemas.py`, handler in the owning mo
 | Path | Contents |
 |---|---|
 | `src/strikt/` | the package (module map above) |
-| `migrations/` | alembic, async env; `0001_initial` |
+| `migrations/` | alembic, async env; `0001_initial`, `0002_user_llm_key` |
 | `tests/` | 717 tests; fixtures in `conftest.py` |
 | `scripts/` | `setup_telegram.py`, `build_prompts_md.py` |
 | `brand/` | marks, avatar, images, fonts, render script (see `BRAND.md`) |

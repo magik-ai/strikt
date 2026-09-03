@@ -18,12 +18,12 @@ from PIL import Image
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncEngine, AsyncSession
 
-from strikt.agent.client import FakeLLM
+from strikt.agent.client import FakeKeyValidator, FakeLLM, FakeLLMFactory
 from strikt.agent.tools import build_registry
 from strikt.config import Settings
 from strikt.core.clock import FakeClock
 from strikt.db import repo
-from strikt.db.crypto import generate_key
+from strikt.db.crypto import TokenCipher, generate_key
 from strikt.db.engine import make_session_factory
 from strikt.db.models import Meal, MealSlot, Profile, User, UserStatus
 from strikt.events import EventBus
@@ -150,7 +150,10 @@ def deps(
         settings=app_settings,
         sessions=sessions,
         clock=clock,
-        llm=fake_llm,
+        # every user "has a key" here; tests/test_byok_handlers.py covers the key flow itself
+        llm_factory=FakeLLMFactory(fake_llm),
+        key_validator=FakeKeyValidator(),
+        cipher=TokenCipher(app_settings.token_encryption_key.get_secret_value()),
         registry=build_registry(),
         messenger=messenger,
         bus=EventBus(),

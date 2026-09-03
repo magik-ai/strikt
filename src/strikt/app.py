@@ -4,11 +4,13 @@ One process, one event loop (``uvloop.run`` when available, research/09 §1 item
 
 - ``run_migrations``: ``alembic upgrade head`` in a worker thread (Alembic's env runs its own
   ``asyncio.run``), skipped with ``RUN_MIGRATIONS=false``;
-- ``build_runtime``: engine + session factory, ``LLM`` with ``DbUsageRecorder``, the event bus,
-  the integrations registry, ``DayStateBuilder``, ``LLMDecider`` → ``ProactiveEngine`` →
-  ``ProactiveScheduler`` (nightly summaries + 30-minute integration sync), ``AiogramMessenger``,
-  the pinned ``DayCard``, the aiohttp app (OAuth, provider webhooks, optional Telegram webhook)
-  and the aiogram dispatcher — every collaborator injectable so tests wire fakes;
+- ``build_runtime``: engine + session factory, the ``LLMFactory`` (one ``LLM`` per API key —
+  each user's own key in ``LLM_KEY_MODE=user``, the server key in ``server`` mode — recording
+  usage through ``DbUsageRecorder``) and the key validator, the event bus, the integrations
+  registry, ``DayStateBuilder``, ``LLMDecider`` → ``ProactiveEngine`` → ``ProactiveScheduler``
+  (nightly summaries + 30-minute integration sync), ``AiogramMessenger``, the pinned
+  ``DayCard``, the aiohttp app (OAuth, provider webhooks, optional Telegram webhook) and the
+  aiogram dispatcher — every collaborator injectable so tests wire fakes;
 - ``Runtime.start`` reschedules every active user, starts the web server, applies the bot
   profile (commands/descriptions) and either long-polls or registers the webhook;
 - ``Runtime.stop`` is the graceful shutdown on SIGTERM/SIGINT.
@@ -29,13 +31,14 @@ from typing import TYPE_CHECKING, Any
 import structlog
 from aiohttp import web
 
-from strikt.agent.client import LLM, DbUsageRecorder
+from strikt.agent.client import AnthropicKeyValidator, DbUsageRecorder, LLMFactory
 from strikt.agent.loop import to_telegram_html
 from strikt.agent.proactive_decide import LLMDecider
 from strikt.agent.tools import build_registry
 from strikt.config import get_settings
 from strikt.core.clock import SystemClock, week_start
 from strikt.db import repo
+from strikt.db.crypto import TokenCipher
 from strikt.db.engine import make_engine, make_session_factory
 from strikt.db.models import SummaryKind
 from strikt.events import EventBus
@@ -66,7 +69,7 @@ if TYPE_CHECKING:
     from aiogram import Bot, Dispatcher
     from sqlalchemy.ext.asyncio import AsyncEngine, AsyncSession, async_sessionmaker
 
-    from strikt.agent.client import LLMClient
+    from strikt.agent.client import KeyValidator, LLMResolver
     from strikt.config import Settings
     from strikt.core.clock import Clock
     from strikt.db.models import User
@@ -144,14 +147,20 @@ def make_integration_sync(integrations: Integrations) -> Callable[[], Awaitable[
 
 
 def make_nightly_summary(
-    sessions: async_sessionmaker[AsyncSession], llm: LLMClient, clock: Clock
+    sessions: async_sessionmaker[AsyncSession], llm_factory: LLMResolver, clock: Clock
 ) -> Callable[[int, date], Awaitable[None]]:
-    """03:00 local: summarise yesterday when ``close_day`` did not, then refresh the week."""
+    """03:00 local: summarise yesterday when ``close_day`` did not, then refresh the week. Both
+    calls are billed to the user's own key; a user without one is skipped (``llm_key_missing``
+    in the log, nothing written) until they paste it."""
 
     async def nightly(user_id: int, day: date) -> None:
         async with sessions() as session:
             user = await repo.get_user(session, user_id)
             if user is None:
+                return
+            llm = await llm_factory.for_user(session, user)
+            if llm is None:
+                log.info("nightly_summary_skipped", user_id=user_id, reason="llm_key_missing")
                 return
             if await repo.get_summary(session, user_id, SummaryKind.day, day) is None:
                 await write_day_summary(llm, session, user, day, clock=clock)
@@ -174,7 +183,7 @@ class Runtime:
     sessions: async_sessionmaker[AsyncSession]
     clock: Clock
     bus: EventBus
-    llm: LLMClient
+    llm_factory: LLMResolver
     integrations: Integrations
     state_provider: DayStateBuilder
     proactive: ProactiveEngine
@@ -242,7 +251,8 @@ def build_runtime(
     *,
     engine: AsyncEngine | None = None,
     bot: Bot | None = None,
-    llm: LLMClient | None = None,
+    llm_factory: LLMResolver | None = None,
+    key_validator: KeyValidator | None = None,
     messenger: Messenger | None = None,
     clock: Clock | None = None,
     transcriber: Transcriber | None = None,
@@ -255,7 +265,10 @@ def build_runtime(
     clock = clock or SystemClock()
     engine = engine or make_engine(settings.database_url)
     sessions = make_session_factory(engine)
-    llm = llm or LLM(settings, recorder=DbUsageRecorder(sessions, clock))
+    fernet_key = settings.token_encryption_key.get_secret_value()
+    cipher = TokenCipher(fernet_key) if fernet_key else None
+    llm_factory = llm_factory or LLMFactory(settings, DbUsageRecorder(sessions, clock), cipher)
+    key_validator = key_validator or AnthropicKeyValidator(settings)
     bus = EventBus()
     integrations = build_integrations(
         settings, sessions, bus, clock=clock, client_factory=client_factory
@@ -265,16 +278,23 @@ def build_runtime(
     messenger = messenger or AiogramMessenger(bot)
     card = DayCard(messenger, clock)
 
-    decider = decider or LLMDecider(llm, settings, clock=clock)
+    decider = decider or LLMDecider(llm_factory, settings, clock=clock)
     proactive = ProactiveEngine(
-        sessions, decider, state_provider, make_sender(messenger), clock, settings, bus
+        sessions,
+        decider,
+        state_provider,
+        make_sender(messenger),
+        clock,
+        settings,
+        bus,
+        llm_factory=llm_factory,
     )
     proactive_scheduler = ProactiveScheduler(
         proactive,
         sessions,
         clock,
         scheduler=scheduler,
-        nightly_summary=make_nightly_summary(sessions, llm, clock),
+        nightly_summary=make_nightly_summary(sessions, llm_factory, clock),
         integration_sync=make_integration_sync(integrations),
     )
 
@@ -283,7 +303,9 @@ def build_runtime(
         settings=settings,
         sessions=sessions,
         clock=clock,
-        llm=llm,
+        llm_factory=llm_factory,
+        key_validator=key_validator,
+        cipher=cipher,
         registry=build_registry(),
         messenger=messenger,
         bus=bus,
@@ -320,7 +342,7 @@ def build_runtime(
         sessions=sessions,
         clock=clock,
         bus=bus,
-        llm=llm,
+        llm_factory=llm_factory,
         integrations=integrations,
         state_provider=state_provider,
         proactive=proactive,
@@ -381,7 +403,13 @@ def main() -> None:
     if missing:
         log.error("missing_settings", names=missing)
         sys.exit(2)
-    log.info("strikt_boot", model=settings.model, mode=settings.telegram_mode)
+    log.info(
+        "strikt_boot",
+        model=settings.model,
+        mode=settings.telegram_mode,
+        key_mode=settings.llm_key_mode,
+        server_key=settings.server_api_key is not None,
+    )
     run_loop(serve(settings))
 
 

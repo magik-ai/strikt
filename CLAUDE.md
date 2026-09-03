@@ -10,6 +10,10 @@ package `strikt`, `src/` layout, GitHub repo `magik-ai/bomiso` (to be renamed).
 2. **PLAN.md is engineering law** (scratchpad `PLAN.md`): module contracts, data model, tools.
    Where they disagree, the brief wins and you say so in your report.
 3. Nothing hard-codes the first user's numbers. Everything personal enters via onboarding/import.
+4. **Bring-your-own-key**: every model call for a user is billed to that user's Anthropic key
+   (`LLM_KEY_MODE=user`, the default). Resolve the client with `llm_factory.for_user(session,
+   user)`; a `None` means "no key": reply with the walkthrough (`key.needed`) or skip silently
+   (`llm_key_missing`). Never call the server key for a keyless non-admin; never log a key.
 
 ## Dev loop
 
@@ -45,12 +49,15 @@ src/strikt/
   db/repo.py      all reads/writes; every user-owned query filters by user_id
   db/engine.py    make_engine / make_session_factory / init_sqlite_for_tests
   db/crypto.py    Fernet TokenCipher
-  agent/client.py LLM (AsyncAnthropic) + FakeLLM; LLMResult; usage recording
+  agent/client.py LLM (AsyncAnthropic) + FakeLLM; LLMResult; usage recording; LLMFactory (one
+                  LLM per API key, LRU 64, for_user applies LLM_KEY_MODE + admin fallback) +
+                  FakeLLMFactory; AnthropicKeyValidator (one models.retrieve on the pasted key)
   agent/usage.py  cost from the price table
   agent/tools/    registry (strict schemas, dispatch), schemas (one model per tool), handlers
   agent/prompts/  coach, onboarding, proactive, verify, summarize, import (→ PROMPTS.md)
-  telegram/       messenger (Protocol + aiogram + Fake), copy (ru/en), render (card), keyboards, queue
-migrations/       alembic (async env); 0001_initial matches Base.metadata (tested)
+  telegram/       messenger (Protocol + aiogram + Fake), copy (ru/en), render (card), keyboards, queue,
+                  keys (sk-ant-… detection; the key handler itself is handlers.handle_key_message)
+migrations/       alembic (async env); 0001_initial + 0002_user_llm_key match Base.metadata (tested)
 tests/            conftest: sqlite engine, session, FakeClock, FakeLLM, FakeMessenger, seeded user
 ```
 

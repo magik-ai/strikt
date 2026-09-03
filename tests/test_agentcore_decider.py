@@ -7,7 +7,7 @@ from datetime import UTC, datetime, timedelta
 import pytest
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from strikt.agent.client import FakeLLM
+from strikt.agent.client import FakeLLM, FakeLLMFactory
 from strikt.agent.proactive_decide import (
     DECISION_SCHEMA,
     MAX_CHARS,
@@ -44,7 +44,7 @@ def ladder(step: int = 2) -> LadderState:
 
 @pytest.fixture
 def decider(fake_llm: FakeLLM, settings: Settings, clock: FakeClock) -> LLMDecider:
-    return LLMDecider(fake_llm, settings, clock=clock)
+    return LLMDecider(FakeLLMFactory(fake_llm), settings, clock=clock)
 
 
 async def test_decision_strips_emoji_caps_lines_and_keeps_step(

@@ -262,9 +262,9 @@ afterwards; the card refresh confirms it.
 
 | Command | Who | What it does |
 |---|---|---|
-| `/start [code]` | anyone | Invite-only: allowed ids or a valid one-time code create the user; `Strikt. One window, no settings. Send food photos, screenshots, voice or text — I log, count and push.` then the agent asks question 1 of the interview. A returning user mid-interview gets `Back. Where we left off:` and continues. |
+| `/start [code]` | anyone | Invite-only: allowed ids or a valid one-time code create the user; `Strikt. One window, no settings. Send food photos, screenshots, voice or text — I log, count and push.` then, as the second message, the key walkthrough (`key.needed`, section 5) — the interview's question 1 follows the moment the key is in. A user who already has a key (or an admin on the server key) gets question 1 right away. A returning user mid-interview gets `Back. Where we left off:` and continues. |
 | `/today` | user | Re-posts the card, pins it, unpins the old one. |
-| `/forget_me` | user | `Delete everything about you — profile, meals, training, notes, chat history? This cannot be undone.` with the two buttons; on yes: `Deleted {rows} rows. Nothing about you remains. Send /start to begin again.` |
+| `/forget_me` | user | `Delete everything about you — profile, meals, training, notes, chat history, your API key? This cannot be undone.` with the two buttons; on yes: `Deleted {rows} rows, your API key included. Nothing about you remains. Send /start to begin again.` |
 | `/invite` | admins only | Mints a one-time code: `Invite code: <code>`. Non-admins get nothing. |
 
 Unknown users get one line — `This coach is invite-only. Ask the owner for a code and send
@@ -272,7 +272,63 @@ Unknown users get one line — `This coach is invite-only. Ask the owner for a c
 English and Russian. Updates from groups and channels are dropped before any of this: the coach
 works in a private chat only, so the pinned card, nudges and health data never land anywhere else.
 
-## 5. Corrections by text
+## 5. Your Anthropic key
+
+The coach runs on the user's own Anthropic API key (`LLM_KEY_MODE=user`, the default): every
+model call for a user — turns, the verify rewrite, proactive nudges, summaries, `web_research` —
+is billed to it. The key enters through the same window as everything else, and the code
+handles it before the model sees a word.
+
+**The walkthrough** (`key.needed`; code-rendered, plain text). Sent as the second message after a
+new user's `/start`, and to any message from a user who has no key yet; `key.help` is the same
+steps under the first line `The key, step by step:` when the message asks about the key (`key`,
+`api`, `token`, `ключ`, `токен`, `anthropic`, `console`). No model call happens in either case;
+photos are not downloaded, voice notes not transcribed.
+
+```
+This coach runs on your own Anthropic API key. The coach is free; Anthropic bills the key for what it uses.
+1. Open console.anthropic.com. Sign in or create an account.
+2. Billing → add credit. You pay only for what the coach uses.
+3. Settings → API keys → Create key. Name it strikt, copy the key (it starts with sk-ant-).
+4. Paste the key here as a message.
+I check it, store it encrypted, delete your message and never show it again.
+A new key replaces the old one. /forget_me deletes it with everything else.
+```
+
+```
+Тренер работает на твоём ключе Anthropic. Сам тренер бесплатный; Anthropic списывает с ключа за то, что он потратил.
+1. Открой console.anthropic.com. Войди или создай аккаунт.
+2. Billing → пополни баланс. Платишь только за то, что тренер израсходовал.
+3. Settings → API keys → Create key. Назови strikt, скопируй ключ (начинается с sk-ant-).
+4. Вставь ключ сюда сообщением.
+Я проверю его, сохраню в зашифрованном виде, удалю твоё сообщение и больше не покажу.
+Новый ключ заменяет старый. /forget_me удаляет его вместе со всем остальным.
+```
+
+**The key message.** Any message whose text contains `sk-ant-` followed by twenty or more key
+characters is a key message, handled before anything else and never stored as a conversation
+turn. The bot checks the key with one call (`GET /v1/models/<model>` on a client built from that
+key, 10 s, no retries), deletes the message that carried it, and answers:
+
+| Outcome | Key | English | Russian |
+|---|---|---|---|
+| accepted, message deleted | `key.saved` | Key saved, ends in …{last4}. Your message with the key is deleted. | Ключ сохранён, заканчивается на …{last4}. Твоё сообщение с ключом удалено. |
+| accepted, Telegram refused to delete | `key.saved_keep` | Key saved, ends in …{last4}. I could not delete your message with the key — delete it yourself. | Ключ сохранён, заканчивается на …{last4}. Удалить твоё сообщение с ключом не смог — удали его сам. |
+| the check itself failed (network, 5xx): stored anyway, appended to the line above | `key.unchecked` | Anthropic did not answer the check; the key is checked on your next message. | Anthropic не ответил на проверку; ключ проверится на твоём следующем сообщении. |
+| 401 / 403: nothing stored | `key.invalid` | Anthropic rejected this key. Usual causes: a key from another console account, or an account with no credit. Redo step 3 — console.anthropic.com → Settings → API keys → Create key — top up Billing if needed, and send the new key here. | Anthropic отклонил этот ключ. Обычные причины: ключ из другого аккаунта консоли или аккаунт без баланса. Повтори шаг 3 — console.anthropic.com → Settings → API keys → Create key — при необходимости пополни Billing и пришли новый ключ сюда. |
+| the stored key is rejected later, mid-turn (no retry) | `key.rejected` | Anthropic rejected your key; nothing was sent. Create a new key at console.anthropic.com (Settings → API keys), check that Billing has credit, and paste it here. | Anthropic отклонил твой ключ; ничего не отправлено. Создай новый ключ на console.anthropic.com (Settings → API keys), проверь баланс в Billing и вставь его сюда. |
+
+A user still in onboarding gets the interview's first question right after `key.saved`: the
+key was the missing piece after `/start`. A new key replaces the old one. The stored key is
+Fernet-encrypted; only its last four characters exist in clear, and no log line ever carries a
+key (any `sk-ant-…` string is masked). Proactive nudges and the nightly summary skip a user
+without a key. `/forget_me` deletes the key with everything else — the confirmation says so.
+
+In `LLM_KEY_MODE=server` (a private deployment) the operator's key pays for everyone and none of
+this is shown; in `user` mode an id in `ADMIN_TELEGRAM_IDS` falls back to the operator's key when
+one is set, so the owner never has to paste theirs.
+
+## 6. Corrections by text
 
 No button is required for any correction; the prompt maps the phrasing to the tool:
 
@@ -287,13 +343,14 @@ No button is required for any correction; the prompt maps the phrasing to the to
 
 Corrections re-run the sanity checks and refresh the card like any other change.
 
-## 6. Error copy
+## 7. Error copy
 
 Code-rendered, one line, honest. From `telegram/copy.py` unless noted.
 
 | Key | English | Russian |
 |---|---|---|
 | `err.llm_down` | Claude is unavailable right now. Your message is saved — send the next one and I will pick both up. | Claude недоступен. Сообщение сохранено — напиши ещё раз, отвечу на оба. |
+| `key.rejected` | Anthropic rejected your key; nothing was sent. Create a new key at console.anthropic.com (Settings → API keys), check that Billing has credit, and paste it here. | Anthropic отклонил твой ключ; ничего не отправлено. Создай новый ключ на console.anthropic.com (Settings → API keys), проверь баланс в Billing и вставь его сюда. |
 | `err.tool_failed` | Couldn't verify — estimating from ingredients. Correct me if you know better. | Не смог проверить — считаю по ингредиентам. Поправь, если знаешь точнее. |
 | `err.transcribe` | Voice transcription is off. Send text. | Распознавание голоса выключено. Напиши текстом. |
 | `err.transcribe_failed` | Couldn't transcribe that. Send text or try again. | Не смог распознать голос. Напиши текстом или пришли ещё раз. |
@@ -311,11 +368,12 @@ A failed tool inside a turn is returned to the model as an error; the model then
 `err.tool_failed` shape itself and estimates. A message that arrives while the previous one is
 still running is queued, never dropped.
 
-## 7. Deliberately absent
+## 8. Deliberately absent
 
 - **No settings screen, no menu, no `/help`.** Protein target, wake time, check-in times, coaching
-  intensity, quiet hours, integrations — all of it is a sentence: "change protein to 180", "ease
-  off this week, I'm travelling", "connect WHOOP", "remind me at 8 about waist". Check-in times move
+  intensity, quiet hours, integrations, even the API key — all of it is a sentence or a paste:
+  "change protein to 180", "ease off this week, I'm travelling", "connect WHOOP", "remind me at 8
+  about waist", a new `sk-ant-…` to replace the old key. Check-in times move
   the meal nudges (a time before 10:00 is the breakfast check, 10:00–16:59 lunch, 17:00–21:59
   dinner, later the close); a reminder you set is delivered at its time regardless of quiet hours
   or the daily cap.

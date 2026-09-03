@@ -221,6 +221,12 @@ class User(Base):
     created_at: Mapped[datetime] = mapped_column(TZDateTime, nullable=False)
     last_seen_at: Mapped[datetime | None] = mapped_column(TZDateTime)
     invite_code: Mapped[str | None] = mapped_column(sa.String(32))
+    # Bring-your-own-key: the user's Anthropic API key, Fernet-encrypted with
+    # TOKEN_ENCRYPTION_KEY (never the plaintext), its last four characters for the "ends in …"
+    # line, and when it was (re)set. Every model call for this user is billed to this key.
+    llm_key_enc: Mapped[str | None] = mapped_column(sa.Text)
+    llm_key_last4: Mapped[str | None] = mapped_column(sa.String(4))
+    llm_key_set_at: Mapped[datetime | None] = mapped_column(TZDateTime)
 
     profile: Mapped[Profile | None] = relationship(
         back_populates="user", uselist=False, cascade="all, delete-orphan"

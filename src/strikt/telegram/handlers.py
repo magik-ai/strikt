@@ -14,7 +14,12 @@ What happens to a message:
    a private chat (a group the bot was added to, a channel) are dropped before that: the coach
    never rebinds ``user.chat_id`` to a group, so the pinned card, proactive nudges and health
    data can only ever land in the user's own chat.
-3. Everything else becomes an ``Incoming`` (largest photo, image/PDF documents through
+3. Bring-your-own-key, before anything else touches the text: a message carrying an Anthropic
+   key (``sk-ant-…``) is checked with one cheap call, stored encrypted, deleted from the chat and
+   answered with code-rendered copy — it is never a conversation turn. Then the user's own
+   ``LLM`` is resolved (``LLMResolver.for_user``); a user without a key gets the key walkthrough
+   (``key.needed``, or ``key.help`` when they asked about the key) and no model call.
+4. Everything else becomes an ``Incoming`` (largest photo, image/PDF documents through
    ``media.py``, voice/audio through the ``Transcriber``, forwarded origin, links) and runs
    through ``agent.loop.run_turn`` under the chat's ``PerChatQueue`` lock with a typing heartbeat.
    The loop refreshes the pinned card when the state changed; profile-changing tools reschedule
@@ -46,6 +51,7 @@ from strikt.events import DayStateChanged
 from strikt.privacy import delete_everything
 from strikt.telegram.copy import resolve_lang, t
 from strikt.telegram.keyboards import Callback, forget_confirm, parse_callback
+from strikt.telegram.keys import extract_key, mentions_key
 from strikt.telegram.media import MediaError, MediaTooLargeError, prepare_document, prepare_image
 from strikt.telegram.voice import TranscriptionError
 
@@ -53,10 +59,11 @@ if TYPE_CHECKING:
     from aiogram.types import CallbackQuery, Message
     from sqlalchemy.ext.asyncio import AsyncSession
 
-    from strikt.agent.client import LLMClient
+    from strikt.agent.client import KeyCheck, KeyValidator, LLMClient, LLMResolver
     from strikt.agent.tools.registry import Registry
     from strikt.config import Settings
     from strikt.core.clock import Clock
+    from strikt.db.crypto import TokenCipher
     from strikt.db.models import Profile
     from strikt.events import EventBus
     from strikt.proactive.types import StateProvider
@@ -312,7 +319,7 @@ class AppDeps:
     settings: Settings
     sessions: SessionFactory
     clock: Clock
-    llm: LLMClient
+    llm_factory: LLMResolver
     registry: Registry
     messenger: Messenger
     bus: EventBus
@@ -325,6 +332,10 @@ class AppDeps:
     scheduler: JobPlanner | None = None
     integrations: Mapping[Any, Any] | None = None
     services: dict[str, Any] = field(default_factory=dict)
+    #: Checks a pasted key with one cheap call; without one the key is stored unchecked.
+    key_validator: KeyValidator | None = None
+    #: Encrypts the stored key (``TOKEN_ENCRYPTION_KEY``); required to accept a key at all.
+    cipher: TokenCipher | None = None
 
     def tool_services(self) -> dict[str, Any]:
         """The service bag handed to tool handlers (``llm``/``bus`` are added by the loop)."""
@@ -482,6 +493,7 @@ async def handle_start(deps: AppDeps, inbound: InboundMessage) -> None:
             created and code is not None and not deps.settings.is_allowed(inbound.telegram_id)
         )
         user_lang = resolve_lang(user.language)
+        llm = await deps.llm_factory.for_user(session, user)
 
     if created:
         lines = [t(user_lang, "start.welcome")]
@@ -489,7 +501,11 @@ async def handle_start(deps: AppDeps, inbound: InboundMessage) -> None:
             lines.insert(0, t(user_lang, "start.invite_ok"))
         await _send(deps, inbound.chat_id, "\n".join(lines))
         log.info("user_created", user_id=user_id, telegram_id=inbound.telegram_id)
-    elif status == UserStatus.onboarding:
+    if llm is None:
+        # bring-your-own-key: the interview starts once the key is in (``handle_key_message``)
+        await _send(deps, inbound.chat_id, t(user_lang, "key.needed"))
+        return
+    if not created and status == UserStatus.onboarding:
         await _send(deps, inbound.chat_id, t(user_lang, "start.resume"))
 
     synthetic = InboundMessage(
@@ -603,25 +619,48 @@ async def build_incoming(deps: AppDeps, user: User, inbound: InboundMessage) -> 
 
 
 async def handle_user_message(deps: AppDeps, user_id: int, inbound: InboundMessage) -> None:
-    """Prepare the ``Incoming`` and run the agent turn; replies go out through the messenger."""
+    """A pasted key is stored (never a turn); a keyless user gets the walkthrough; otherwise
+    prepare the ``Incoming`` and run the agent turn on the user's own LLM."""
     async with deps.sessions() as session:
         user = await repo.get_user(session, user_id)
         if user is None:
             return
+        key = extract_key(inbound.text)
+        if key is not None:
+            await handle_key_message(deps, session, user, inbound, key)
+            return
+        llm = await resolve_llm(deps, session, user, inbound.text)
+        if llm is None:
+            return
         incoming = await build_incoming(deps, user, inbound)
         if incoming is None:
             return
-        await run_agent_turn(deps, session, user, incoming)
+        await run_agent_turn(deps, session, user, incoming, llm)
+
+
+async def resolve_llm(
+    deps: AppDeps, session: AsyncSession, user: User, text: str | None
+) -> LLMClient | None:
+    """The LLM billed to this user's key, or None after sending the key walkthrough (``user``
+    mode, no key stored): ``key.help`` when the message asks about the key, else ``key.needed``.
+    Nothing is downloaded, transcribed or sent to a model for a keyless user."""
+    llm = await deps.llm_factory.for_user(session, user)
+    if llm is None:
+        copy_key = "key.help" if mentions_key(text) else "key.needed"
+        await _send(deps, user.chat_id, t(resolve_lang(user.language), copy_key))
+    return llm
 
 
 async def run_agent_turn(
-    deps: AppDeps, session: AsyncSession, user: User, incoming: Incoming
+    deps: AppDeps, session: AsyncSession, user: User, incoming: Incoming, llm: LLMClient
 ) -> TurnResult | None:
-    """One ``run_turn`` with the app's dependencies; sends the replies and reschedules jobs."""
+    """One ``run_turn`` on ``llm`` (the user's own key; the tools' ``services["llm"]`` is the
+    same client, so ``close_day`` and ``web_research`` bill the same key); sends the replies and
+    reschedules jobs."""
     turn_deps = TurnDeps(
         session=session,
         user=user,
-        llm=deps.llm,
+        llm=llm,
         registry=deps.registry,
         clock=deps.clock,
         settings=deps.settings,
@@ -703,6 +742,9 @@ async def _dispatch_callback(
             await _callback_undo(deps, session, user, cb, parsed.meal_id)
         elif parsed.kind in {"recalc", "close"}:
             await deps.messenger.answer_callback(cb.callback_id)
+            llm = await resolve_llm(deps, session, user, None)
+            if llm is None:
+                return
             key = "synthetic.recalc" if parsed.kind == "recalc" else "synthetic.close"
             incoming = Incoming(
                 user_id=user.id,
@@ -711,7 +753,7 @@ async def _dispatch_callback(
                 text=t(lang, key),
                 received_at=ensure_utc(deps.clock.now()),
             )
-            await run_agent_turn(deps, session, user, incoming)
+            await run_agent_turn(deps, session, user, incoming, llm)
         elif parsed.kind == "forget":
             await deps.messenger.answer_callback(cb.callback_id)
             if parsed.answer:
@@ -721,6 +763,9 @@ async def _dispatch_callback(
         else:
             # yes/no confirmations are answered by the agent: hand the choice over as text
             await deps.messenger.answer_callback(cb.callback_id)
+            llm = await resolve_llm(deps, session, user, None)
+            if llm is None:
+                return
             answer = t(lang, "btn.yes" if parsed.answer else "btn.no")
             incoming = Incoming(
                 user_id=user.id,
@@ -729,10 +774,14 @@ async def _dispatch_callback(
                 text=f"{answer} ({parsed.action})" if parsed.action else answer,
                 received_at=ensure_utc(deps.clock.now()),
             )
-            await run_agent_turn(deps, session, user, incoming)
+            await run_agent_turn(deps, session, user, incoming, llm)
 
 
-def _tool_ctx(deps: AppDeps, session: AsyncSession, user: User) -> ToolContext:
+def _tool_ctx(
+    deps: AppDeps, session: AsyncSession, user: User, llm: LLMClient | None = None
+) -> ToolContext:
+    """A ``ToolContext`` for the button handlers (slot, undo): tools that never call the model,
+    so ``services["llm"]`` stays empty unless a caller resolved the user's client."""
     return ToolContext(
         session=session,
         user=user,
@@ -740,7 +789,7 @@ def _tool_ctx(deps: AppDeps, session: AsyncSession, user: User) -> ToolContext:
         protocol=None,
         clock=deps.clock,
         settings=deps.settings,
-        services={"llm": deps.llm, "bus": deps.bus, **deps.tool_services()},
+        services={"llm": llm, "bus": deps.bus, **deps.tool_services()},
     )
 
 
@@ -807,6 +856,78 @@ async def _callback_undo(
         )
     )
     await deps.messenger.answer_callback(cb.callback_id, t(lang, "btn.undo"))
+
+
+# --------------------------------------------------------------------------- the user's key
+
+
+async def _delete_quietly(deps: AppDeps, chat_id: int, message_id: int) -> bool:
+    try:
+        return await deps.messenger.delete(chat_id, message_id)
+    except Exception as exc:
+        log.warning("key_message_delete_failed", chat_id=chat_id, error=type(exc).__name__)
+        return False
+
+
+async def handle_key_message(
+    deps: AppDeps, session: AsyncSession, user: User, inbound: InboundMessage, key: str
+) -> None:
+    """A pasted Anthropic key (bring-your-own-key).
+
+    One cheap authenticated call checks it (``KeyValidator``): rejected → ``key.invalid`` and
+    nothing stored; accepted, or unanswerable (network, 5xx: stored anyway, ``key.unchecked``
+    says the next real call is the check) → Fernet-encrypted into ``users`` (a new key replaces
+    the old one). The message that carried the key is deleted from the chat either way; when
+    Telegram refuses, ``key.saved_keep`` asks the user to delete it. Never persisted as a turn,
+    never logged (only the last four characters). A user still in onboarding then gets the
+    interview's first question at once — the key was the missing piece after ``/start``."""
+    lang = resolve_lang(user.language)
+    check: KeyCheck = "unknown"
+    if deps.key_validator is not None:
+        try:
+            check = await deps.key_validator.check(key)
+        except Exception as exc:
+            log.warning("llm_key_check_crashed", user_id=user.id, error=type(exc).__name__)
+    deleted = await _delete_quietly(deps, inbound.chat_id, inbound.message_id)
+    if check == "invalid":
+        log.info("llm_key_invalid", user_id=user.id, message_deleted=deleted)
+        await _send(deps, inbound.chat_id, t(lang, "key.invalid"))
+        return
+    if deps.cipher is None:
+        log.error("llm_key_no_cipher", user_id=user.id)
+        await _send(deps, inbound.chat_id, t(lang, "err.unknown"))
+        return
+    last4 = await repo.set_llm_key(
+        session, user.id, key, deps.cipher, now=ensure_utc(inbound.received_at)
+    )
+    await session.commit()
+    log.info(
+        "llm_key_saved",
+        user_id=user.id,
+        last4=last4,
+        checked=check == "valid",
+        message_deleted=deleted,
+    )
+    lines = [t(lang, "key.saved" if deleted else "key.saved_keep", last4=last4)]
+    if check == "unknown":
+        lines.append(t(lang, "key.unchecked"))
+    await _send(deps, inbound.chat_id, "\n".join(lines))
+
+    if user.status == UserStatus.onboarding:
+        llm = await deps.llm_factory.for_user(session, user)
+        if llm is None:
+            return
+        synthetic = InboundMessage(
+            telegram_id=inbound.telegram_id,
+            chat_id=inbound.chat_id,
+            message_id=inbound.message_id,
+            received_at=inbound.received_at,
+            text=START_TEXT,
+            language_code=inbound.language_code,
+        )
+        incoming = await build_incoming(deps, user, synthetic)
+        if incoming is not None:
+            await run_agent_turn(deps, session, user, incoming, llm)
 
 
 # ------------------------------------------------------------------------------- /forget_me
