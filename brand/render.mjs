@@ -14,12 +14,18 @@
     3. checks that no text fell back to a system font (fails loudly if it did). The check asks
        Chromium which platform fonts it actually rasterised each text element with
        (CSS.getPlatformFontsForNode over a CDP session), so a single glyph outside a subset's
-       unicode-range — an arrow, a ≥, a ✓ — is caught, not just a wrong font-family.
+       unicode-range — an arrow, a ≥, a ✓ — is caught, not just a wrong font-family;
+    4. checks that no glyph was rasterised with LCD subpixel antialiasing. Chromium is launched
+       with --disable-lcd-text, so every glyph edge is a grey blend between the text colour and
+       what is behind it. The check decodes the PNG it just wrote and walks every text element's
+       box: a pixel whose channel spread (max − min) is over 40 and which does not sit on the
+       line between two of that element's own colours is a colour fringe, and fails the run.
 
   Requirements: node >= 18, playwright (module path below) and its Chromium build. Nothing else.
 */
 import fs from 'node:fs';
 import path from 'node:path';
+import zlib from 'node:zlib';
 import { createRequire } from 'node:module';
 import { fileURLToPath } from 'node:url';
 
@@ -95,8 +101,93 @@ const JOBS = {
   favicon180:['favicon-180.html', 'logo/favicon-180.png', 180, 180, 1],
 };
 
+// ---------- fringe check ----------
+// A minimal PNG reader (8-bit, non-interlaced, RGB or RGBA — what Chromium writes) so the build can
+// look at the pixels it just produced without a native dependency.
+function decodePNG(buf) {
+  let pos = 8, w = 0, h = 0, depth = 0, colour = 0, interlace = 0;
+  const idat = [];
+  while (pos + 8 <= buf.length) {
+    const len = buf.readUInt32BE(pos), type = buf.toString('ascii', pos + 4, pos + 8);
+    const data = buf.subarray(pos + 8, pos + 8 + len);
+    if (type === 'IHDR') { w = data.readUInt32BE(0); h = data.readUInt32BE(4); depth = data[8]; colour = data[9]; interlace = data[12]; }
+    else if (type === 'IDAT') idat.push(data);
+    else if (type === 'IEND') break;
+    pos += 12 + len;
+  }
+  const ch = { 0: 1, 2: 3, 4: 2, 6: 4 }[colour];
+  if (depth !== 8 || interlace !== 0 || !ch) throw new Error(`unsupported png (depth ${depth}, colour ${colour})`);
+  const raw = zlib.inflateSync(Buffer.concat(idat));
+  const stride = w * ch, out = Buffer.alloc(h * stride);
+  let p = 0;
+  for (let y = 0; y < h; y++) {
+    const f = raw[p++], line = raw.subarray(p, p + stride); p += stride;
+    const cur = out.subarray(y * stride, (y + 1) * stride);
+    const prev = y ? out.subarray((y - 1) * stride, y * stride) : null;
+    for (let x = 0; x < stride; x++) {
+      const a = x >= ch ? cur[x - ch] : 0, b = prev ? prev[x] : 0, c = prev && x >= ch ? prev[x - ch] : 0;
+      let v = line[x];
+      if (f === 1) v += a;
+      else if (f === 2) v += b;
+      else if (f === 3) v += (a + b) >> 1;
+      else if (f === 4) {
+        const pa = Math.abs(b - c), pb = Math.abs(a - c), pc = Math.abs(a + b - 2 * c);
+        v += pa <= pb && pa <= pc ? a : pb <= pc ? b : c;
+      }
+      cur[x] = v & 255;
+    }
+  }
+  return { w, h, ch, data: out };
+}
+
+// Distance from a colour to the segment between two palette colours: greyscale antialiasing puts
+// every edge pixel on such a segment, LCD subpixel antialiasing pushes it off one.
+function distToSegment(px, a, b) {
+  const dx = b[0] - a[0], dy = b[1] - a[1], dz = b[2] - a[2];
+  const len2 = dx * dx + dy * dy + dz * dz;
+  let t = 0;
+  if (len2 > 0) t = Math.max(0, Math.min(1, ((px[0] - a[0]) * dx + (px[1] - a[1]) * dy + (px[2] - a[2]) * dz) / len2));
+  const ex = px[0] - (a[0] + t * dx), ey = px[1] - (a[1] + t * dy), ez = px[2] - (a[2] + t * dz);
+  return Math.sqrt(ex * ex + ey * ey + ez * ez);
+}
+
+const FRINGE_SPREAD = 40;   // max(channel) − min(channel) above which a pixel is coloured
+const FRINGE_TOL = 26;      // how far off its own palette a coloured pixel may sit
+
+function scanFringe(img, boxes, texts, scale) {
+  const hits = [];
+  let total = 0;
+  for (let i = 0; i < boxes.length; i++) {
+    const box = boxes[i];
+    const x0 = Math.max(0, Math.floor(box.x * scale)), y0 = Math.max(0, Math.floor(box.y * scale));
+    const x1 = Math.min(img.w, Math.ceil((box.x + box.w) * scale)), y1 = Math.min(img.h, Math.ceil((box.y + box.h) * scale));
+    const pal = box.pal;
+    if (!pal.length || x1 <= x0 || y1 <= y0) continue;
+    let n = 0, sample = '';
+    for (let y = y0; y < y1; y++) {
+      for (let x = x0; x < x1; x++) {
+        const o = (y * img.w + x) * img.ch;
+        if (img.ch === 4 && img.data[o + 3] < 8) continue;
+        const r = img.data[o], g = img.data[o + 1], b = img.data[o + 2];
+        if (Math.max(r, g, b) - Math.min(r, g, b) <= FRINGE_SPREAD) continue;
+        let best = Infinity;
+        for (let a = 0; a < pal.length && best > FRINGE_TOL; a++)
+          for (let c = a; c < pal.length && best > FRINGE_TOL; c++)
+            best = Math.min(best, distToSegment([r, g, b], pal[a], pal[c]));
+        if (best > FRINGE_TOL) { n++; if (!sample) sample = `(${r},${g},${b}) at ${x},${y}`; }
+      }
+    }
+    if (n) { total += n; hits.push({ n, sample, text: texts[i] }); }
+  }
+  hits.sort((a, b) => b.n - a.n);
+  return { total, hits };
+}
+
 async function render(names) {
-  const browser = await chromium.launch();
+  // --disable-lcd-text: without it Chromium rasterises glyphs with RGB subpixel antialiasing and
+  // every text edge picks up orange/blue fringes, which is stray colour in compositions whose rule
+  // is one accent. --font-render-hinting=none keeps the outlines identical at every scale.
+  const browser = await chromium.launch({ args: ['--disable-lcd-text', '--font-render-hinting=none'] });
   let failed = 0;
   for (const name of names) {
     const [src, out, w, h, scale, opt = {}] = JOBS[name];
@@ -117,7 +208,32 @@ async function render(names) {
       const ok = new Set(['DM Sans', 'Newsreader', 'JetBrains Mono', 'Golos Text']);
       const walker = document.createTreeWalker(document.body, NodeFilter.SHOW_TEXT);
       let n, i = 0;
-      const tagged = [];
+      const tagged = [], boxes = [];
+      // every colour this element is allowed to paint: its own text colour and its descendants'
+      // (a <b> in the accent inside a mute caption), plus every non-transparent background behind
+      // it. A greyscale-antialiased glyph is always a blend of two of them.
+      const rgb = (v) => {
+        const m = /rgba?\(([\d.]+),\s*([\d.]+),\s*([\d.]+)(?:,\s*([\d.]+))?\)/.exec(v || '');
+        if (!m) return null;
+        if (m[4] !== undefined && parseFloat(m[4]) < 0.05) return null;
+        return [Math.round(+m[1]), Math.round(+m[2]), Math.round(+m[3])];
+      };
+      const palette = (el) => {
+        const out = [];
+        const push = (c) => { if (c && !out.some(o => o[0] === c[0] && o[1] === c[1] && o[2] === c[2])) out.push(c); };
+        for (const e of [el, ...el.querySelectorAll('*')]) {
+          const cs = getComputedStyle(e);
+          push(rgb(cs.color));
+          push(rgb(cs.backgroundColor));
+          push(rgb(cs.borderTopColor)); push(rgb(cs.borderBottomColor));
+          push(rgb(cs.borderLeftColor)); push(rgb(cs.borderRightColor));
+          if (e.tagName === 'svg' || e.namespaceURI === 'http://www.w3.org/2000/svg') {
+            push(rgb(cs.fill)); push(rgb(cs.stroke));
+          }
+        }
+        for (let a = el; a; a = a.parentElement) push(rgb(getComputedStyle(a).backgroundColor));
+        return out;
+      };
       while ((n = walker.nextNode())) {
         if (!n.textContent.trim()) continue;
         const el = n.parentElement;
@@ -126,9 +242,11 @@ async function render(names) {
         if (!el.hasAttribute('data-fontcheck')) {
           el.setAttribute('data-fontcheck', String(i++));
           tagged.push(n.textContent.trim().slice(0, 48));
+          const r = el.getBoundingClientRect();
+          boxes.push({ x: r.left, y: r.top, w: r.width, h: r.height, pal: palette(el) });
         }
       }
-      return { faces, bad: [...bad], failed: faces.filter(f => /error/.test(f)), tagged };
+      return { faces, bad: [...bad], failed: faces.filter(f => /error/.test(f)), tagged, boxes };
     });
     const client = await page.context().newCDPSession(page);
     await client.send('DOM.enable');
@@ -152,18 +270,26 @@ async function render(names) {
     }
     const outPath = path.join(HERE, out);
     fs.mkdirSync(path.dirname(outPath), { recursive: true });
-    await page.screenshot({
+    const shot = await page.screenshot({
       path: outPath,
       type: opt.jpeg ? 'jpeg' : 'png',
       quality: opt.jpeg || undefined,
       omitBackground: !!opt.transparent,
       clip: { x: 0, y: 0, width: w, height: h },
     });
+    if (!opt.jpeg && report.boxes.length) {
+      const fringe = scanFringe(decodePNG(shot), report.boxes, report.tagged, scale);
+      if (fringe.total) {
+        failed++;
+        console.log(`  [${name}] COLOUR FRINGE on text: ${fringe.total} px in ${fringe.hits.length} element(s)\n    ` +
+          fringe.hits.slice(0, 6).map(x => `${x.n} px ${x.sample} <- ${JSON.stringify(x.text)}`).join('\n    '));
+      }
+    }
     console.log(`${name.padEnd(12)} -> ${out} (${w * scale}x${h * scale})`);
     await page.close();
   }
   await browser.close();
-  if (failed) { console.error(`${failed} job(s) rendered with a fallback font`); process.exit(1); }
+  if (failed) { console.error(`${failed} job(s) failed the font / fringe check`); process.exit(1); }
 }
 
 const args = process.argv.slice(2);

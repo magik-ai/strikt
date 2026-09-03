@@ -64,3 +64,37 @@ def test_commands_match_code(lang: str) -> None:
     for name, description in documented.items():
         assert t(lang, f"cmd.{name}") == description
         assert len(description) <= MAX_COMMAND_DESCRIPTION
+
+
+# ------------------------------------------------------------------- Telegram HTML validity
+
+_ALLOWED_TAGS = {"b", "i", "u", "s", "code", "pre", "a", "tg-spoiler"}
+_TAG_RE = re.compile(r"<(/?)([^\s>/]+)[^>]*>")
+
+
+def _html_ok(text: str) -> bool:
+    """Every tag is one Telegram accepts and every opening tag is closed (in order)."""
+    stack: list[str] = []
+    for closing, name in _TAG_RE.findall(text):
+        if name not in _ALLOWED_TAGS:
+            return False
+        if closing:
+            if not stack or stack.pop() != name:
+                return False
+        else:
+            stack.append(name)
+    return not stack
+
+
+def test_every_copy_string_is_valid_telegram_html() -> None:
+    from strikt.telegram.copy import STRINGS
+
+    bad = [
+        (lang, key)
+        for lang, table in STRINGS.items()
+        for key, value in table.items()
+        if not _html_ok(value)
+    ]
+    assert bad == []
+    assert _html_ok("/start <code>ab12</code>") and not _html_ok("/start <code>")
+    assert not _html_ok("/start <код>")

@@ -30,9 +30,17 @@
   // is 2 px, not 3: a 3 px strike bridged the 2 px holes and fused the bars into one ink block
   // across the crossing (alpha rows 12–19), which is the one thing the small gap has to survive.
   //
+  // Both pixel cuts are drawn with BUTT caps, not round ones: a round cap at 32 px spends half a
+  // pixel row of grey above and below every stroke, so 3 px bars read as fuzzy-tipped 2 px bars and
+  // the "whole-pixel edges" claim is only true horizontally. With butt caps the ink of the tiny cut
+  // covers rows 4–27 solid and nothing else.
+  //
   // The micro cut is the same drawing on a 16 px canvas (1 px = 6.25 units): 2 px strokes on
-  // whole-pixel edges (centres 2 · 6 · 10 · 14 px), 2 px gaps, ink y 2 → 14, a 2 px strike with no
-  // overshoot (at 16 px an overshoot would put the caps half off the canvas).
+  // whole-pixel edges (centres 2 · 6 · 10 · 14 px), 2 px gaps, ink y 2 → 14. Its strike is not a
+  // rotated stroke at all — at 16 px a 2 px diagonal is 8 rows of grey smudge between the bars — but
+  // a hand-placed staircase: four 4 × 2 px blocks at rows 10 · 8 · 6 · 4, one step per gap, every
+  // edge on a whole pixel and no antialiasing anywhere. Its slope (6 rows over 12 px between block
+  // centres) is 26.6°, inside the 27 ± 2° window to within half a degree.
   var CUTS = {
     full:  { w: 9,      gap: 10,   over: 4.5,    sw: 9,      y0: 19.5,    y1: 80.5 },
     small: { w: 8.5,    gap: 11,   over: 6,      sw: 8.5,    y0: 19.5,    y1: 80.5 },
@@ -73,6 +81,29 @@
       'A' + r3(r) + ' ' + r3(r) + ' 0 0 0 ' + r3(A[0]) + ' ' + r3(A[1]) + 'Z';
   }
 
+  // The same shape with butt caps: a rectangle whose ends are square, extended by w/2 along the
+  // axis so the ink covers exactly the same extent as the capsule. Used by the pixel cuts.
+  function bar(x1, y1, x2, y2, w) {
+    var h = w / 2, dx = x2 - x1, dy = y2 - y1, L = Math.hypot(dx, dy);
+    var ux = dx / L, uy = dy / L, nx = -uy * h, ny = ux * h;
+    var ax = x1 - ux * h, ay = y1 - uy * h, bx = x2 + ux * h, by = y2 + uy * h;
+    return 'M' + r3(ax + nx) + ' ' + r3(ay + ny) +
+      'L' + r3(bx + nx) + ' ' + r3(by + ny) +
+      'L' + r3(bx - nx) + ' ' + r3(by - ny) +
+      'L' + r3(ax - nx) + ' ' + r3(ay - ny) + 'Z';
+  }
+
+  // The 16 px cut, hand-placed on device pixels (1 px = 6.25 units): four 2 px bars in columns
+  // 1 · 5 · 9 · 13 running rows 2–13, and a four-block staircase for the strike.
+  var MICRO_PX = {
+    bars: [1, 5, 9, 13],          // left edge of each 2 px bar; rows 2 → 14
+    step: [[0, 10], [4, 8], [8, 6], [12, 4]]  // left edge, top row of each 4 × 2 px block
+  };
+  function pxRect(x, y, w, h) {
+    var U = 6.25;
+    return 'M' + r3(x * U) + ' ' + r3(y * U) + 'H' + r3((x + w) * U) + 'V' + r3((y + h) * U) + 'H' + r3(x * U) + 'Z';
+  }
+
   // Inner SVG for a mark.
   //   cut:    'full' | 'small'
   //   bars:   1..4 verticals (state of the day); 4 = the complete count
@@ -81,14 +112,27 @@
   //   night:  strike width equals the verticals
   function paths(o) {
     o = o || {};
-    var g = geometry(o.cut, o.night ? { sw: CUTS[o.cut || 'full'].w } : null);
+    var cut = o.cut || 'full';
     var bars = o.bars == null ? 4 : o.bars;
+    var ink = o.ink || C.ink, red = o.red || C.strike;
     var out = [];
+    if (cut === 'micro') {
+      for (var m = 0; m < bars; m++) out.push('<path fill="' + ink + '" d="' + pxRect(MICRO_PX.bars[m], 2, 2, 12) + '"/>');
+      if (o.strike !== false && bars === 4) {
+        for (var k = 0; k < MICRO_PX.step.length; k++) {
+          out.push('<path fill="' + red + '" d="' + pxRect(MICRO_PX.step[k][0], MICRO_PX.step[k][1], 4, 2) + '"/>');
+        }
+      }
+      return out.join('\n  ');
+    }
+    var g = geometry(cut, o.night ? { sw: CUTS[cut].w } : null);
+    // the pixel cut squares its stroke ends so they land on whole rows
+    var pen = cut === 'tiny' ? bar : capsule;
     for (var i = 0; i < bars; i++) {
-      out.push('<path fill="' + (o.ink || C.ink) + '" d="' + capsule(g.xs[i], g.y0, g.xs[i], g.y1, g.w) + '"/>');
+      out.push('<path fill="' + ink + '" d="' + pen(g.xs[i], g.y0, g.xs[i], g.y1, g.w) + '"/>');
     }
     if (o.strike !== false && bars === 4) {
-      out.push('<path fill="' + (o.red || C.strike) + '" d="' + capsule(g.strike.x0, g.strike.y0, g.strike.x1, g.strike.y1, g.sw) + '"/>');
+      out.push('<path fill="' + red + '" d="' + pen(g.strike.x0, g.strike.y0, g.strike.x1, g.strike.y1, g.sw) + '"/>');
     }
     return out.join('\n  ');
   }
@@ -103,7 +147,7 @@
     return '<svg ' + attrs + '>\n  ' + bg + paths(o) + '\n</svg>';
   }
 
-  var api = { C: C, CUTS: CUTS, ANGLE: ANGLE, geometry: geometry, capsule: capsule, paths: paths, svg: svg };
+  var api = { C: C, CUTS: CUTS, ANGLE: ANGLE, MICRO_PX: MICRO_PX, geometry: geometry, capsule: capsule, bar: bar, paths: paths, svg: svg };
 
   // Browser helper: fill every [data-mark] element. Attributes: data-mark="full|small",
   // data-size, data-bars, data-strike="0", data-night, data-ink, data-red, data-bg.

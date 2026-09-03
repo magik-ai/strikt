@@ -51,20 +51,30 @@ on a whole pixel and nothing is antialiased into grey:
 | Stroke width | 3 | 9.375 |
 | Gap | 2 | 6.25 · pitch 15.625 |
 | Stroke centres x | 8.5 · 13.5 · 18.5 · 23.5 (strokes 7–10, 12–15, 17–20, 22–25) | 26.5625 · 42.1875 · 57.8125 · 73.4375 |
-| Stroke ends y (cap centres) | 5.5 → 26.5 (ink 4 → 28) | 17.1875 → 82.8125 |
+| Stroke ends y (butt-cap ends) | ink 4 → 28 (rows 4–27) | 17.1875 → 82.8125 |
 | Strike | width **2**, 28°, overshoot 2.5 | 6.25 · over 7.8125 |
 | Ink box | 26 × 24 = 81 % × 75 % of the side | — |
+| Caps | **butt** | rectangles, not capsules |
 
 The gap is 0.67 × the stroke, the only cut that breaks the ≥ 1.1 rule: at 32 px what matters is two
 whole background pixels between strokes.
 
+The caps are **butt**, not round. `mark.js` draws both pixel cuts with `bar()` (a rectangle whose
+ends are square, extended by w/2 along the axis so the ink covers the same extent a capsule would)
+instead of `capsule()`. With round caps the top and bottom rows of every stroke were half-alpha —
+the cap is a semicircle, so it covers a fraction of its last row — which made the 3 px bars read as
+fuzzy-tipped 2 px bars and made "whole-pixel edges" true horizontally only. Read off the current
+PNG: rows 4–27 are solid `###` in every stroke column, rows 3 and 28 are empty.
+
 The strike is the one place the tiny cut departs from the geometry as well: 2 px, not the 3 px of the
 verticals. At 3 px the pen covered 3.4 rows at every x, so where it crossed a 2 px hole it bridged
 two bars for four rows and the alpha map read `###..###..########` at row 12 and `#########` at rows
-17–19 — an ink block in the middle of the icon. At 2 px each crossing costs two rows: read off the
-current PNG, rows 4–11 and 23–27 carry four separate runs, and rows 12–22 join exactly one pair
-(bars 3–4 at rows 12–13, bars 2–3 at 15–16, bars 1–2 at 18–19) while the other two gaps stay open.
-A pen crossing a count has to touch it; what it must not do is fill the count in.
+17–19 — an ink block in the middle of the icon. At 2 px **the pen bridges each gap for one or two
+rows and no gap for more than two**: read off the current PNG, gap 3–4 is closed at row 13 (cols
+17–24 solid) with row 12 partial, gap 2–3 at rows 15–16, gap 1–2 at row 18 (cols 7–14 solid) with
+row 19 partial; rows 4–11 and 23–27 carry four separate runs. A pen crossing a count has to touch it;
+what it must not do is fill the count in. (An earlier note claimed it "joins one pair of bars and the
+other two gaps stay open" — the raster bridges all three, briefly, and that is what it should say.)
 
 ### Micro cut (`favicon-16.png`; the 16 px raster a tab actually paints)
 
@@ -73,15 +83,25 @@ The browser downsamples a 32 px icon to 16 px for tabs and bookmarks, which turn
 
 | Item | Device px (at 16) | Units |
 |---|---|---|
-| Stroke width | 2 | 12.5 |
-| Gap | 2 | 12.5 · pitch 25 |
-| Stroke centres x | 2 · 6 · 10 · 14 (strokes 1–3, 5–7, 9–11, 13–15) | 12.5 · 37.5 · 62.5 · 87.5 |
-| Stroke ends y (cap centres) | 3 → 13 (ink 2 → 14) | 18.75 → 81.25 |
-| Strike | width 2, 28°, no overshoot | 12.5 · over 0 |
+| Stroke width | 2 (cols 1–2, 5–6, 9–10, 13–14) | 12.5 |
+| Gap | 2 (cols 3–4, 7–8, 11–12) | 12.5 · pitch 25 |
+| Stroke centres x | 2 · 6 · 10 · 14 | 12.5 · 37.5 · 62.5 · 87.5 |
+| Stroke ends y | ink 2 → 14 (rows 2–13, butt caps) | 12.5 → 87.5 |
+| Strike | **a staircase, not a rotated stroke** | four 4 × 2 px blocks |
+| Strike blocks (x, top row) | (0, 10) · (4, 8) · (8, 6) · (12, 4) | 4 px wide, 2 px tall |
 | Ink box | 14 × 12 = 88 % × 75 % of the side | — |
 
-The overshoot is 0 because at 16 px a 1 px overshoot would put the strike's round caps half outside
-the canvas. Alpha rows 2–4 and 12–13 carry four separate runs; the crossings behave as at 32 px.
+`mark.js` special-cases this cut (`MICRO_PX`): it emits eight axis-aligned rectangles on whole device
+pixels and nothing else, so the 16 px PNG has **no antialiased pixel at all**. Read off the current
+file, rows 2–13 are fully opaque in every bar column and rows 0–1 and 14–15 are empty.
+
+A rotated 2 px stroke does not survive here: at 16 px it covers roughly eight rows of partial alpha
+across the three gaps and reads as a smudge between the bars rather than a pen. The staircase steps
+once per gap — the step from row 10 to 8 falls in gap 1–2, 8 to 6 in gap 2–3, 6 to 4 in gap 3–4 — so
+it crosses all four bars and lands on the two 1 px overshoots at columns 0 and 15. Slope: 6 rows over
+12 px between block centres = **26.6°**, half a degree outside the 27–29° window every other cut
+sits in, and the one place the angle is allowed to move because the alternative is grey.
+
 Link it explicitly (`<link rel="icon" sizes="16x16">`); browsers only pick it over the 32 if told.
 
 ### Night colourway
@@ -110,8 +130,8 @@ in over 150 ms; nothing else moves.
   and dark clients because paper reads as a neutral disc on dark UIs, which is what
   `telegram-profile-1920x1080.png` now shows on both panels.
 - `favicon.svg`: small cut, all ink, transparent. `favicon-32.png`: **tiny cut**, all ink, box 81 %
-  (stroke 3 px, gap 2 px, strike 2 px, pixel-snapped). `favicon-16.png`: **micro cut**, all ink,
-  box 88 % (stroke 2 px, gap 2 px, strike 2 px). `favicon-180.png` (apple touch): small cut with the
+  (stroke 3 px, gap 2 px, strike 2 px, butt caps, pixel-snapped). `favicon-16.png`: **micro cut**,
+  all ink, box 88 % (stroke 2 px, gap 2 px, a four-block staircase for the strike, no antialiasing). `favicon-180.png` (apple touch): small cut with the
   red strike, paper background, box 72 %.
 
 ## 3. Lock-up
@@ -157,7 +177,8 @@ red nowhere but in the mark.
 |---|---|---|---|
 | Captions | JetBrains Mono 400 | 15 / 1.6, uppercase | 0.08em |
 | Bubble text | DM Sans 400 (bold 600) | 24 / 1.4 | 0 |
-| Numbers in bubbles | JetBrains Mono 400 (500 for the meal total) | 21–22 / 1.55, tabular; 20 in the menu reply, whose rows run two lines | 0 |
+| Numbers in bubbles | JetBrains Mono 400 (500 for the meal total) | 22 / 1.55 on the day card; 24 in the food, Russian and menu replies, where mono and prose are the same size, as Telegram renders a `<code>` block | 0 |
+| Size label under a mark | JetBrains Mono 400 | 14 | 0.04em |
 | Timestamps | JetBrains Mono 400 | 14 | 0.02em |
 | Inline buttons | DM Sans 500 | 19 | 0 |
 | Wordmark in the foot | Newsreader 500 | 34 | −0.01em |
@@ -173,8 +194,14 @@ an effective 14 px drops out of the card.
 Russian text: DM Sans and Newsreader ship no Cyrillic, so Russian UI copy is set in Golos Text
 400/500 (OFL, Paratype), including the Latin food names inside Russian sentences so a line has one
 texture. JetBrains Mono covers Cyrillic itself. The full JetBrains Mono build (not the Google subset)
-is bundled so that the card's `▓░` bar glyphs would also render; in the images the eight-cell bar is
-drawn as flat cells (ink / rule) in the same column, because the shade glyphs dither at 22 px.
+is bundled, and the images now set the card's bar as the **glyph string `render.bar` actually
+writes** — `▓▓▓▓▓░░░`, U+2593 and U+2591, one cell each in JetBrains Mono (measured: 60 px of a 60 px
+cell at 100 px, same as a digit). It was drawn as flat CSS cells before, on the grounds that the
+shade glyphs dither; they do, and that is the point — the dither is what a Telegram client shows, and
+an image that draws a cleaner bar promises a card the bot cannot send. Checked at 22 px and 24 px:
+`▓` and `░` are two clearly different greys and the eight cells sit on the mono grid. The `BAR_CSS`
+block and its `<i>` cells are gone from `gen-sources.py`, and `rule` no longer paints a bar track —
+the empty cells are `░` in ink, like the filled ones.
 
 ## 6. Card numbers (internally consistent)
 
@@ -218,18 +245,53 @@ Menu image: protein per 100 kcal = P / kcal × 100 (52/540 → 9.6, 38/620 → 6
 24/580 → 4.1, 44/1180 → 3.7). The rows are sorted by that ratio, so the column is monotonic and the
 pick / okay / skip boundary follows it — caesar (4.5) is okay and falafel (4.1) is skip, the way
 round the numbers actually argue. Every row carries a fat column and the brief's one line of why
-(5.7): the caesar's 48 F is on the card next to "ask for dressing on the side".
+(5.7). **The why never repeats a number already printed in its own row and never states one
+ambiguously.** "52 of 75 P left" read as *52 of the remaining 75 are still left* rather than
+*covered*, so the pick row says "leaves 23 P" (75 − 52). "deep fried, 24 P" repeated the 24 P two
+columns to its left, so the falafel row says "deep fried" and lets its 29 F carry the case. The
+burger's is "fries add 360" (620 → 980).
+
+The delivery-app screenshot is client chrome, not brand: `#FFFFFF` card on radius 12, `#111111`
+names and prices in DM Sans 500 with proportional figures, `#8E8E93` secondary, `#ECECEC` / `#F2F2F2`
+separators, a `#F2F2F2` delivery chip, and 56 px photo placeholders drawn as three neutral greys
+(`#EFEFEF` ground, `#E1E1E1` and `#D2D2D2` discs — a plate out of focus). No mono, no palette token
+and no line illustration anywhere inside it: mono is the bot's table and the single-weight ink line
+is the bot's drawing, and this tile has to read as another company's app. Only the bubble around it
+is ours, because a user sent it — and, being a photo message, it is edge to edge in that bubble with
+the 18:47 pill on top of it.
+
+The staircase under the four bubbles carries the **same grid as the timeline above it**: the `.lad`
+and `.stair` boxes are both x 112 → 1808, the four columns have a 434 px pitch (394 wide, 40 gap), so
+a riser stands on the left edge of the column whose send it opens — 546 · 980 · 1414, measured off
+the PNG at 545.5 · 979.5 · 1413.5 against column text starting at 547 · 981 · 1415. The svg is
+`viewBox 0 0 1696 132`, `preserveAspectRatio="none"`, risers at 434 · 868 · 1302. Before, the path
+used four equal 424-unit steps from 0, which put every riser 14, 24 and 34 px left of its own moment
+and landed the third one in the gutter before its label. The staircase also moved up 14 px (`top`
+650 → 636, height 150 → 160): bubbles end at 537, stair ink runs 660 → 784, the why row 810 → 835,
+the footer 965 → 1000.
+
+One more collision fixed there: the column tick was `.tick`, which is also `strikt.css`'s class for
+the drawn delivery ticks (`margin-left: 6px`). Every tick was inheriting that margin and standing
+6 px right of its own column. It is `.tk` now, and the ticks measure 112 · 546 · 980 · 1414.
 
 Ladder timestamps 10:10 · 10:55 · 11:40 · 12:25 — 45 minutes apart (the follow-up delay in
 `ladder.py`), starting at wake + 3 h. Step 2 quotes the brief (7.2) verbatim — "Two hours past your
 usual first meal" — so the card moved rather than the sentence: breakfast is logged at **08:55**, and
 08:55 + 2 h = 10:55 exactly. At the old 08:10 the line was 2 h 45 out, which is not "two hours".
 
-Step 4 reads "Waist target is 90. You're at 97." The brief's example of this line quotes the first
-user's own waist measurements; CLAUDE.md law 3 keeps that person's numbers out of the repository, so
-the two figures are generalised here. The sentence itself is the brief's, unchanged, and no image in
-the set carries a personal body number — the protocol on the cards (2 100 kcal · 180 P · 200 C ·
-70 F · 30 fiber) is invented for the images too, not the first user's scheme.
+**Two deliberate departures from the brief's wording in the ladder, both on purpose.**
+
+1. Steps 1, 2 and 3 are the brief's sentences (7.2) verbatim. Step 4 is the brief's sentence with two
+   numbers changed: it reads "Waist target is 90. You're at 97." where the brief writes 94 and 103.
+   Those two figures are the first user's own waist measurements. CLAUDE.md law 3 keeps that person's
+   numbers out of the repository, and the spec line "exact wording per brief section 7.2 examples"
+   loses to it. The sentence is otherwise untouched, and no image in the set carries a personal body
+   number — the protocol on the cards (2 100 kcal · 180 P · 200 C · 70 F · 30 fiber) is invented for
+   the images too, not the first user's scheme. A reviewer diffing the image against the brief will
+   see this and should stop here.
+2. Step 2 prints "2 600 kcal" where the brief writes "2,600 kcal". That is house style, not a
+   change of meaning: every number in the system uses a space separator, never a comma (section 8),
+   and `render.fmt_num` writes it that way in the product too.
 
 ## 7. Spacing and radius in the images
 
@@ -261,23 +323,85 @@ Three edges that have to line up and did not:
   slots. The system sheet's footer sits at the shared baseline (y 982) with its do/don't column
   ending 77 px above it; it used to sit 21 px lower and 18 px under the last tile.
 
-The inline keyboard is docked to the bubble's bottom edge the way Telegram draws it: a 1 px `rule`
-across the full bubble width, buttons splitting it evenly with a 1 px divider, bubble
-`padding-bottom: 0`. Outgoing messages carry drawn delivery ticks — the ✓ glyph is not in the
-DM Sans or Newsreader subsets, so they are a 17 × 11 SVG in `mute` at 1.6 px, matching the
-illustration rule.
+**The inline keyboard is detached, and the avatar ignores it.** Telegram draws an inline keyboard as
+separate rounded buttons in a card tint below the bubble, and leaves the sender avatar on the
+*bubble's* bottom edge; the keyboard hangs under it without moving it. So a row carrying a keyboard
+is a two-row CSS grid (`.row.kbrow`, `grid-template-columns: 40px auto`, `align-items: end`): the
+avatar and the bubble share row 1 and therefore end on the same y, and the keyboard has row 2 to
+itself, 6 px lower, at the bubble's width. Buttons are radius 8, `card` on a 1 px `rule`, 14 px
+padding. Measured in `food-reply`: bubble 469 → 866, avatar 826 → 866, keyboard 886 → 935. Before,
+the keyboard was a bar fused to the bubble with a hairline and the avatar sat level with it, 45 px
+below the bubble it belongs to.
 
-Bubble widths follow the mono block, not the canvas. A phone renders a `<code>` block at roughly
-35–50 columns, so a 78-column row is not a message that can exist: the menu reply's rows are two
-lines each now (decision · dish · protein per 100 kcal, then the numbers and the one line of why),
-and no block in any image is wider than 53 mono cells — food reply 53 (740 px bubble at 21 px),
-Russian 55 (780 px; «осталось» and «ккал» are longer than "left" and "kcal"), menu 53 (700 px at
-20 px). The menu screenshot and its reply are one centred composition, like the food reply, instead
-of a row stretched to the 1 696 px grid.
+**A photo fills its bubble.** `.bubble.photo` has zero padding, radius 16 with the 4 px tail corner,
+and the picture is the bubble; the time and the ticks sit on the image bottom-right in a
+`rgba(26,24,20,.55)` pill with paper-coloured text. It used to be a 12 px `rule` frame around the
+picture with a padded caption row under it, which is a layout Telegram does not have. The menu
+screenshot uses the same treatment, because a screenshot is a photo message: 420 px app card, edge to
+edge, radius 0 inside the bubble's own 16.
+
+Outgoing messages carry drawn delivery ticks — the ✓ glyph is not in the
+DM Sans or Newsreader subsets, so they are a 17 × 11 SVG in `mute` at 1.6 px (paper on the photo
+pill), matching the illustration rule.
+
+**Bubble widths follow the mono block, not the canvas, and the block fits a phone.** A phone renders
+a `<code>` block at roughly 35–45 columns, so a 53-column row is a message that wraps on the only
+device the product runs on. Every table was re-cut to fit, by lifting the unit words out of every
+cell into one header row:
+
+| Block | Was | Now | Bubble at 24 px mono |
+|---|---|---|---|
+| food reply | 53 cells (`chicken thigh 180 g    325 kcal · 41 P ·   0 C · 17 F`) | **41** (`%-20s%6s%5s%5s%5s`, header `kcal P C F`) | 639 px = 41 × 14.4 + 2 × 24 |
+| Russian reply | 55 | **42** (`%-21s%6s%5s%5s%5s`, header `ккал Б Ж У`) | 653 px |
+| menu reply | 53 | **42** (line 1 `%-6s%-21s%5s` = 32, line 2 `  %5s kcal · %2s P · %2s F  %s`) | 653 px |
+| sheet food reply | 53 at 12.5 px | **41** at 15 px | 397 px = 41 × 9 + 2 × 14 |
+
+JetBrains Mono's advance is 0.6 em exactly (measured: 60 px at 100 px, digits, spaces, figure space
+and the two shade glyphs alike), so a cell is 14.4 px at 24 px and 9 px at 15 px. The mono size in
+the three reply images went 20–21 px → 24 px, the size of the prose beside it, which is how Telegram
+renders a `<code>` block. Chat columns follow: 693 px (food), 707 px (Russian). The menu screenshot
+and its reply are one centred composition, like the food reply, instead of a row stretched to the
+1 696 px grid.
+
+The Russian reply names the salad «огуречный салат» in both its prose line and its table, one cell
+shorter than «салат из огурцов» and consistent with itself; the user's own message keeps the phrase
+they typed, and the English food name stays English, which is the point of the image.
+
+**The system sheet's third column and its small-cut row.** Every mark in the row now carries its own
+size in 14 px mono under it — 64 · 48 · 40 · 32 on paper, 48 · 40 on night, then the 32 and 16 px
+favicons — so a reader can tell which is which; the row's caption is one line of its own under it
+("small cut · paper and night · favicon 32 · 16 · ink", 50 characters, inside the 55 the 564 px
+column holds at 15 px with 0.08em tracking) instead of a `favicon 32 · 16 · ink` fragment beside the
+marks that broke with `· ink` orphaned on a second line. Paying for the label row cost 21 px, so the
+do/don't tiles went 56 → 52 px high and three gaps tightened by 2–6 px: the column now ends at 952.7
+with the footer at 964.7, where it used to run under it.
+
+The mono specimen on the same sheet quoted the **closed** totals with a `Left:` line under them —
+a card state that cannot exist, because `render.render_day_card` skips that line when the day is
+closed and the verdict carries the shortfall. It shows the open day instead (kcal 1 340 / 2 100,
+P 105 / 180 g, bars 5/5), and its `Left: 760 kcal · 75 P · 80 C · 23 F` is set in DM Sans, which is
+where the card sets it: prose, not a column.
+
+**`telegram-profile` matches the rest of the set.** It was the one 1920 × 1080 frame without the
+34 px lock-up and mono caption, and its two panels ran to y 1000 against a 212 px top margin. The
+chat list lost one row (Deliveries), the stage's bottom padding went 80 → 180, and the panels now sit
+184.7 → 900 with the standard footer at 964.7 → 1000, like every other image. Its section labels and
+timestamps moved from tracked uppercase JetBrains Mono to DM Sans 500 / 400 at 15 and 14 px in
+`#707579` / `#AAAAAA`, sentence case ("Info", "Chats"): Telegram sets both in its system sans, and
+an image whose whole claim is "this is someone else's window" cannot set them in the brand's face.
 
 `sheet.html` is one grid of two rows — the specimen band, then the applications band — 56 px columns,
 64 px row gap. Every cell in the bottom row opens with its caption, so the three captions sit on one
 baseline (y 695) instead of three (714 · 744 · 772) with 180 px of void above them.
+
+Its captions are broken by hand rather than left to wrap, because an 11.5 px mono line at 0.06em
+holds about 54 characters in the 400–440 px columns and three of them were orphaning a word:
+"mark.svg · 420 px · ink … / strike …" now breaks at the middot before "full cut" and ends
+"over 4.5"; "telegram · circle crop · 96 and 40 px" breaks before "paper · night"; "state · one
+stroke per logged meal" breaks before "the strike when the day is closed"; and the filename in
+"1 · 2 · 3 · 4 · closed · all-ink (mark-ink.svg)" is wrapped in `.nb { white-space: nowrap }` so it
+can never break at its hyphen. Measured after: every caption on the sheet is one or two lines, and
+every break is one that was chosen.
 
 `telegram-profile-1920x1080.png` is painted in Telegram's own chrome, not in the palette: light
 `#FFFFFF` rows with `#E9E9E9` separators and an `#F1F1F1` section gap; dark `#212121` rows on
@@ -287,19 +411,42 @@ follows its rows (it was a fixed 860 px, leaving an 85 px empty strip), and the 
 so the cool client tints (blue, violet, green) sit next to the Strikt row and the two warm ones
 (coral, pink) at the bottom, with the timestamps still descending the way a client sorts a list.
 
-The plate in `food-reply-1920x1080.png` is a chicken thigh with a hatched surface and a two-lobed
-bone, a mound of rice with grain marks, and five overlapping single-ring cucumber slices with three
-seeds each. It used to carry double-ring slices (life buoys) and a circle with a horizontal tail
+The plate in `food-reply-1920x1080.png` is a **boneless** chicken thigh — an irregular flat oval
+with one skin line across it and three grain marks — a mound of rice with grain hatching, and five
+overlapping single-ring cucumber slices with three seeds each. It carried a bone knuckle (two 7.5-unit
+circles and two short lines off the top-right of the meat) until now, which drew a drumstick; the
+message names a thigh, and the plate has to be the food the message names. It used to carry double-ring slices (life buoys) and a circle with a horizontal tail
 between the mounds that read as a lollipop; a plate drawn under the illustration rule still has to
 read as the food the message names.
 
 ## 8. Thousands separators, and why there are two
 
-`JetBrains Mono` gives U+2009 THIN SPACE an advance of 0.31 of a character cell (measured in the
-render: 4 px of a 13 px cell at 21 px). `render._macro_line` pads its columns by character count, so
-any value past 999 pulled its bar two thirds of a character left of the others — visible on every
-card, because kcal is always four digits. U+2007 FIGURE SPACE is digit-width by definition and
-measures a full cell in all four bundled faces.
+Measured in the render at 100 px, with `getBoundingClientRect` on a `white-space: pre` span:
+
+| Character | DM Sans | Newsreader | Golos Text | JetBrains Mono |
+|---|---|---|---|---|
+| U+0020 space | 27 | 23 | 25 | 60 |
+| U+00A0 no-break space | 27 | 23 | 25 | 60 |
+| U+2009 THIN SPACE | 20 | 20 | 20 | 20 |
+| U+202F NARROW NO-BREAK SPACE | **14** | **12** | 20 | 30 |
+| U+2007 FIGURE SPACE | 68 | 60 | 50 | 60 |
+| digit `8` | 61 | 60 | 50 | 60 |
+
+So the thin space is the 1/5 em it is defined to be in every bundled face, and **one third of a cell**
+in JetBrains Mono — not the 0.31 an earlier note claimed, but close enough that the conclusion is the
+same. `render._macro_line` pads its columns by character count, so any value past 999 pulled its bar
+two thirds of a character left of the others — visible on every card, because kcal is always four
+digits. U+2007 FIGURE SPACE is digit-width by definition and measures a full cell in JetBrains Mono.
+
+The consequence, stated plainly because a reviewer will notice it: **the closed card writes `1 880`
+twice at two different gap widths** — 14.4 px in the 24 px mono row and 4.8 px in the 24 px DM Sans
+verdict — and at chat-preview sizes (13.5 px on the sheet, 16 px in the profile) the prose gap is
+under 3 px and close to invisible. That is the price of a mono column that has to hold a cell, and it
+is the state of the shipped files. If it has to go, the fix is one character in `render.fmt_num`:
+U+00A0, at 0.27 em in DM Sans, is the widest of the candidates and stays unbreakable. It is **not**
+U+202F, which the table above shows is *narrower* than the thin space in DM Sans and Newsreader and
+would tighten the gap rather than open it. Changing it is a `src/strikt/telegram/` edit, outside this
+folder, so it is recorded here rather than done here.
 
 So: `render.fmt_num` keeps the thin space for prose, `render._cells` swaps it for a figure space
 inside `<code>`, and `gen-sources.py` carries the same pair as `TS` and `FS`.
@@ -319,9 +466,39 @@ The check now also opens a CDP session, tags every element holding text, and ask
 `CSS.getPlatformFontsForNode` which platform fonts Chromium actually used; any `familyName` that is
 not DM Sans / Newsreader / JetBrains Mono / Golos Text fails the run with a non-zero exit. Verified
 by putting the arrow back: `[system] FONT PROBLEM DejaVu Sans (1 glyph) <- "Base 4 px: …"`.
-
 Glyphs that are **not** in the DM Sans / Newsreader / Golos Text subsets and must not be set in them:
 `→` U+2192, `≥` U+2265, `≤` U+2264, `✓` U+2713. JetBrains Mono (the full build, not the Google
 subset) has all four, which is why the captions and the construction notes can use `≤ 48 px` and
 `y 19.5 → 80.5`. The arrow in the spacing paragraph became the words "paper to card"; the delivery
 ticks became an SVG.
+
+## 10. Greyscale text, and the check that keeps it that way
+
+`chromium.launch()` took no arguments, so Chromium rasterised every glyph with **LCD subpixel
+antialiasing**: each edge pixel is tinted orange or blue because the three subpixels of a screen cell
+are covered by different amounts. That is stray colour in a system whose rule is one accent, it puts
+dozens of small red clusters on ordinary ink text (the red-cluster scan that checks "only the mark is
+red" was finding them in every image), and it makes glyphs hazy on a retina screen or under any
+scaling, because the fringes are only correct for one physical subpixel order. Measured on the old
+files: the hero meals list carried 4 397 fringed pixels of 82 680, the OG tagline 999 of 14 400, the
+Russian bubble 9 172 of 194 400, `sheet.png`'s food reply 4 668 of 74 800.
+
+The browser is launched with `--disable-lcd-text --font-render-hinting=none` now, which puts every
+glyph edge on a grey blend between the text colour and what is behind it, and the renderer proves it
+on every run:
+
+1. it keeps the screenshot buffer and decodes it (a ~60-line 8-bit non-interlaced PNG reader on
+   `node:zlib` — no native dependency);
+2. for every element that holds text it collects the colours that element is allowed to paint: its
+   own text colour, the text and background colours of all its descendants, and every non-transparent
+   background up its ancestor chain;
+3. inside that element's box, a pixel fails if its channel spread (max − min) is over 40 **and** it
+   is more than 26 away, in RGB, from the nearest point on any segment between two of those colours.
+   Greyscale antialiasing always lands on such a segment; a subpixel fringe does not.
+
+The palette-segment test is what lets the check run over the whole set without exceptions: the white
+initial on a `#65AADD` Telegram avatar, the `#B32E22` "don't" inside a mute caption and the red
+strike itself are all blends of two declared colours, and they pass. Verified both ways — with the
+flag every job reports zero; with it removed, `card-closed` alone reports **26 304 px in 15
+elements**, e.g. `(240,195,139)` at 196,487 on the meals list.
+

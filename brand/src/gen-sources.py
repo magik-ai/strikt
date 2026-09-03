@@ -20,38 +20,43 @@ def W(name, s, root=False):
 def av(size=40, night=False):
     inner = round(size*0.675)
     return '<div class="av" style="width:%dpx;height:%dpx"><div data-mark="small" data-size="%d"%s></div></div>' % (size,size,inner,' data-night' if night else '')
+# render.bar writes the day card's progress bar with the shade glyphs U+2593 / U+2591; the images
+# set the same string in JetBrains Mono (the full build has both), so the mock is the message.
 def bar(filled):
-    return '<span class="bar">' + ''.join('<i class="%s"></i>' % ('f' if i<filled else 'e') for i in range(8)) + '</span>'
+    return '\u2593'*filled + '\u2591'*(8-filled)
 def macro(label, val, tgt, unit, filled):
     # mirrors render._macro_line: f"{label:<5}{value:>6} /{target:>6}{unit or ' '}" + 2 spaces + 8-cell bar.
     # The unit column is one character wide on every row (blank for kcal) so all five bars start
     # on the same column; without the pad the kcal bar sits one mono character to the left.
     return '%-5s%6s /%6s%s  %s' % (label, val, tgt, unit or ' ', bar(filled))
 # Telegram's delivery ticks, drawn (the check glyph is not in the DM Sans / Newsreader subsets).
-TICKS = ('<svg class="tick" width="17" height="11" viewBox="0 0 17 11" fill="none" stroke="#8A857A" '
-         'stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round">'
-         '<path d="M1 6.2 4.3 9.5 10.4 1.6"/><path d="M8.2 8.1 9.6 9.5 15.7 1.6"/></svg>')
-def bubble(inner, time, user=False, extra='', kb=''):
+def ticks(colour='#8A857A'):
+    return ('<svg class="tick" width="17" height="11" viewBox="0 0 17 11" fill="none" stroke="%s" '
+            'stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round">'
+            '<path d="M1 6.2 4.3 9.5 10.4 1.6"/><path d="M8.2 8.1 9.6 9.5 15.7 1.6"/></svg>') % colour
+TICKS = ticks()
+def bubble(inner, time, user=False, extra=''):
     cls = ' user' if user else ''
-    if kb: cls += ' haskb'
-    return '<div class="bubble%s"%s>%s<div class="time">%s%s</div>%s</div>' % (
-        cls, extra, inner, time, TICKS if user else '', kb)
-def row(inner, user=False, night=False):
+    return '<div class="bubble%s"%s>%s<div class="time">%s%s</div></div>' % (
+        cls, extra, inner, time, TICKS if user else '')
+# A bot row is avatar + bubble. Telegram hangs the inline keyboard *under* the bubble and leaves the
+# avatar on the bubble's own bottom edge, so the row is a two-row grid: the avatar and the bubble
+# share row 1 and end on the same baseline, the keyboard sits alone in row 2.
+def row(inner, user=False, night=False, kbd=''):
     if user: return '<div class="row user">%s</div>' % inner
+    if kbd: return '<div class="row kbrow">%s%s%s</div>' % (av(40, night), inner, kbd)
     return '<div class="row">%s%s</div>' % (av(40, night), inner)
 def kb(*labels):
     return '<div class="kb">%s</div>' % ''.join('<span>%s</span>' % l for l in labels)
 
-BAR_CSS = """
-.bar{display:inline-flex;vertical-align:-0.08em;height:0.68em;margin-left:0}
-.bar i{display:block;width:1ch;height:100%;background:var(--rule)}
-.bar i.f{background:var(--ink)}
-.night .bar i{background:var(--rule-dark)} .night .bar i.f{background:var(--text-dark)}
-"""
 # Two thousands separators, exactly as render.py writes them:
-#   TS  thin space U+2009 — prose (a verdict, a ladder line, a chat preview);
-#   FS  figure space U+2007 — inside a mono block, where it is digit-width, i.e. one cell, so the
-#       padded columns and the bars stay on one vertical. U+2009 is 0.31 of a cell in JetBrains Mono.
+#   TS  thin space U+2009 — prose (a verdict, a ladder line, a chat preview). Measured in the
+#       render at 100 px: 20 px in DM Sans, Newsreader, Golos Text and JetBrains Mono alike, i.e.
+#       the 1/5 em a thin space is defined to be. (U+202F NARROW NO-BREAK SPACE is *narrower* in
+#       these faces — 14 px in DM Sans, 12 in Newsreader — so it is not the fix it looks like.)
+#   FS  figure space U+2007 — inside a mono block, where it is digit-width, i.e. one full cell
+#       (60 px of a 60 px cell), so the padded columns and the bars stay on one vertical. The thin
+#       space is 1/3 of a cell there, which is why the two are not interchangeable.
 TS=' '
 FS=' '
 
@@ -66,7 +71,7 @@ W('og.html', HEAD('Strikt og', """
 # 14 gap, fixed width 844, top pinned at 240), so only its contents change when the day closes. The
 # state column is the same box too — the mark svg carries the same −20.8 px left bearing in both
 # files, so bars 1–3 of the open day sit exactly where bars 1–3 of the closed mark sit.
-CARD_CSS = BAR_CSS + """
+CARD_CSS = """
 .chat{position:absolute;left:112px;top:240px;width:898px}
 .bubble{padding:22px 28px 14px}
 .row .bubble{width:844px;max-width:844px}
@@ -117,47 +122,56 @@ W('card-closed.html', closed)
 # Chicken thigh (hatched, bone end), a mound of rice with grain marks, five overlapping cucumber
 # slices with seeds. Single-weight ink line, 2.6 px, round caps — the illustration rule. Nothing
 # abstract on the plate: no cutlery stub, no double rings.
+# The thigh is boneless: a flat irregular oval with one skin line across it and a light hatch — a
+# drumstick with a bone knuckle is a different cut, and the message names a thigh.
 PLATE = """<svg viewBox="0 0 400 300" width="400" height="300" fill="none" stroke="#1A1814" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round">
 <ellipse cx="200" cy="152" rx="168" ry="118"/>
 <ellipse cx="200" cy="152" rx="138" ry="92"/>
 <path d="M86 164c-4-34 22-62 54-62c32 0 58 28 54 62c-18 8-36-4-54 0c-18 4-36-4-54 0z"/>
 <path d="M102 152l11-4M124 142l11-3M146 140l11 3M168 148l9 4M98 158l11-2M120 156l11 2M142 154l11-3M164 160l10 3M130 124l11 2M152 126l10 5M112 132l10 3"/>
-<path d="M206 176c-14-20-6-52 20-62c20-8 44-2 56 12c8 10 4 24-8 34c-16 14-48 28-68 16z"/>
-<path d="M224 160l14-18M244 166l14-18M262 168l13-17"/>
-<path d="M278 124l16-12M284 132l16-12"/>
-<circle cx="303" cy="108" r="7.5"/><circle cx="311" cy="117" r="7.5"/>
+<path d="M214 148c-6-22 10-42 36-46c30-5 58 6 64 24c6 18-8 38-32 46c-26 9-62 0-68-24z"/>
+<path d="M234 142c13-12 34-17 54-13c11 2 20 8 24 15"/>
+<path d="M240 158l14-12M264 163l14-13M288 160l12-12"/>
 <circle cx="136" cy="204" r="19"/><circle cx="168" cy="214" r="19"/><circle cx="200" cy="205" r="19"/><circle cx="232" cy="215" r="19"/><circle cx="264" cy="203" r="19"/>
 <circle cx="131" cy="203" r="1.7" fill="#1A1814" stroke="none"/><circle cx="137" cy="199" r="1.7" fill="#1A1814" stroke="none"/><circle cx="140" cy="206" r="1.7" fill="#1A1814" stroke="none"/><circle cx="163" cy="213" r="1.7" fill="#1A1814" stroke="none"/><circle cx="169" cy="209" r="1.7" fill="#1A1814" stroke="none"/><circle cx="172" cy="216" r="1.7" fill="#1A1814" stroke="none"/><circle cx="195" cy="204" r="1.7" fill="#1A1814" stroke="none"/><circle cx="201" cy="200" r="1.7" fill="#1A1814" stroke="none"/><circle cx="204" cy="207" r="1.7" fill="#1A1814" stroke="none"/><circle cx="227" cy="214" r="1.7" fill="#1A1814" stroke="none"/><circle cx="233" cy="210" r="1.7" fill="#1A1814" stroke="none"/><circle cx="236" cy="217" r="1.7" fill="#1A1814" stroke="none"/><circle cx="259" cy="202" r="1.7" fill="#1A1814" stroke="none"/><circle cx="265" cy="198" r="1.7" fill="#1A1814" stroke="none"/><circle cx="268" cy="205" r="1.7" fill="#1A1814" stroke="none"/>
 </svg>"""
-FOOD_CSS = BAR_CSS + """
+FOOD_CSS = """
 .stage{display:flex;align-items:center;justify-content:center}
-.chat{width:794px}
+.chat{width:693px}
 /* the bot bubble takes the whole chat column minus the avatar and its gap, so both bubbles
-   end on the same right edge (794 − 40 − 14 = 740); 740 = 53 mono cells at 21 px (689) plus the
+   end on the same right edge (693 − 40 − 14 = 639); 639 = 41 mono cells at 24 px (590.4) plus the
    bubble's 2 × 24 px padding */
-.bubble{max-width:740px}
-.row .bubble:not(.user){width:740px}
-.bubble.photo{padding:10px;background:var(--rule);max-width:none}
-.bubble.photo .img{background:var(--card);border:0;width:400px;height:300px}
-.bubble .code{font-size:21px}
+.bubble{max-width:639px}
+.row .bubble:not(.user){width:639px}
+.bubble .code{font-size:24px}
 .top{position:absolute;left:112px;top:80px}
 """
 # Six rows: per item, the meal in bold, the day so far, what is left. Every row carries the same
 # four columns, so the block has one right edge; fiber lives in the prose line under it, where it
 # is the one thing worth saying. 53 mono columns — a phone renders a <code> block at roughly that
 # width, and the bubble is sized to it rather than to the canvas.
+# Four columns under one header instead of a unit word on every cell: 41 mono cells, inside the
+# 35-45 a phone gives a <code> block, where the old 53-cell rows wrapped.
+def frow(name, kcal, p, c, f):
+    return '%-20s%6s%5s%5s%5s' % (name, kcal, p, c, f)
+food_rows = [frow('', 'kcal', 'P', 'C', 'F'),
+             frow('chicken thigh 180 g', '325', '41', '0', '17'),
+             frow('rice 150 g', '195', '4', '42', '1'),
+             frow('cucumber salad 120 g', '70', '1', '4', '5'),
+             '<b>' + frow('meal', '590', '46', '46', '23') + '</b>',
+             frow('today', '1'+FS+'070', '84', '108', '32'),
+             frow('left', '1'+FS+'030', '96', '92', '38')]
 food_reply = ('<p>Chicken thigh, rice, cucumber salad. About 450 g.</p>'
- '<span class="code">' +
- 'chicken thigh 180 g    325 kcal · 41 P ·   0 C · 17 F\n'
- 'rice 150 g             195 kcal ·  4 P ·  42 C ·  1 F\n'
- 'cucumber salad 120 g    70 kcal ·  1 P ·   4 C ·  5 F\n'
- '<b>meal                   590 kcal · 46 P ·  46 C · 23 F</b>\n'
- 'today                1'+FS+'070 kcal · 84 P · 108 C · 32 F\n'
- 'left                 1'+FS+'030 kcal · 96 P ·  92 C · 38 F' +
+ '<span class="code">' + '\n'.join(food_rows) +
  '</span><p style="margin-top:10px">Fiber 11 of 30. Dinner gets a vegetable.</p>')
+# Telegram draws a photo edge to edge inside the bubble and overlays the time on the picture in a
+# dark translucent pill; it does not frame it and does not give it a padded caption row.
+def photo(plate, time):
+    return ('<div class="row user"><div class="bubble user photo">%s'
+            '<div class="stamp">%s%s</div></div></div>' % (plate, time, ticks('#FFFCF5')))
 food = HEAD('Strikt food reply', FOOD_CSS) + '<div class="stage"><div class="top cap">a food photo · answered with the number</div><div class="chat">'
-food += row(bubble('<div class="img">%s</div>' % PLATE, '13:20', user=True, extra=' class="bubble user photo"').replace('class="bubble user" class="bubble user photo"','class="bubble user photo"'), user=True)
-food += row(bubble(food_reply, '13:21', kb=kb('Undo','Recalculate')))
+food += photo(PLATE, '13:20')
+food += row(bubble(food_reply, '13:21'), kbd=kb('Undo','Recalculate'))
 food += '</div><div class="foot"><div data-lockup="34"></div><div class="cap">per item, the meal, the day, what is left · one line of advice at most</div></div></div>' + TAIL()
 W('food-reply.html', food)
 
@@ -169,7 +183,7 @@ LADDER_CSS = """
 .line{position:absolute;left:0;right:0;top:0;height:1px;background:var(--rule)}
 .steps{display:grid;grid-template-columns:repeat(4,1fr);column-gap:40px}
 .step{position:relative;padding-top:0}
-.tick{position:absolute;left:0;top:-4px;width:1px;height:9px;background:var(--mute)}
+.tk{position:absolute;left:0;top:-4px;width:1px;height:9px;background:var(--mute)}
 .step .cap{padding-top:22px;line-height:1.7}
 .step .cap b{color:var(--ink);font-weight:500}
 /* the avatar sits on the bubble's bottom edge, the way Telegram draws it and the way every other
@@ -177,8 +191,10 @@ LADDER_CSS = """
 .step .row{margin-top:26px;align-items:flex-end}
 .step .bubble{font-size:23px;padding:18px 22px 12px}
 .note{position:absolute;left:112px;right:112px;bottom:80px;display:flex;justify-content:space-between;align-items:flex-end}
-.stair{position:absolute;left:112px;right:112px;top:650px}
-.stair svg{display:block;width:100%;height:150px}
+/* the staircase carries the timeline's grid: 1696 px wide, four columns of 434 px, so a riser
+   stands on the left edge of the column whose moment it opens */
+.stair{position:absolute;left:112px;right:112px;top:636px}
+.stair svg{display:block;width:100%;height:160px}
 .stair .why{display:grid;grid-template-columns:repeat(4,1fr);column-gap:40px;margin-top:14px}
 .stair .why div{line-height:1.7}
 .stair .why b{color:var(--ink);font-weight:500}
@@ -198,10 +214,13 @@ rungs=[('wake + 3 h','nothing logged yet today'),('+ 45 min','still nothing'),('
 lad = HEAD('Strikt ladder', LADDER_CSS) + '<div class="stage"><div class="top cap">the escalation ladder · one silent morning · four sends, 45 minutes apart</div>'
 lad += '<div class="lad"><div class="line"></div><div class="steps">'
 for t,s,d,txt in steps:
-    lad += '<div class="step"><div class="tick"></div><div class="cap"><b>%s</b> · %s<br>%s</div>%s</div>' % (t,s,d,row(bubble(txt,t)))
+    lad += '<div class="step"><div class="tk"></div><div class="cap"><b>%s</b> · %s<br>%s</div>%s</div>' % (t,s,d,row(bubble(txt,t)))
 lad += '</div></div>'
 # the rungs as one ink stair: each tread is one column of the timeline above it
-lad += '<div class="stair"><svg viewBox="0 0 1696 132" preserveAspectRatio="none" fill="none" stroke="#1A1814" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M0 122 H424 V88 H848 V54 H1272 V20 H1696" vector-effect="non-scaling-stroke"/></svg><div class="why">'
+# Risers at 434 · 868 · 1302 in the svg's own 1696-unit width — the same grid the header hairline
+# and the four columns use (column pitch 434, first column left edge 0), so every step rises on the
+# exact x where its send begins instead of 14, 24 and 34 px early.
+lad += '<div class="stair"><svg viewBox="0 0 1696 132" preserveAspectRatio="none" fill="none" stroke="#1A1814" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M0 122 H434 V88 H868 V54 H1302 V20 H1696" vector-effect="non-scaling-stroke"/></svg><div class="why">'
 for (t,s,d,txt),(when,what) in zip(steps,rungs):
     lad += '<div class="cap"><b>%s</b> · %s</div>' % (when, what)
 lad += '</div></div>'
@@ -209,101 +228,109 @@ lad += '<div class="note"><div class="foot" style="position:static"><div data-lo
 W('ladder.html', lad)
 
 # ---------------- menu ----------------
-MENU_CSS = BAR_CSS + """
+MENU_CSS = """
 .stage{display:flex;align-items:center;justify-content:center}
 /* the screenshot and the reply are one centred composition, like the food reply */
 .chat{width:auto;flex-direction:row;align-items:center;gap:80px}
-.bubble.photo{padding:10px;background:var(--rule);max-width:none}
-.app{width:420px;background:#fff;border-radius:8px;padding:22px 24px 14px;color:#1A1814;font-size:18px}
-.app .hd{display:flex;justify-content:space-between;align-items:baseline;border-bottom:1px solid #E3DDD1;padding-bottom:14px;margin-bottom:6px}
-.app .hd b{font-size:22px;font-weight:600}
-.app .hd span{color:#8A857A;font-size:15px}
-.app .it{display:flex;justify-content:space-between;align-items:center;padding:13px 0;border-bottom:1px solid #EEE9DF}
-.app .it:last-child{border-bottom:0}
+/* The screenshot is somebody else's app, so it is painted in plain client chrome — white card,
+   system-sans names and prices with proportional figures, grey photo placeholders, neutral greys —
+   never in the palette. No mono anywhere in it: mono is the bot's own table. Only the bubble
+   around it is ours, because a user sent it. */
+.app{width:420px;background:#FFFFFF;border-radius:12px;padding:20px 22px 16px;color:#111111;font-size:18px;font-variant-numeric:proportional-nums}
+.app .hd{display:flex;justify-content:space-between;align-items:baseline;border-bottom:1px solid #ECECEC;padding-bottom:14px;margin-bottom:2px}
+.app .hd b{font-size:22px;font-weight:600;letter-spacing:-.01em}
+.app .hd span{color:#8E8E93;font-size:16px;font-weight:500}
+.app .it{display:flex;justify-content:space-between;align-items:center;padding:12px 0;border-bottom:1px solid #F2F2F2}
+.app .it:last-of-type{border-bottom:0}
 .app .it .n{font-weight:500}
-.app .it .w{color:#8A857A;font-size:15px;margin-top:2px}
-.app .it .p{font-family:var(--mono);font-size:16px;color:#1A1814;white-space:nowrap}
-.app .it .ph{width:56px;height:56px;border-radius:8px;background:#F4F0E6;margin-right:14px;flex:none;display:flex;align-items:center;justify-content:center}
+.app .it .w{color:#8E8E93;font-size:15px;margin-top:2px}
+.app .it .p{font-size:17px;font-weight:500;color:#111111;white-space:nowrap}
+.app .it .ph{width:56px;height:56px;border-radius:8px;margin-right:14px;flex:none;overflow:hidden}
+.app .it .ph svg{display:block}
 .app .it .l{display:flex;align-items:center;flex:1;min-width:0}
-.app .chip{display:inline-block;margin-top:12px;border:1px solid #E3DDD1;border-radius:999px;padding:5px 12px;font-size:14px;color:#8A857A;font-family:var(--mono);letter-spacing:.04em}
-/* phone width: the mono block is 53 columns at 20 px (636 px) inside 2 × 24 px padding */
-.bubble.bot{max-width:none;width:700px}
-.bubble .code{font-size:20px}
+.app .chip{display:inline-block;margin-top:14px;background:#F2F2F2;border-radius:8px;padding:7px 13px;font-size:15px;color:#8E8E93}
+/* phone width: the mono block is 42 columns at 24 px (604.8 px) inside 2 × 24 px padding */
+.bubble.bot{max-width:none;width:653px}
+.bubble .code{font-size:24px}
 .bubble .code b{font-weight:500}
 .top{position:absolute;left:112px;top:80px}
 """
-# Single-weight ink line drawings, 2.4 px round caps, on a 40-unit grid (the illustration rule).
-DISH = {
- 'chicken': '<ellipse cx="20" cy="23" rx="15" ry="9"/><path d="M13 22c0-6 6-10 11-9c5 1 8 6 6 10c-2 4-8 5-12 4c-3-1-5-3-5-5z"/><path d="M17 16.5l3 6.5M22 16l3 6.5"/>',
- 'burger':  '<path d="M7 15c0-6 6-9 13-9s13 3 13 9z"/><path d="M6 20h28"/><path d="M7 25c-1 5 4 8 13 8s14-3 13-8z"/>',
- 'falafel': '<path d="M6 18a14 9 0 0 0 28 0z"/><path d="M5 18h30"/><circle cx="14" cy="14" r="4"/><circle cx="24" cy="13" r="4"/><circle cx="20" cy="21" r="4"/>',
- 'pizza':   '<path d="M20 6 34 30a30 30 0 0 1-28 0z"/><circle cx="16" cy="20" r="2.4"/><circle cx="25" cy="21" r="2.4"/><circle cx="20" cy="27" r="2.4"/>',
- 'caesar':  '<path d="M8 19a12 8 0 0 1 24 0z"/><path d="M5 19h30a15 11 0 0 1-30 0z"/><path d="M14 13l4-4M24 12l3-4"/>',
-}
-def dish(k):
-    return ('<svg width="36" height="36" viewBox="0 0 40 40" fill="none" stroke="#1A1814" '
-            'stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round">%s</svg>') % DISH[k]
-items=[('Grilled chicken plate','380 g','AED 34','chicken'),('Beef burger with fries','450 g','AED 32','burger'),
-       ('Falafel bowl','420 g','AED 28','falafel'),('Margherita pizza','33 cm','AED 36','pizza'),
-       ('Caesar with chicken','300 g','AED 31','caesar')]
+# Grey photo placeholders — a horizon, a sun and a hill in five neutral greys. Deliberately not the
+# brand's line illustrations: this tile belongs to the other app, and the reader has to see that.
+# a plate seen from above, out of focus: three neutral greys, no line work, nothing that could be
+# mistaken for the brand's own illustration
+THUMB = [(28,28,21,12),(27,29,20,13),(29,27,21,11),(28,29,20,12),(27,28,21,13)]
+def thumb(i):
+    cx,cy,r1,r2 = THUMB[i % len(THUMB)]
+    return ('<svg width="56" height="56" viewBox="0 0 56 56">'
+            '<rect width="56" height="56" fill="#EFEFEF"/>'
+            '<circle cx="%d" cy="%d" r="%d" fill="#E1E1E1"/>'
+            '<circle cx="%d" cy="%d" r="%d" fill="#D2D2D2"/></svg>') % (cx,cy,r1,cx,cy,r2)
+items=[('Grilled chicken plate','380 g','AED 34'),('Beef burger with fries','450 g','AED 32'),
+       ('Falafel bowl','420 g','AED 28'),('Margherita pizza','33 cm','AED 36'),
+       ('Caesar with chicken','300 g','AED 31')]
 app = '<div class="app"><div class="hd"><b>Grill house</b><span>4.7</span></div>'
-for n,w,p,k in items:
-    app += '<div class="it"><div class="l"><div class="ph">%s</div><div><div class="n">%s</div><div class="w">%s</div></div></div><div class="p">%s</div></div>' % (dish(k),n,w,p)
+for i,(n,w,p) in enumerate(items):
+    app += '<div class="it"><div class="l"><div class="ph">%s</div><div><div class="n">%s</div><div class="w">%s</div></div></div><div class="p">%s</div></div>' % (thumb(i),n,w,p)
 app += '<div class="chip">delivery 25–35 min</div></div>'
 # Ranked by protein per 100 kcal, so the column is monotonic (9.6 · 6.1 · 4.5 · 4.1 · 3.7) and the
 # verdicts fall out of it; the last column is the brief's one line of why per row.
 #            verdict  item                    kcal   P    F   P/100 kcal  the one line of why
-menu_rows=[('pick','grilled chicken plate','540','52','18','9.6','52 of 75 P left'),
-           ('okay','beef burger, no fries','620','38','30','6.1','fries make it 980'),
-           ('okay','caesar with chicken','690','31','48','4.5','dressing on the side'),
-           ('skip','falafel bowl','580','24','29','4.1','deep fried, 24 P'),
-           ('skip','margherita pizza','1'+FS+'180','44','38','3.7','420 over the day')]
-# Two lines per item, 53 mono columns at the widest — a phone renders a <code> block at about that
-# width, and one 78-column row would wrap into three broken lines there. Line 1 is the decision,
-# the dish and its protein per 100 kcal; line 2 the numbers and the one line of why.
+# The why never repeats a number already in its own row: the falafel's case is the fat, not the
+# 24 P printed two columns left of it, and the pick's is the protein still owed, not "52 of 75".
+menu_rows=[('pick','grilled chicken plate','540','52','18','9.6','leaves 23 P'),
+           ('okay','beef burger, no fries','620','38','30','6.1','fries add 360'),
+           ('okay','caesar with chicken','690','31','48','4.5','dressing aside'),
+           ('skip','falafel bowl','580','24','29','4.1','deep fried'),
+           ('skip','margherita pizza','1'+FS+'180','44','38','3.7','over by 420')]
+# Two lines per item, 42 mono columns at the widest — a phone renders a <code> block at 35-45, and
+# one 78-column row would wrap into three broken lines there. Line 1 is the decision, the dish and
+# its protein per 100 kcal; line 2 the numbers and the one line of why.
 def mrow(i, r):
     v,n,k,p,f,ratio,why = r
-    head = '%-6s%-23s%5s' % (v,n,ratio)
+    head = '%-6s%-21s%5s' % (v,n,ratio)
     if i==0: head = head.replace(v, '<b>%s</b>' % v, 1)
-    return head + '\n' + '      %5s kcal · %2s P · %2s F · %s' % (k,p,f,why)
+    return head + '\n' + '  %5s kcal · %2s P · %2s F  %s' % (k,p,f,why)
 menu_reply = ('<p>Left: 760 kcal · 75 P. Ranked by protein per 100 kcal.</p><span class="code">' +
  '\n'.join(mrow(i,r) for i,r in enumerate(menu_rows)) +
  '</span><p style="margin-top:10px">Chicken plate. Nothing else on the list reaches 50 P.</p>')
 menu = HEAD('Strikt menu', MENU_CSS) + '<div class="stage"><div class="top cap">a delivery menu screenshot · pick, okay, skip · ranked by protein per calorie</div><div class="chat">'
-menu += '<div class="row user" style="align-items:flex-end">%s</div>' % bubble(app, '18:47', user=True).replace('class="bubble user"','class="bubble user photo"')
+menu += photo(app, '18:47')
 menu += '<div class="row" style="align-items:flex-end">%s<div class="bubble bot">%s<div class="time">18:47</div></div></div>' % (av(), menu_reply)
 menu += '</div><div class="foot"><div data-lockup="34"></div><div class="cap">the decision first, then the reason · the same numbers every time</div></div></div>' + TAIL()
 W('menu.html', menu)
 
 # ---------------- russian ----------------
-RU_CSS = BAR_CSS + """
+RU_CSS = """
 .stage{display:flex;align-items:center;justify-content:center}
 /* wider than the english column: the Cyrillic labels («осталось», «ккал») are longer, so the same
-   four columns take 55 mono cells instead of 53 */
-.chat{width:834px}
-/* 834 − 40 avatar − 14 gap: the bot bubble ends on the user bubble's right edge; 780 = 55 mono
-   cells at 21 px (713) plus the bubble's 2 × 24 px padding */
-.bubble{max-width:780px;font-family:var(--cyr)}
-.row .bubble:not(.user){width:780px}
-.bubble .code{font-size:21px}
+   four columns take 42 mono cells instead of 41 */
+.chat{width:707px}
+/* 707 − 40 avatar − 14 gap: the bot bubble ends on the user bubble's right edge; 653 = 42 mono
+   cells at 24 px (604.8) plus the bubble's 2 × 24 px padding */
+.bubble{max-width:653px;font-family:var(--cyr)}
+.row .bubble:not(.user){width:653px}
+.bubble .code{font-size:24px}
 .kb span{font-family:var(--cyr)}
 .top{position:absolute;left:112px;top:80px}
 """
 # «итого» is the Russian word for a table total; «приём» stays the name of the unknown meal slot.
 # Column order is БЖУ — protein · fat · carbs — because that is how a Russian reader says and reads
 # it; Б·У·Ж would be a transliteration of P·C·F. `copy.py` card.remaining (ru) has the same order.
+# 42 mono cells with the unit words in one header row, the way the English reply now sets it; the
+# name column is one cell wider because «огуречный салат 120 г» is.
 ru_rows=[('chicken thigh 180 г','325','41','17','0'),('рис 150 г','195','4','1','42'),
-         ('салат из огурцов 120 г','70','1','5','4'),('итого','590','46','23','46'),
+         ('огуречный салат 120 г','70','1','5','4'),('итого','590','46','23','46'),
          ('сегодня','1'+FS+'070','84','32','108'),('осталось','1'+FS+'030','96','38','92')]
 def rurow(i, r):
-    line = '%-23s%5s ккал · %2s Б · %2s Ж · %3s У' % r
+    line = '%-21s%6s%5s%5s%5s' % r
     return '<b>%s</b>' % line if i==3 else line
-ru_reply = ('<p>Chicken thigh, рис, салат из огурцов. Около 450 г.</p><span class="code">' +
- '\n'.join(rurow(i,r) for i,r in enumerate(ru_rows)) +
+ru_reply = ('<p>Chicken thigh, рис, огуречный салат. Около 450 г.</p><span class="code">' +
+ '\n'.join(['%-21s%6s%5s%5s%5s' % ('','ккал','Б','Ж','У')] + [rurow(i,r) for i,r in enumerate(ru_rows)]) +
  '</span><p style="margin-top:10px">Клетчатка 11 из 30. На ужин — овощи.</p>')
 ru = HEAD('Strikt russian', RU_CSS, lang='ru') + '<div class="stage"><div class="top cap">language mirroring · russian in, russian out · food names stay as written</div><div class="chat">'
 ru += row(bubble('обед: chicken thigh с рисом и салат из огурцов, грамм 450', '13:20', user=True), user=True)
-ru += row(bubble(ru_reply, '13:21', kb=kb('Убрать','Пересчитать')))
+ru += row(bubble(ru_reply, '13:21'), kbd=kb('Убрать','Пересчитать'))
 ru += '</div><div class="foot"><div data-lockup="34"></div><div class="cap">the bot never switches language on its own · units metric</div></div></div>' + TAIL()
 W('russian.html', ru)
 
@@ -312,7 +339,9 @@ W('russian.html', ru)
 # neutral chrome — white rows on #F1F1F1, and #212121 rows on #181818 — not in the brand palette.
 # The only brand object in the image is the one paper avatar, which is the point of it.
 PROF_CSS = """
-.stage{display:flex;gap:64px;align-items:flex-end;justify-content:center;padding:0 112px 80px}
+/* the panels end at y 900 like every other composition's content, and the frame carries the same
+   34 px lock-up and mono caption at the 80 px bottom margin */
+.stage{display:flex;gap:64px;align-items:flex-end;justify-content:center;padding:0 112px 180px}
 .panel{width:816px;border-radius:24px;padding:36px 0 16px;overflow:hidden;background:#FFFFFF;border:1px solid #E4E4E4;color:#000000}
 .panel.night{background:#212121;border-color:#2E2E2E;color:#FFFFFF}
 .prof{display:flex;align-items:center;gap:26px;padding:0 36px 30px;border-bottom:1px solid #E9E9E9}
@@ -322,9 +351,12 @@ PROF_CSS = """
 .night .prof .st{color:#AAAAAA}
 .about{padding:22px 36px 22px;font-size:19px;line-height:1.45;border-bottom:8px solid #F1F1F1}
 .night .about{border-color:#181818}
-.about .lab{font-size:14px;color:#707579;letter-spacing:.06em;text-transform:uppercase;font-family:var(--mono);margin-bottom:6px}
+/* Telegram sets its section labels and its times in the same system sans as the rows, sentence
+   case, in the secondary grey — no mono, no tracking, no uppercase. DM Sans stands in for SF /
+   Roboto here; the brand's own typography stops at the edge of somebody else's window. */
+.about .lab{font-size:15px;font-weight:500;color:#707579;margin-bottom:6px}
 .night .about .lab{color:#AAAAAA}
-.chats .ttl{font-family:var(--mono);font-size:14px;letter-spacing:.08em;text-transform:uppercase;color:#707579;padding:20px 36px 8px}
+.chats .ttl{font-size:15px;font-weight:500;color:#707579;padding:20px 36px 8px}
 .night .chats .ttl{color:#AAAAAA}
 .ci{display:flex;align-items:center;gap:18px;padding:14px 36px;border-bottom:1px solid #E9E9E9}
 .ci:last-child{border-bottom:0}
@@ -332,13 +364,13 @@ PROF_CSS = """
 .ci .ini{width:40px;height:40px;border-radius:50%;display:flex;align-items:center;justify-content:center;color:#FFFFFF;font-weight:600;font-size:17px;flex:none}
 .ci .tx{flex:1;min-width:0}
 .ci .n{font-size:18px;font-weight:600;display:flex;justify-content:space-between;align-items:baseline}
-.ci .n span{font-family:var(--mono);font-size:13px;font-weight:400;color:#707579;letter-spacing:.02em}
+.ci .n span{font-size:14px;font-weight:400;color:#707579}
 .night .ci .n span{color:#AAAAAA}
 .ci .m{font-size:16px;color:#707579;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;margin-top:2px;display:flex;justify-content:space-between;gap:12px}
 .night .ci .m{color:#AAAAAA}
 .ci .m em{font-style:normal;color:#000000}
 .night .ci .m em{color:#FFFFFF}
-.ci .badge{font-family:var(--mono);font-size:12px;background:#C4C9CC;color:#FFFFFF;border-radius:999px;padding:2px 8px;flex:none}
+.ci .badge{font-size:13px;font-weight:500;background:#C4C9CC;color:#FFFFFF;border-radius:999px;padding:2px 9px;flex:none}
 .night .ci .badge{background:#4E4E4E;color:#FFFFFF}
 .top{position:absolute;left:112px;top:80px}
 """
@@ -350,14 +382,13 @@ contacts=[('Strikt',None,None,'Closed at 1'+TS+'880 / 157 P / 19 fiber. Protein 
           ('Running club','R','#65AADD','<em>Marina:</em> 10k tomorrow, 7:30 at the bridge','22:13','3'),
           ('Dad','D','#A695E7','Call me when you land','21:50',None),
           ('Kirill','K','#7BC862','Photo','19:02',None),
-          ('Anna','A','#E17076','see you at 8','18:27',None),
-          ('Deliveries','De','#EE7AAE','Your order is on its way','13:05',None)]
+          ('Anna','A','#E17076','see you at 8','18:27',None)]
 def panel(night):
     p = '<div class="panel%s">' % (' night' if night else '')
     # one uploaded JPG serves both clients, so the avatar is the paper disc on night too
     p += '<div class="prof">%s<div><div class="nm">Strikt</div><div class="st">bot</div></div></div>' % av(96, False)
-    p += '<div class="about"><div class="lab">about</div>A coach in one chat. Send food, get the number. The day ends with a verdict.</div>'
-    p += '<div class="chats"><div class="ttl">chats</div>'
+    p += '<div class="about"><div class="lab">Info</div>A coach in one chat. Send food, get the number. The day ends with a verdict.</div>'
+    p += '<div class="chats"><div class="ttl">Chats</div>'
     for n,ini,tint,m,t,b in contacts:
         if ini is None: a = av(40, False)
         else:
@@ -365,7 +396,8 @@ def panel(night):
         p += '<div class="ci">%s<div class="tx"><div class="n">%s<span>%s</span></div><div class="m"><span style="overflow:hidden;text-overflow:ellipsis">%s</span>%s</div></div></div>' % (a,n,t,m,('<span class="badge">%s</span>'%b) if b else '')
     p += '</div></div>'
     return p
-prof = HEAD('Strikt telegram profile', PROF_CSS) + '<div class="stage"><div class="top cap">telegram · bot profile and chat list · one paper jpg in telegram\'s own light and dark chrome · the tints are the client\'s</div>' + panel(False) + panel(True) + '</div>' + TAIL()
+prof = HEAD('Strikt telegram profile', PROF_CSS) + '<div class="stage"><div class="top cap">telegram · bot profile and chat list · one paper jpg in telegram\'s own light and dark chrome · the tints are the client\'s</div>' + panel(False) + panel(True)
+prof += '<div class="foot"><div data-lockup="34"></div><div class="cap">one uploaded jpg · the paper disc reads as a disc in both client themes</div></div></div>' + TAIL()
 W('telegram-profile.html', prof)
 
 # ---------------- avatars and favicons ----------------
@@ -380,7 +412,7 @@ W('favicon-180.html', HEAD('Strikt favicon 180', 'html,body{width:100vw;height:1
 print('written')
 
 # ---------------- system sheet (1920x1080) ----------------
-SYS_CSS = BAR_CSS + """
+SYS_CSS = """
 .stage{padding:72px 112px}
 .head{display:flex;justify-content:space-between;align-items:baseline;border-bottom:1px solid var(--rule);padding-bottom:16px}
 .head .h{font-size:28px}
@@ -404,13 +436,16 @@ SYS_CSS = BAR_CSS + """
 /* 14 px is the floor for mute text (BRAND.md §3): the construction column sits on it */
 .cons .notes{font-family:var(--mono);font-size:14px;line-height:1.75;color:var(--mute);white-space:nowrap}
 .cons .notes b{color:var(--ink);font-weight:500}
-.small{display:flex;gap:20px;align-items:center;margin-top:8px}
+/* every mark in the row carries its own size under it, so 48 can be told from 40 from 32 from 16 */
+.small{display:flex;gap:18px;align-items:flex-end;margin-top:8px}
+.small .u{display:flex;flex-direction:column;align-items:center;gap:5px}
+.small .u .sz{font-family:var(--mono);font-size:14px;letter-spacing:.04em;color:var(--mute);line-height:1}
 .c{border-radius:50%;background:var(--paper);box-shadow:inset 0 0 0 1px var(--rule);display:flex;align-items:center;justify-content:center;overflow:hidden}
 .c.n{background:var(--night);box-shadow:none}
 /* do / don't as five rows: the tile on the left, one legible 15 px line beside it */
-.dd{display:flex;flex-direction:column;gap:8px;margin-top:9px}
+.dd{display:flex;flex-direction:column;gap:6px;margin-top:8px}
 .dd .r{display:flex;align-items:center;gap:16px}
-.dd .t{background:var(--card);border:1px solid var(--rule);border-radius:12px;width:116px;height:56px;flex:none;display:flex;align-items:center;justify-content:center;position:relative;overflow:hidden}
+.dd .t{background:var(--card);border:1px solid var(--rule);border-radius:12px;width:116px;height:52px;flex:none;display:flex;align-items:center;justify-content:center;position:relative;overflow:hidden}
 .dd .l{font-family:var(--mono);font-size:15px;letter-spacing:.06em;text-transform:uppercase;color:var(--mute);line-height:1.5}
 .dd .l b{color:var(--strike-deep);font-weight:500}.dd .l b.ok{color:var(--ink)}
 .mini{font-size:14px;line-height:1.3;background:var(--paper);border:1px solid var(--rule);border-radius:8px;border-bottom-left-radius:2px;padding:6px 9px}
@@ -422,7 +457,7 @@ SYS_CSS = BAR_CSS + """
 """
 def swatch(name, hexv, use):
     return '<div class="sw"><i style="background:%s"></i><span class="nm">%s</span><span class="hx">%s</span><span class="us">%s</span></div>' % (hexv,name,hexv,use)
-light=[('paper','#F6F2E9','image and page ground'),('card','#FFFCF5','bubbles, cards'),('rule','#E3DDD1','hairlines, user bubble, bar track'),('mute','#8A857A','captions, timestamps, never body'),('ink','#1A1814','text, the four strokes'),('strike','#D3392B','the one accent: the fifth stroke'),('strike-deep','#B32E22','accent as small text (5.6:1)'),('strike-soft','#F5D6D1','tinted chip, track under red')]
+light=[('paper','#F6F2E9','image and page ground'),('card','#FFFCF5','bubbles, cards'),('rule','#E3DDD1','hairlines, user bubble, button edges'),('mute','#8A857A','captions, timestamps, never body'),('ink','#1A1814','text, the four strokes'),('strike','#D3392B','the one accent: the fifth stroke'),('strike-deep','#B32E22','accent as small text (5.6:1)'),('strike-soft','#F5D6D1','tinted chip, track under red')]
 dark=[('night','#161513','ground'),('night-card','#201E1A','bubbles'),('rule-dark','#35322C','hairlines'),('text-dark','#EFEAE0','text, strokes'),('mute-dark','#9B968A','captions on night'),('strike-dark','#F0604E','the fifth stroke on night')]
 sysh = HEAD('Strikt system', SYS_CSS) + '<div class="stage">'
 sysh += '<div class="head"><div class="h">Strikt <span class="mute" style="font-weight:400">— the system on one page</span></div><div class="cap">paper · ink · one red · newsreader / dm sans / jetbrains mono · the tally mark</div></div>'
@@ -435,7 +470,10 @@ sysh += '<div class="cap" style="margin-top:16px">contrast on paper · ink 15.9 
 sysh += '<div><div class="cap">type · three roles</div>'
 sysh += '<div class="tp"><div class="cap">newsreader 500 · opsz 72 · display and wordmark · 36 px and up · −0.01em</div><div class="s1">Closed at 1'+TS+'880.<br>Bed by 00:30.</div></div>'
 sysh += '<div class="tp"><div class="cap">dm sans 400 / 500 / 600 · ui and body · 16 / 1.55 · cyrillic in golos text</div><div class="s2">Chicken plate. 52 P at 540 kcal, the best ratio on the list. Fiber 11 of 30. Sleep is the one target you have not hit once this month.</div></div>'
-sysh += '<div class="tp"><div class="cap">jetbrains mono 400 / 500 · every number · tabular · figure-space thousands</div><div class="s3">' + macro('kcal','1'+FS+'880','2'+FS+'100','',7) + '\n' + macro('P','157','180','g',7) + '\n<b>left   220 kcal · 23 P · 38 C · 5 F</b></div></div>'
+# The specimen quotes an OPEN day: a closed day has no "left" line (render.render_day_card skips
+# it, the verdict carries the shortfall), so the closed totals with a Left under them were a card
+# state that cannot exist. The Left line is DM Sans here because the card sets it in DM Sans.
+sysh += '<div class="tp"><div class="cap">jetbrains mono 400 / 500 · every number · tabular<br>figure-space thousands · the card&#39;s own bar glyphs</div><div class="s3">' + macro('kcal','1'+FS+'340','2'+FS+'100','',5) + '\n' + macro('P','105','180','g',5) + '</div><div class="s2" style="font-size:19px;margin-top:8px">Left: 760 kcal · 75 P · 80 C · 23 F</div><div class="cap" style="margin-top:6px">the left line is dm sans, as the card sets it</div></div>'
 # "paper to card", not "paper → card": U+2192 is not in the DM Sans latin subset and would be
 # rasterised from a system font.
 sysh += '<div class="tp"><div class="cap">spacing · radius · motion</div><div class="s2" style="font-size:17px;line-height:1.6">Base 4 px: 4 · 8 · 12 · 16 · 24 · 32 · 48 · 64 · 96. Radius 8 controls, 12 inputs, 16 bubbles and cards, 24 large cards, pill. No shadows: elevation is a surface step, paper to card, plus a 1 px rule. Motion 150 / 200 ms, opacity and transform only; the one permitted animation is the strike being drawn.</div></div></div>'
@@ -447,13 +485,17 @@ sysh += '<line x1="4" y1="74.46" x2="96" y2="25.54" stroke="#8A857A" stroke-widt
 sysh += '<g data-markinline></g></svg>'
 sysh += '<div class="notes"><b>strokes</b> x 21.5 · 40.5 · 59.5 · 78.5<br><b>width</b> 9 · <b>gap</b> 10 = 1.11 w<br><b>height</b> y 19.5 → 80.5 (caps 15 → 85)<br><b>strike</b> w 9 · 28° · bottom-left up<br><b>overshoot</b> 4.5 past the outer edge<br><b>symmetry</b> point, about (50, 50)<br><b>box</b> 84 × 70 · round caps<br><b>night</b> strike width = stroke width<br><b>never</b> mirrored, never all red</div></div>'
 sysh += '<div class="cap" style="margin-top:16px">small cut · ≤ 48 px · stroke 8.5 · gap 11 · overshoot 6 · box 67 % · pixel cuts at 32 and 16</div><div class="small">'
+def unit(inner, label):
+    return '<div class="u">%s<span class="sz">%s</span></div>' % (inner, label)
 for d in (64,48,40,32):
-    sysh += '<div class="c" style="width:%dpx;height:%dpx"><div data-mark="small" data-size="%d"></div></div>' % (d,d,round(d*0.675))
+    sysh += unit('<div class="c" style="width:%dpx;height:%dpx"><div data-mark="small" data-size="%d"></div></div>' % (d,d,round(d*0.675)), d)
 for d in (48,40):
-    sysh += '<div class="c n" style="width:%dpx;height:%dpx"><div data-mark="small" data-size="%d" data-night></div></div>' % (d,d,round(d*0.675))
-sysh += '<div data-mark="tiny" data-size="32" data-red="#1A1814"></div><div data-mark="micro" data-size="16" data-red="#1A1814"></div><span class="cap">favicon 32 · 16 · ink</span></div>'
+    sysh += unit('<div class="c n" style="width:%dpx;height:%dpx"><div data-mark="small" data-size="%d" data-night></div></div>' % (d,d,round(d*0.675)), d)
+sysh += unit('<div data-mark="tiny" data-size="32" data-red="#1A1814"></div>', 32)
+sysh += unit('<div data-mark="micro" data-size="16" data-red="#1A1814"></div>', 16)
+sysh += '</div><div class="cap" style="margin-top:8px">small cut · paper and night · favicon 32 · 16 · ink</div>'
 # do / don't — one row per rule so the label is a legible 15 px line, not five wrapped 11 px lines
-sysh += '<div class="cap" style="margin-top:16px">do · don\'t</div><div class="dd">'
+sysh += '<div class="cap" style="margin-top:12px">do · don\'t</div><div class="dd">'
 sysh += '<div class="r"><div class="t" style="background:var(--paper)"><div data-mark="full" data-size="56"></div></div><div class="l"><b class="ok">do</b> · ink on paper, one red, the strike rising</div></div>'
 sysh += '<div class="r"><div class="t"><svg width="56" height="56" viewBox="0 0 100 100"><g data-markinline="nostrike"></g><path fill="#D3392B" d="M8.5 25.5 L91.5 74.5" stroke="#D3392B" stroke-width="9" stroke-linecap="round"/></svg></div><div class="l"><b>don\'t</b> · mirror the strike: that is a prohibition sign</div></div>'
 sysh += '<div class="r"><div class="t"><div data-mark="full" data-size="56"></div><span style="position:absolute;right:14px;top:14px;width:14px;height:14px;border-radius:50%;background:#6C98C4"></span></div><div class="l"><b>don\'t</b> · a second accent colour</div></div>'
@@ -468,7 +510,7 @@ W('system.html', sysh)
 # One grid, two rows: the specimen band on top, the applications band under it. Every cell in the
 # bottom row opens with its caption, so the three captions sit on one baseline and no column ends
 # in a void. Gaps are the 56 / 96 steps of BRAND.md section 5.
-SHEET_CSS = BAR_CSS + """
+SHEET_CSS = """
 html,body{width:1600px;height:1000px}
 .sheet{position:relative;width:1600px;height:1000px;padding:52px 64px;overflow:hidden}
 .head{display:flex;justify-content:space-between;align-items:baseline;border-bottom:1px solid var(--rule);padding-bottom:14px}
@@ -477,6 +519,7 @@ html,body{width:1600px;height:1000px}
 .col{display:flex;flex-direction:column}
 .big{width:440px;height:450px;display:flex;align-items:center;justify-content:center}
 .cap{font-size:11.5px;letter-spacing:.06em}
+.nb{white-space:nowrap}
 .c{border-radius:50%;background:var(--paper);box-shadow:inset 0 0 0 1px var(--rule);display:flex;align-items:center;justify-content:center;overflow:hidden;flex:none}
 .c.n{background:var(--night);box-shadow:none}
 .sizes{display:flex;align-items:flex-end;gap:32px;margin-top:8px}
@@ -494,10 +537,10 @@ html,body{width:1600px;height:1000px}
 .cons .notes{font-family:var(--mono);font-size:11.5px;line-height:1.75;color:var(--mute);white-space:nowrap}
 .cons .notes b{color:var(--ink);font-weight:500}
 .bubbleWrap{display:flex;gap:12px;align-items:flex-end;margin-top:10px}
-/* the reply is 53 mono columns wide, the width a phone gives a code block: 460 px holds it at
-   12.5 px with the bubble padding */
-.bubble{background:var(--card);border:1px solid var(--rule);border-radius:16px;border-bottom-left-radius:4px;padding:14px 14px 10px;width:460px;font-size:15px;line-height:1.45}
-.bubble .code{font-size:12.5px;line-height:1.6}
+/* the reply is 41 mono columns wide, the width a phone gives a code block: 397 px holds it at
+   15 px with the bubble padding (41 × 9 + 2 × 14) */
+.bubble{background:var(--card);border:1px solid var(--rule);border-radius:16px;border-bottom-left-radius:4px;padding:14px 14px 10px;width:397px;font-size:15px;line-height:1.45}
+.bubble .code{font-size:15px;line-height:1.6}
 .bubble .time{font-size:11px;margin-top:6px}
 .lbl{margin-top:10px}
 """
@@ -506,17 +549,19 @@ sheet += '<div class="head"><div class="h">Strikt <span class="mute" style="font
 sheet += '<div class="grid">'
 # --- row 1: the mark, the client sizes, the lock-ups ---
 sheet += '<div class="col"><div class="big"><div data-mark="full" data-size="420"></div></div>'
-sheet += '<div class="cap">mark.svg · 420 px · ink #1A1814 / strike #D3392B · full cut: stroke 9 · gap 10 · strike 9 at 28° · overshoot 4.5</div></div>'
-sheet += '<div class="col"><div class="cap">telegram · circle crop · 96 px and 40 px · paper and night</div><div class="sizes">'
+# Captions are broken by hand at a middot rather than left to wrap: "full cut" split across two
+# lines, "night" orphaned on a line of its own and "mark-ink.svg" broken at its hyphen.
+sheet += '<div class="cap">mark.svg · 420 px · ink #1A1814 / strike #D3392B<br>full cut: stroke 9 · gap 10 · strike 9 at 28° · over 4.5</div></div>'
+sheet += '<div class="col"><div class="cap">telegram · circle crop · 96 and 40 px<br>paper · night</div><div class="sizes">'
 for d,n in ((96,False),(40,False),(96,True),(40,True)):
     sheet += '<div class="c%s" style="width:%dpx;height:%dpx"><div data-mark="small" data-size="%d"%s></div></div>' % (' n' if n else '', d,d, round(d*0.675), ' data-night' if n else '')
 sheet += '</div><div class="cap lbl" style="margin-top:24px">chat list · 40 px</div>'
 # A Telegram preview always starts at the first line of the last message: the closed card's verdict.
 for n in (False,True):
     sheet += '<div class="cl%s" style="margin-top:%dpx"><div class="c%s" style="width:40px;height:40px"><div data-mark="small" data-size="27"%s></div></div><div class="tx"><div class="n">Strikt</div><div class="m">%s</div></div><div class="tm">22:41</div></div>' % (' n' if n else '', 10 if not n else 8, ' n' if n else '', ' data-night' if n else '', VERDICT)
-sheet += '<div class="cap lbl" style="margin-top:24px">state · one stroke per logged meal · the strike when the day is closed</div><div class="states">'
+sheet += '<div class="cap lbl" style="margin-top:24px">state · one stroke per logged meal<br>the strike when the day is closed</div><div class="states">'
 for b in (1,2,3,4): sheet += '<div data-mark="full" data-size="56" data-bars="%d" data-strike="0"></div>' % b
-sheet += '<div data-mark="full" data-size="56"></div><div data-mark="full" data-size="56" data-red="#1A1814"></div></div><div class="cap" style="margin-top:6px">1 · 2 · 3 · 4 · closed · all-ink variant (mark-ink.svg)</div></div>'
+sheet += '<div data-mark="full" data-size="56"></div><div data-mark="full" data-size="56" data-red="#1A1814"></div></div><div class="cap" style="margin-top:6px">1 · 2 · 3 · 4 · closed · all-ink <span class="nb">(mark-ink.svg)</span></div></div>'
 sheet += '<div class="col"><div class="cap">lock-up · newsreader 500, opsz 72 · primary</div><div style="margin-top:14px"><div data-lockup="112"></div></div>'
 sheet += '<div class="cap" style="margin-top:44px">lock-up · dm sans 500 · alternate</div><div style="margin-top:14px"><div data-lockup="100" data-sans></div></div>'
 sheet += '<div class="cap" style="margin-top:44px">lock-up on night · for images on the black-and-white site</div><div class="night"><div data-lockup="60" data-night></div></div></div>'

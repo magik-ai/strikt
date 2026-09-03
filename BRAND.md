@@ -29,11 +29,21 @@ Rules:
   avatar: stroke 8.5, gap 11, overshoot 6. **Tiny**, for a 32 px raster (`favicon-32.png`): drawn in
   device pixels — 3 px strokes on whole-pixel edges, 2 px gaps, a **2 px** strike, box 81 % of the
   side. **Micro**, for the 16 px raster a browser tab actually paints (`favicon-16.png`): 2 px
-  strokes on whole-pixel edges, 2 px gaps, 2 px strike, no overshoot. The two pixel cuts are the one
-  place the gap drops under 1.1 × stroke: at these sizes what matters is two clean background pixels
-  between strokes, and a wider gap would force strokes that vanish. Their strike is thinner than the
-  verticals for the same reason — a 3 px pen at 32 px bridged two bars over four rows and made the
-  centre a block; at 2 px it joins one pair of bars over two rows and the other two gaps stay open.
+  strokes on whole-pixel edges, 2 px gaps, ink rows 2–13, and a strike that is not a rotated stroke
+  at all but a hand-placed staircase of four 4 × 2 px blocks, one step per gap. The two pixel cuts
+  are the one place the gap drops under 1.1 × stroke: at these sizes what matters is two clean
+  background pixels between strokes, and a wider gap would force strokes that vanish.
+- Both pixel cuts use **butt caps**, not round ones. A round cap spends half a pixel row of grey
+  above and below every stroke, so at 16 px the 12-row bars ended in two half-alpha rows and read as
+  fuzzy-tipped 10 px bars. Squared off, the 32 px cut is solid on rows 4–27 and the 16 px cut on
+  rows 2–13, with nothing outside them.
+- The tiny cut's strike is thinner than its verticals: a 3 px pen at 32 px bridged two bars over four
+  rows and made the centre a block. At 2 px it bridges each of the three gaps for one or two rows and
+  no gap for more than two — read off the current PNG, gap 3–4 at rows 12–13, gap 2–3 at 15–16,
+  gap 1–2 at 18–19. A pen crossing a count has to touch it; what it must not do is fill it in. At
+  16 px even 2 px of diagonal is eight rows of grey smudge, which is why that size is stepped instead
+  of rotated: the staircase crosses all four bars with no antialiasing anywhere, at 26.6° — half a
+  degree off the 28° of every other cut, and the only place the angle is allowed to move.
 - Colourways: ink + red (`mark.svg`), all ink (`mark-ink.svg`, for the favicon and single-colour
   print), night (`mark-night.svg`: text-dark strokes, strike-dark strike, strike width equal to the
   verticals because red drops visually on dark).
@@ -67,7 +77,7 @@ Light ("paper" world, the default):
 |---|---|---|---|
 | paper | `#F6F2E9` | image and page ground | — |
 | card | `#FFFCF5` | bubbles, cards, panels | — |
-| rule | `#E3DDD1` | hairlines, user bubbles, bar track | — |
+| rule | `#E3DDD1` | hairlines, user bubbles, inline-button edges | — |
 | mute | `#8A857A` | captions and timestamps, 14 px and up; never body text | 3.3 on paper |
 | ink | `#1A1814` | text, the four strokes | 15.9 on paper, 17.3 on card |
 | strike | `#D3392B` | the fifth stroke; as text only at 18 px+ or bold | 4.3 on paper |
@@ -102,10 +112,17 @@ Three roles, all OFL and bundled in `brand/fonts/`:
   the verdict, a ladder push and a chat-list preview are DM Sans (Golos Text in Russian), because
   they are prose. This is what `telegram/render.py` writes and what the images show.
 - Thousands are separated, and by two different characters for one reason: inside a `<code>` block a
-  thin space is 0.31 of a cell in JetBrains Mono, so a value past 999 would drag its bar a third of a
-  character left of the others. Mono columns therefore use a **figure space** U+2007, which is
+  thin space is a third of a cell in JetBrains Mono, so a value past 999 would drag its bar a third
+  of a character left of the others. Mono columns therefore use a **figure space** U+2007, which is
   digit-width by definition (`render._cells`); prose keeps the **thin space** U+2009
-  (`render.fmt_num`). Both read as `1 880`.
+  (`render.fmt_num`). The two gaps are not the same width and are not meant to be: measured in the
+  render at 100 px, the thin space is 20 px in all four bundled faces (the 1/5 em it is defined to
+  be) and the figure space is one full 60 px cell in JetBrains Mono. So the closed card writes
+  `1 880` twice — 4.8 px of gap in the 24 px DM Sans verdict, 14.4 px in the 24 px mono row above it.
+  Prose is the tighter of the two, and at chat-preview sizes (13–16 px) the gap is 3 px and close to
+  invisible; if that ever has to change, the fix is one character in `render.fmt_num` — U+00A0
+  (0.27 em in DM Sans), **not** U+202F, which is *narrower* in these faces (0.14 em in DM Sans, 0.12
+  in Newsreader) and would make it worse.
 - Russian macro columns are **Б · Ж · У** (protein · fat · carbs), the order a Russian reader says
   and reads; Б · У · Ж would be a transliteration of P · C · F. English keeps P · C · F. Both live in
   `telegram/copy.py` (`card.remaining`, `card.over`) and in `russian-1920x1080.png`.
@@ -126,11 +143,23 @@ Three roles, all OFL and bundled in `brand/fonts/`:
 
 - Illustration is a single-weight line drawing, ink on paper: 2 px at 24 px, 1.5 px at 16 px, round
   caps and joins, at most one flat red fill. Loose curves are fine in illustrations; the mark stays
-  geometric. Example: the plate in `food-reply-1920x1080.png`.
+  geometric. Example: the plate in `food-reply-1920x1080.png` — a boneless
+  chicken thigh (a flat irregular oval with a skin line and three grain marks, no bone knuckle), a
+  mound of rice, five cucumber slices. Illustrations of somebody else's product are the exception:
+  the delivery-app screenshot in `menu-1920x1080.png` is painted in neutral client chrome — white
+  card, sans names and prices with proportional figures, grey photo placeholders, no mono, no palette
+  token — because it has to read as another app's window, not as a second Strikt card.
 - Icons on a 24 px grid, 2 px stroke, ink; no filled icons.
 - No 3D, no gloss, no stock photography of people. Photography, if ever, is still life of real food
   in natural light.
 - Product is shown as flat cards on paper: Telegram bubbles with their avatar, never a phone bezel.
+  Telegram's own drawing rules are followed inside those bubbles: a photo fills its bubble edge to
+  edge with the time and ticks overlaid on it in a dark translucent pill; an inline keyboard is a row
+  of separate rounded buttons 6 px *below* the bubble, not a bar fused to it; and the sender avatar
+  sits on the **bubble's** bottom edge, so a keyboard hangs under it without moving it.
+- The bar in a card row is the card's own text: `render.bar` writes `▓▓▓▓▓░░░` (U+2593 / U+2591) and
+  the images set that same string in JetBrains Mono, which has both glyphs. The mock is the message —
+  no image draws a cleaner bar than the bot can send.
 - Copy inside images follows the bot's voice: fact first, no greeting, no emoji, no exclamation marks,
   no praise, numbers before words. Lowercase captions are fine; the product name in prose is Strikt.
 
@@ -208,11 +237,13 @@ forget_me - Удалить всё о тебе
 The chat itself stays in Telegram's own theme; the brand lives in the avatar, the card format and
 the voice. `telegram-profile-1920x1080.png` is painted in that theme and not in the palette above —
 white rows on `#F1F1F1`, `#212121` rows on `#181818`, secondary text `#707579` / `#AAAAAA` — and the
-contact avatars carry Telegram's own initial colours: client chrome, not a second brand accent. The
-point of the image is that the 40 px paper mark holds up inside someone else's window, so the cool
-tints sit next to it and the two warm ones sit at the bottom of the list. The same image shows the one paper JPG on both a light
-and a dark client, because that is what Telegram does with it; the night mark
-(`avatar-night-512.png`, `mark-night.svg`) is for the brand sheet only.
+contact avatars carry Telegram's own initial colours: client chrome, not a second brand accent. Its
+section labels ("Info", "Chats") and its timestamps are set in the same sans as the rows, sentence
+case, in the client's secondary grey — not in uppercase tracked mono, which would be the brand
+walking into somebody else's window. The point of the image is that the 40 px paper mark holds up
+there, so the cool tints sit next to it and the warm one sits at the bottom of the list. The same
+image shows the one paper JPG on both a light and a dark client, because that is what Telegram does
+with it; the night mark (`avatar-night-512.png`, `mark-night.svg`) is for the brand sheet only.
 
 ## 10. Landing page
 
@@ -239,7 +270,12 @@ PLAYWRIGHT_BROWSERS_PATH=/opt/pw-browsers /opt/node22/bin/node brand/render.mjs 
 fails if any text fell back to a system font. The font check is glyph-level: over a CDP session it
 asks Chromium which platform fonts it actually rasterised each text element with
 (`CSS.getPlatformFontsForNode`), so one character outside a subset's `unicode-range` — an arrow, a ≥,
-a ✓ — fails the build instead of shipping as DejaVu. No network is needed. Set `PLAYWRIGHT_MODULE` if
+a ✓ — fails the build instead of shipping as DejaVu. Chromium is launched with `--disable-lcd-text`
+so glyphs are antialiased in grey, not in RGB subpixels, and a second check proves it: the renderer
+decodes the PNG it just wrote and walks every text element's box, failing the build on any pixel
+whose channel spread (max − min) is over 40 and which does not sit on the line between two of that
+element's own colours. Without the flag `card-closed` alone carries 26 304 such pixels; with it,
+every image carries none. No network is needed. Set `PLAYWRIGHT_MODULE` if
 playwright is not at `/opt/node22/lib/node_modules/playwright`. To change copy or numbers in several
 images at once, edit `brand/src/gen-sources.py`, run it, then render.
 
