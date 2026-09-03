@@ -184,6 +184,11 @@ scheduler must not run twice).
 4. Settings → Networking → Generate domain, then set `PUBLIC_BASE_URL=https://<that domain>` so the
    OAuth callbacks and webhook URLs are right. Redeploy.
 5. Watch the deploy logs for `strikt_started`; migrations run at container start.
+6. To check the model call itself before anyone types into the bot:
+   `ANTHROPIC_API_KEY=sk-ant-... make preflight`. It sends one 16-token message carrying the
+   real tool list and the coach prompt, and prints either what came back or the API's own
+   rejection. `FakeLLM` accepts anything, so this is the only place a per-request limit shows
+   up before a user hits it.
 
 Secrets never leave Railway: they are variables of the service, encrypted at rest, and the users'
 Anthropic keys and wearable tokens sit encrypted in the Railway Postgres.

@@ -1,4 +1,4 @@
-.PHONY: sync lint fmt type test check run migrate revision prompts keygen clean
+.PHONY: sync lint fmt type test check run migrate revision prompts keygen preflight clean
 
 UV ?= uv
 
@@ -38,6 +38,9 @@ prompts-check:
 
 keygen:          ## Print a fresh TOKEN_ENCRYPTION_KEY
 	$(UV) run python -c "from strikt.db.crypto import generate_key; print(generate_key())"
+
+preflight:       ## One real Anthropic call with the coach's tools (ANTHROPIC_API_KEY=...)
+	$(UV) run python scripts/preflight.py
 
 clean:
 	rm -rf .mypy_cache .ruff_cache .pytest_cache dist build
