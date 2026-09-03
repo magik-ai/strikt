@@ -18,6 +18,11 @@ The job table (local time; ``wake``/``bed`` from the profile, defaults 08:00 / 0
     day_not_closed         23:00           bedtime_minus_30 bed − 0:30
     nightly_summary        03:00 (callback into the memory module)
 
+The profile's ``checkin_times`` (brief §4 step 9: "proactive check-ins and at what times") move
+the meal-silence slots: a time before 10:00 replaces ``no_first_meal``, 10:00–16:59 ``no_lunch``,
+17:00–21:59 ``no_dinner``, later ``day_not_closed`` (``triggers.checkin_deadlines``; the
+preconditions read the same table so the job fires and the check agrees).
+
 Brief §7 adds ``whoop_no_workout``, ``two_off_days``, ``same_meal_streak``, ``event_planned``,
 ``post_travel_reentry``, ``clean_streak`` and ``intensity_restored`` to PLAN §8's list.
 """
@@ -39,6 +44,7 @@ from strikt.core.clock import Clock, ensure_utc, to_local, zone
 from strikt.db import repo
 from strikt.db.models import Profile, User, UserStatus
 from strikt.proactive.engine import ProactiveEngine
+from strikt.proactive.triggers import checkin_deadlines
 from strikt.proactive.types import SessionFactory, TriggerName
 
 log = structlog.get_logger(__name__)
@@ -79,10 +85,11 @@ def build_job_specs(profile: Profile | None) -> list[JobSpec]:
     """The per-user job table from the profile (pure; tested against a fixture profile)."""
     wake = (profile.wake_time if profile is not None else None) or DEFAULT_WAKE
     bed = (profile.bed_time if profile is not None else None) or DEFAULT_BED
+    checkins = checkin_deadlines(profile)
     plus15 = _plus(wake, timedelta(minutes=15))
     plus20 = _plus(wake, timedelta(minutes=20))
     plus45 = _plus(wake, timedelta(minutes=45))
-    plus3h = _plus(wake, timedelta(hours=3))
+    plus3h = checkins.get("no_first_meal", _plus(wake, timedelta(hours=3)))
     bed30 = _plus(bed, timedelta(minutes=-30))
     specs: list[tuple[str, time, str | None]] = [
         ("morning_line", plus15, None),
@@ -98,12 +105,12 @@ def build_job_specs(profile: Profile | None) -> list[JobSpec]:
         ("silence_check", time(12, 0), None),
         ("same_meal_streak", time(12, 5), None),
         ("fiber_check", time(13, 30), None),
-        ("no_lunch", time(15, 0), None),
+        ("no_lunch", checkins.get("no_lunch", time(15, 0)), None),
         ("weekend_risk", time(17, 0), "fri"),
         ("protein_check", time(18, 0), None),
         ("weekly_review", time(20, 0), "sun"),
-        ("no_dinner", time(21, 0), None),
-        ("day_not_closed", time(23, 0), None),
+        ("no_dinner", checkins.get("no_dinner", time(21, 0)), None),
+        ("day_not_closed", checkins.get("day_not_closed", time(23, 0)), None),
         ("bedtime_minus_30", bed30, None),
         (NIGHTLY_SUMMARY, time(3, 0), None),
     ]

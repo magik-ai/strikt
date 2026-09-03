@@ -140,7 +140,8 @@ class MemoryUsageRecorder:
 
 
 class DbUsageRecorder:
-    """Aggregates into ``token_usage`` in its own short session (never in the turn's)."""
+    """Aggregates into ``token_usage`` in its own short session (never in the turn's), keyed by
+    the user's *local* date (the brief's "per user per day" is the user's day)."""
 
     def __init__(
         self, session_factory: async_sessionmaker[AsyncSession], clock: Clock | None = None
@@ -154,13 +155,16 @@ class DbUsageRecorder:
         if user_id is None:
             log.debug("usage_without_user", model=model, purpose=purpose, usage=usage)
             return
+        from strikt.core.clock import to_local
         from strikt.db import repo
 
         async with self._sessions() as session, session.begin():
+            user = await repo.get_user(session, user_id)
+            tz = (user.timezone if user is not None else None) or "UTC"
             await repo.add_usage(
                 session,
                 user_id,
-                day=self._clock.now().date(),
+                day=to_local(self._clock.now(), tz).date(),
                 model=model,
                 purpose=UsagePurpose(purpose),
                 input_tokens=usage.input_tokens,
@@ -318,6 +322,7 @@ class LLM:
             cache_read=usage.cache_read_tokens,
             cache_write=usage.cache_write_tokens,
             output_tokens=usage.output_tokens,
+            web_searches=usage.web_search_requests,
             cost_usd=round(cost, 6),
             request_id=result.request_id,
         )

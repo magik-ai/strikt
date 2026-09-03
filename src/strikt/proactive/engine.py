@@ -48,6 +48,7 @@ from strikt.events import (
 from strikt.proactive import ladder as ladder_mod, store
 from strikt.proactive.triggers import PRECONDITIONS, TriggerContext
 from strikt.proactive.types import (
+    USER_REQUESTED,
     Decider,
     ProactiveDecision,
     Sender,
@@ -88,8 +89,6 @@ MEAL_WINDOW_TRIGGERS: tuple[TriggerName, ...] = (
 COOLDOWN_SUPPRESSED: frozenset[TriggerName] = frozenset(
     {"fiber_check", "protein_check", "day_not_closed", "silence_check"}
 )
-#: Bypasses proactivity settings, quiet hours, the cap and the cooldown: the user asked for it.
-USER_REQUESTED: frozenset[TriggerName] = frozenset({"reminder_due"})
 #: Workouts/weights that arrived through the chat were already answered in the turn.
 CHAT_SOURCES: frozenset[str] = frozenset({"manual", "screenshot", "internal"})
 #: A backfill (first sync, re-sync) replays old rows: data older than this gets no message.
@@ -242,6 +241,11 @@ class ProactiveEngine:
             fire = PRECONDITIONS[name](state, ctx)
             if fire is None:
                 return FireOutcome(name=name, status="skipped", reason="precondition_false")
+            if fire.day != local_now.date():
+                # A night-keyed trigger after midnight (bed 00:30 → bedtime_minus_30 at 00:00)
+                # belongs to the evening's day: decide on *that* day's state, not the empty new one.
+                state = await self._day_state(session, user, fire.day)
+                fire = PRECONDITIONS[name](state, ctx) or fire
 
             window = await ladder_mod.inspect_window(
                 session,

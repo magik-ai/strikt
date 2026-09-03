@@ -279,3 +279,16 @@ async def test_update_week_summary_without_days(
     )
     assert row.text == "нет данных за неделю"
     assert row.data is not None and row.data["adherence"]["meals_logged"] == 0
+
+
+async def test_truncated_summary_is_logged_as_such_not_as_invalid(
+    fake_llm: FakeLLM,
+) -> None:
+    from strikt.agent.client import STOP_MAX_TOKENS, LLMResult
+    from strikt.db.models import SummaryKind
+    from strikt.memory.summaries import _call
+
+    fake_llm.queue(
+        LLMResult(content=[{"type": "text", "text": '{"text": "cut'}], stop_reason=STOP_MAX_TOKENS)
+    )
+    assert await _call(fake_llm, user_id=1, kind=SummaryKind.day, digest="x", lang="en") is None

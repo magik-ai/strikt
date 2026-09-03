@@ -193,6 +193,10 @@ class DayStateBuilder:
         profile = await repo.get_profile(session, user.id)
         due = await self._measurements_due(session, user.id, profile, end)
         day_row = await repo.get_day(session, user.id, day)
+        flags = [str(f) for f in (day_row.flags or [])] if day_row else []
+        if "sick" in flags:
+            # brief §3.6: protocol paused, no calorie targets on a sick day
+            targets = Macros.zero()
 
         return DayState(
             date=day,
@@ -215,7 +219,7 @@ class DayStateBuilder:
             ),
             measurements_due=due,
             closed=bool(day_row and day_row.closed_at),
-            flags=[str(f) for f in (day_row.flags or [])] if day_row else [],
+            flags=flags,
             plan=dict(day_row.plan) if day_row and day_row.plan else None,
             verdict=day_row.verdict if day_row else None,
         )

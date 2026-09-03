@@ -93,7 +93,9 @@ async def set_webhook(bot: Bot, settings: Settings, secret: str) -> str:
         url,
         secret_token=secret,
         allowed_updates=ALLOWED_UPDATES,
-        drop_pending_updates=True,
+        # Telegram queues updates while the endpoint is down (a redeploy) and redelivers them
+        # once it answers 200; dropping them would lose the meals sent during the restart.
+        drop_pending_updates=False,
         max_connections=WEBHOOK_MAX_CONNECTIONS,
     )
     log.info("webhook_set", url=url)

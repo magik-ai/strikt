@@ -621,3 +621,21 @@ async def test_webhook_upstream_failure_returns_502_so_whoop_retries(
         webhook_request({"user_id": 9012, "id": "w1", "type": "workout.updated", "trace_id": "t8"}),
     )
     assert response.status == 502 and events == []
+
+
+def test_signature_known_answer_vector() -> None:
+    """Independent of ``compute_signature``: base64(HMAC-SHA256(secret, timestamp + body)),
+    checked against a value computed outside the module (a wrong algorithm cannot pass)."""
+    import base64
+    import hashlib
+    import hmac
+
+    ts = "1756886400000"
+    body = b'{"user_id": 9012, "id": "abc", "type": "workout.updated", "trace_id": "t1"}'
+    expected = "jUQ/JgK9Ldkg1mMHTAywMW3tcB1LjkT974F/ZGhXBOg="
+    independent = base64.b64encode(
+        hmac.new(b"whoop-secret", ts.encode("ascii") + body, hashlib.sha256).digest()
+    ).decode("ascii")
+    assert independent == expected
+    assert whoop.compute_signature("whoop-secret", ts, body) == expected
+    assert whoop.compute_signature("whoop-secret", ts, body + b" ") != expected

@@ -11,8 +11,11 @@ Facts from research/05-scales-apple-health.md §1 (verified on 2026-09-03):
   measures are ``value * 10^unit``; ``more``/``offset`` paginate; ``lastupdate`` is the sync cursor.
 - ``POST https://wbsapi.withings.net/notify`` ``action=subscribe&appli=1`` needs a public HTTPS
   callback that answers ``HEAD`` with 2xx. Notifications are unsigned form POSTs
-  (``userid``, ``appli``, ``startdate``, ``enddate``): they are a hint, the data is re-fetched with
-  the user's own token, so a spoofed POST can only cause a harmless re-sync.
+  (``userid``, ``appli``, ``startdate``, ``enddate``). They are treated as a *hint only*: the
+  body's window is ignored, the data is re-fetched from the stored cursor with the user's own
+  token, the cursor is advanced only by the scheduled ``sync``, and a user is fetched for at most
+  once per ``WEBHOOK_MIN_INTERVAL`` — so a spoofed POST (user ids are small integers) can
+  neither move the cursor past an unimported weigh-in nor burn the user's API quota.
 """
 
 from __future__ import annotations
@@ -56,6 +59,8 @@ NOTIFY_URL = "https://wbsapi.withings.net/notify"
 SCOPES = "user.info,user.metrics,user.activity"
 APPLI_WEIGHT = 1
 DEFAULT_WINDOW_DAYS = 30
+#: A webhook-triggered fetch per user at most this often (the poller covers the rest).
+WEBHOOK_MIN_INTERVAL = timedelta(minutes=1)
 ATTRIB_AMBIGUOUS = 1
 
 # meastype → (measurement type in our table, unit, metric name used in events / note)
@@ -234,6 +239,7 @@ class WithingsIntegration:
         self._client_factory: ClientFactory = client_factory or (
             lambda: httpx.AsyncClient(timeout=httpx.Timeout(timeout_s))
         )
+        self._webhook_fetch_at: dict[int, datetime] = {}
 
     @property
     def client_id(self) -> str:
@@ -478,6 +484,15 @@ class WithingsIntegration:
         return groups
 
     # --- sync -----------------------------------------------------------------------------
+    def _cursor_params(self, row: Any, now: datetime) -> dict[str, str]:
+        """``getmeas`` window from the stored cursor: an hour before the last sync, or the
+        default window for a fresh connection."""
+        if row.last_sync_at is not None:
+            cursor = ensure_utc(row.last_sync_at) - timedelta(hours=1)
+            return {"lastupdate": str(int(cursor.timestamp()))}
+        start = now - timedelta(days=DEFAULT_WINDOW_DAYS)
+        return {"startdate": str(int(start.timestamp())), "enddate": str(int(now.timestamp()))}
+
     async def sync(self, session: AsyncSession, user: User, since: datetime | None) -> list[Event]:
         row = await repo.get_integration(session, user.id, PROVIDER)
         if row is None or row.status != IntegrationStatus.connected:
@@ -486,15 +501,8 @@ class WithingsIntegration:
         params: dict[str, str]
         if since is not None:
             params = {"lastupdate": str(int(ensure_utc(since).timestamp()))}
-        elif row.last_sync_at is not None:
-            cursor = ensure_utc(row.last_sync_at) - timedelta(hours=1)
-            params = {"lastupdate": str(int(cursor.timestamp()))}
         else:
-            start = now - timedelta(days=DEFAULT_WINDOW_DAYS)
-            params = {
-                "startdate": str(int(start.timestamp())),
-                "enddate": str(int(now.timestamp())),
-            }
+            params = self._cursor_params(row, now)
         try:
             async with self._client_factory() as client:
                 groups = await self._getmeas(session, row, client, params)
@@ -565,12 +573,14 @@ class WithingsIntegration:
         user = await repo.get_user(session, row.user_id)
         if user is None:
             return WebhookResponse(body="unknown user"), []
-        params: dict[str, str] = {}
-        if fields.get("startdate") and fields.get("enddate"):
-            params = {"startdate": fields["startdate"], "enddate": fields["enddate"]}
-        else:
-            cursor = self._clock.now() - timedelta(days=2)
-            params = {"lastupdate": str(int(cursor.timestamp()))}
+        now = self._clock.now()
+        last = self._webhook_fetch_at.get(user.id)
+        if last is not None and now - last < WEBHOOK_MIN_INTERVAL:
+            log.info("withings_webhook_throttled", user_id=user.id)
+            return WebhookResponse(body="throttled"), []
+        self._webhook_fetch_at[user.id] = now
+        # The notification's own startdate/enddate are untrusted input: fetch from our cursor.
+        params = self._cursor_params(row, now)
         try:
             async with self._client_factory() as client:
                 groups = await self._getmeas(session, row, client, params)
@@ -582,8 +592,6 @@ class WithingsIntegration:
             log.warning("withings_webhook_fetch_failed", user_id=user.id, error=str(exc))
             return WebhookResponse(status=502, body="upstream error"), []
         events = await self._store_readings(session, user, decode_groups(groups))
-        await repo.set_integration_status(
-            session, user.id, PROVIDER, IntegrationStatus.connected, last_sync_at=self._clock.now()
-        )
+        # The cursor moves only in ``sync``: a spoofed notification must not skip a weigh-in.
         log.info("withings_webhook", user_id=user.id, groups=len(groups), events=len(events))
         return WebhookResponse(), events

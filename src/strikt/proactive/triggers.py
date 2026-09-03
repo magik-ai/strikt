@@ -13,6 +13,7 @@ fiber target by 13:30, "off day" at +15 % kcal.
 
 from __future__ import annotations
 
+import dataclasses
 from collections.abc import Callable, Mapping
 from dataclasses import dataclass, field
 from datetime import date, datetime, time, timedelta
@@ -89,8 +90,52 @@ class TriggerContext:
     def clock(self) -> str:
         return self.local_now.strftime("%H:%M")
 
+    def deadline(self, trigger: str, default: time) -> time:
+        """The check-in time the user chose for this silence trigger, else ``default``."""
+        return checkin_deadlines(self.profile).get(trigger, default)
+
 
 Precondition = Callable[[DayState | None, TriggerContext], TriggerFire | None]
+
+#: Silence triggers a user's check-in time can move, by the local-time window a time falls in:
+#: before 10:00 → the first meal, 10:00–16:59 → lunch, 17:00–21:59 → dinner, later → the close.
+CHECKIN_WINDOWS: tuple[tuple[time, time, str], ...] = (
+    (time(3, 0), time(10, 0), "no_first_meal"),
+    (time(10, 0), time(17, 0), "no_lunch"),
+    (time(17, 0), time(22, 0), "no_dinner"),
+    (time(22, 0), time.max, "day_not_closed"),
+    (time.min, time(3, 0), "day_not_closed"),
+)
+
+
+def parse_hhmm(value: object) -> time | None:
+    if not isinstance(value, str):
+        return None
+    text = value.strip()
+    if len(text) != 5 or text[2] != ":":
+        return None
+    try:
+        return time.fromisoformat(text)
+    except ValueError:
+        return None
+
+
+def checkin_deadlines(profile: Profile | None) -> dict[str, time]:
+    """Brief §4 step 9 / §5.6: the user's ``checkin_times`` become the deadlines of the
+    meal-silence triggers (the earliest time in each window wins). Empty when none are set."""
+    raw = (profile.checkin_times if profile is not None else None) or []
+    out: dict[str, time] = {}
+    for value in raw:
+        at = parse_hhmm(value)
+        if at is None:
+            continue
+        for start, end, trigger in CHECKIN_WINDOWS:
+            if start <= at < end or (end == time.max and at >= start):
+                if trigger not in out or at < out[trigger]:
+                    out[trigger] = at
+                break
+    return out
+
 
 # ---------------------------------------------------------------------------------- helpers
 
@@ -196,9 +241,15 @@ def _payload_float(ctx: TriggerContext, key: str) -> float | None:
         return None
 
 
+#: Day flags that pause the meal/protein/fiber pressure (brief §3.6: protocol paused when sick;
+#: travel days are off days by agreement).
+PAUSED_FLAGS: frozenset[str] = frozenset({"sick", "travel"})
+
+
 def _open_day(state: DayState | None) -> DayState | None:
-    """The DayState when today is still open; None when unknown or closed."""
-    if state is None or state.closed:
+    """The DayState when today is still open and not paused; None when unknown, closed, or
+    flagged sick/travel."""
+    if state is None or state.closed or PAUSED_FLAGS.intersection(state.flags):
         return None
     return state
 
@@ -240,7 +291,12 @@ def check_no_first_meal(state: DayState | None, ctx: TriggerContext) -> TriggerF
     day = _open_day(state)
     if day is None or day.meals:
         return None
-    deadline = _combine(ctx.day, ctx.wake_time, ctx) + FIRST_MEAL_GRACE
+    override = checkin_deadlines(ctx.profile).get("no_first_meal")
+    deadline = (
+        _combine(ctx.day, override, ctx)
+        if override is not None
+        else _combine(ctx.day, ctx.wake_time, ctx) + FIRST_MEAL_GRACE
+    )
     if ctx.local_now < deadline:
         return None
     since_wake = ctx.local_now - _combine(ctx.day, ctx.wake_time, ctx)
@@ -256,7 +312,7 @@ def check_no_first_meal(state: DayState | None, ctx: TriggerContext) -> TriggerF
 def check_no_lunch(state: DayState | None, ctx: TriggerContext) -> TriggerFire | None:
     """15:00 and no meal in the 11:00–16:00 window (or tagged lunch)."""
     day = _open_day(state)
-    if day is None or not _at_or_after(ctx, LUNCH_DEADLINE):
+    if day is None or not _at_or_after(ctx, ctx.deadline("no_lunch", LUNCH_DEADLINE)):
         return None
     if _has_slot(day, "lunch") or _meals_between(day, ctx.tz, LUNCH_FROM, LUNCH_TO):
         return None
@@ -312,7 +368,7 @@ def check_protein_check(state: DayState | None, ctx: TriggerContext) -> TriggerF
 def check_no_dinner(state: DayState | None, ctx: TriggerContext) -> TriggerFire | None:
     """21:00 and no meal since 17:00 (or tagged dinner)."""
     day = _open_day(state)
-    if day is None or not _at_or_after(ctx, DINNER_DEADLINE):
+    if day is None or not _at_or_after(ctx, ctx.deadline("no_dinner", DINNER_DEADLINE)):
         return None
     if _has_slot(day, "dinner") or _meals_between(day, ctx.tz, DINNER_FROM, None):
         return None
@@ -323,7 +379,7 @@ def check_no_dinner(state: DayState | None, ctx: TriggerContext) -> TriggerFire 
 def check_day_not_closed(state: DayState | None, ctx: TriggerContext) -> TriggerFire | None:
     """23:00 and the day is still open."""
     day = _open_day(state)
-    if day is None or not _at_or_after(ctx, CLOSE_DEADLINE):
+    if day is None or not _at_or_after(ctx, ctx.deadline("day_not_closed", CLOSE_DEADLINE)):
         return None
     dinner = _has_slot(day, "dinner") or bool(_meals_between(day, ctx.tz, DINNER_FROM, None))
     facts = {
@@ -360,9 +416,10 @@ def check_bedtime_minus_30(state: DayState | None, ctx: TriggerContext) -> Trigg
         if now_m >= bed - 45 and ctx.local_now.time() >= time(12, 0)
         else (ctx.day - timedelta(days=1))
     )
-    return _fire(
+    fire = _fire(
         "bedtime_minus_30", "time", ctx, window_key=f"bedtime_minus_30:{night_of}", facts=facts
     )
+    return dataclasses.replace(fire, day=night_of) if night_of != ctx.day else fire
 
 
 def check_wake_check(state: DayState | None, ctx: TriggerContext) -> TriggerFire | None:
@@ -717,14 +774,17 @@ def check_same_meal_streak(state: DayState | None, ctx: TriggerContext) -> Trigg
 
 
 def check_event_planned(state: DayState | None, ctx: TriggerContext) -> TriggerFire | None:
-    """An event today (dinner, flight, trip) or a stored day plan: confirm the plan."""
+    """An event today (an event/commitment note expiring today, a stored day plan, or the day
+    flagged ``planned_indulgence``): confirm the plan the morning of (brief §7.1 C)."""
     events = [n for n in ctx.notes if str(n.kind) in ("event", "commitment")]
     plan = state.plan if state is not None else None
-    if not events and not plan:
+    indulgence = state is not None and "planned_indulgence" in state.flags
+    if not events and not plan and not indulgence:
         return None
     facts = {
         "events": [{"kind": str(n.kind), "text": n.text} for n in events],
         "plan": plan,
+        "planned_indulgence": indulgence,
         "kcal_target": round(ctx.targets.kcal),
         "protein_target": round(ctx.targets.protein_g),
     }

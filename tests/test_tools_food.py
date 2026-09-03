@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import json
-from datetime import UTC, datetime
+from datetime import UTC, date, datetime
 from typing import Any
 
 import httpx
@@ -327,3 +327,52 @@ async def test_delete_meal_and_undo_last_recompute_totals(tool_ctx: ToolContext)
     assert again.is_error
     nothing = await food_tools.undo_last(tool_ctx, schemas.UndoLastInput())
     assert nothing.is_error and "nothing to undo" in str(nothing.content)
+
+
+async def test_log_meal_after_midnight_before_bedtime_lands_on_the_evening_day(
+    tool_ctx: ToolContext, session: AsyncSession
+) -> None:
+    """Bed 00:30 (the profile default): a dinner logged at 00:10 belongs to yesterday, the
+    still-open day; its totals, card and close must include it (brief §3.3)."""
+    lunch = parsed(
+        await food_tools.log_meal(
+            tool_ctx,
+            schemas.LogMealInput(
+                items=[item("chicken and rice", 1490, 110, 150, 40)],
+                slot="lunch",
+                eaten_at=datetime(2026, 9, 2, 13, 0),
+            ),
+        )
+    )
+    assert lunch["date"] == "2026-09-02"
+    tool_ctx.clock.set(datetime(2026, 9, 2, 20, 10, tzinfo=UTC))  # type: ignore[attr-defined]  # 00:10 Dubai on the 3rd
+    dinner = parsed(
+        await food_tools.log_meal(
+            tool_ctx,
+            schemas.LogMealInput(items=[item("cottage cheese", 392, 40, 12, 18)], slot="dinner"),
+        )
+    )
+    assert dinner["date"] == "2026-09-02"
+    assert dinner["day"]["date"] == "2026-09-02"
+    assert dinner["day"]["totals"]["kcal"] == lunch["day"]["totals"]["kcal"] + 392
+    assert len(await repo.list_meals_for_date(session, tool_ctx.user_id, date(2026, 9, 2))) == 2
+    assert await repo.list_meals_for_date(session, tool_ctx.user_id, date(2026, 9, 3)) == []
+    # after the rollover (03:00 local) a meal is the new day's
+    tool_ctx.clock.set(datetime(2026, 9, 2, 23, 5, tzinfo=UTC))  # type: ignore[attr-defined]  # 03:05 Dubai
+    late = parsed(
+        await food_tools.log_meal(
+            tool_ctx, schemas.LogMealInput(items=[item("banana", 90, 1, 23, 0)])
+        )
+    )
+    assert late["date"] == "2026-09-03"
+    # moving a meal by eaten_at applies the same rule
+    moved = parsed(
+        await food_tools.update_meal(
+            tool_ctx,
+            schemas.UpdateMealInput(
+                meal_id=late["meal_id"],
+                changes=schemas.MealItemChanges(eaten_at=datetime(2026, 9, 3, 0, 40)),
+            ),
+        )
+    )
+    assert moved["date"] == "2026-09-02"

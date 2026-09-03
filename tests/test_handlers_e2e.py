@@ -175,6 +175,7 @@ def msg(
     forwarded_from: str | None = None,
     language_code: str | None = "ru",
     received_at: datetime = NOW,
+    chat_type: str = "private",
 ) -> InboundMessage:
     command, args = parse_command(text) if not media else (None, None)
     return InboundMessage(
@@ -189,17 +190,26 @@ def msg(
         forwarded_from=forwarded_from,
         command=command,
         command_args=args,
+        chat_type=chat_type,
     )
 
 
-def cb(data: str, *, telegram_id: int = TELEGRAM_ID, message_id: int = 1001) -> CallbackInbound:
+def cb(
+    data: str,
+    *,
+    telegram_id: int = TELEGRAM_ID,
+    message_id: int = 1001,
+    chat_id: int | None = None,
+    chat_type: str = "private",
+) -> CallbackInbound:
     return CallbackInbound(
         telegram_id=telegram_id,
-        chat_id=telegram_id,
+        chat_id=chat_id if chat_id is not None else telegram_id,
         message_id=message_id,
         callback_id=f"cb-{data}",
         data=data,
         language_code="ru",
+        chat_type=chat_type,
     )
 
 
@@ -625,3 +635,124 @@ async def test_messages_in_one_chat_are_serialised(
     assert order == ["start:first", "end:first", "start:second", "end:second"]
     assert messenger.texts(CHAT_ID) == ["one", "two"]
     assert ("typing" in {a for _, a in messenger.actions}) or messenger.actions == []
+
+
+# ------------------------------------------------------------------------------- group chats
+
+GROUP_ID = -1_001_234_567_890
+
+
+async def test_group_chat_updates_are_dropped_and_never_rebind_the_chat(
+    deps: AppDeps, messenger: FakeMessenger, fake_llm: FakeLLM, user: User, session: AsyncSession
+) -> None:
+    from aiogram.types import Chat, Message as TgMessage, User as TgUser
+
+    from strikt.telegram.handlers import from_message
+
+    tg = TgMessage(
+        message_id=5,
+        date=NOW,
+        chat=Chat(id=GROUP_ID, type="supergroup", title="friends"),
+        from_user=TgUser(id=TELEGRAM_ID, is_bot=False, first_name="I", language_code="ru"),
+        text="/start@StriktBot",
+    )
+    inbound = from_message(tg, received_at=NOW)
+    assert inbound.chat_type == "supergroup" and not inbound.private
+    await handle_message(deps, inbound)
+    # nothing sent anywhere, no model call, chat_id untouched
+    assert messenger.sent == [] and fake_llm.calls == []
+    await session.refresh(user)
+    assert user.chat_id == CHAT_ID
+    # a plain group message and a stranger in the group are equally silent
+    await handle_message(deps, msg("hello", chat_id=GROUP_ID, chat_type="supergroup"))
+    await handle_message(deps, msg("hi", telegram_id=999, chat_id=GROUP_ID, chat_type="supergroup"))
+    assert messenger.sent == [] and fake_llm.calls == []
+    # a callback from a group is answered (the client stops spinning) and ignored
+    await handle_callback(deps, cb("recalc", chat_id=GROUP_ID, chat_type="supergroup"))
+    assert messenger.callbacks == [("cb-recalc", None)] and fake_llm.calls == []
+    # a private-looking type with a foreign chat id is not private either
+    assert not msg("x", chat_id=GROUP_ID).private
+    # the private chat still works afterwards
+    fake_llm.queue(FakeLLM.text("ok"))
+    await handle_message(deps, msg("привет"))
+    assert messenger.texts(CHAT_ID) == ["ok"]
+
+
+# ------------------------------------------------------------------- callbacks under a running turn
+
+
+async def test_callback_is_answered_before_waiting_for_a_busy_chat(
+    deps: AppDeps, messenger: FakeMessenger, fake_llm: FakeLLM, user: User, session: AsyncSession
+) -> None:
+    log_meal_script(fake_llm)
+    await handle_message(deps, photo_msg())
+    meal = (await session.scalars(select(Meal))).one()
+    release = asyncio.Event()
+
+    async def long_turn() -> None:
+        await release.wait()
+
+    holder = asyncio.create_task(deps.queue.run(CHAT_ID, long_turn))
+    await asyncio.sleep(0)
+    assert deps.queue.busy(CHAT_ID)
+    tap = asyncio.create_task(handle_callback(deps, cb(f"s:{meal.id}:lunch")))
+    await asyncio.sleep(0.05)
+    assert not tap.done()
+    assert messenger.callbacks[-1] == (f"cb-s:{meal.id}:lunch", None)  # answered while waiting
+    release.set()
+    await asyncio.gather(holder, tap)
+    await session.refresh(meal)
+    assert meal.slot == MealSlot.lunch  # the action still ran, in order
+
+
+async def test_second_undo_tap_is_a_quiet_no_op(
+    deps: AppDeps, messenger: FakeMessenger, fake_llm: FakeLLM, user: User, session: AsyncSession
+) -> None:
+    log_meal_script(fake_llm)
+    await handle_message(deps, photo_msg())
+    meal = (await session.scalars(select(Meal))).one()
+    await handle_callback(deps, cb(f"undo:{meal.id}"))
+    await handle_callback(deps, cb(f"undo:{meal.id}"))
+    assert messenger.callbacks[-1][1] == t("ru", "btn.undo_done")
+    assert t("ru", "err.unknown") not in messenger.texts(CHAT_ID)
+
+
+# --------------------------------------------------------------------------- send fallbacks
+
+
+async def test_send_escapes_only_on_parse_errors(
+    deps: AppDeps, messenger: FakeMessenger, user: User
+) -> None:
+    from strikt.telegram.handlers import _send
+
+    real_send = messenger.send
+    failures: list[Exception] = [RuntimeError("Bad Request: can't parse entities: unclosed <b>")]
+
+    async def flaky(chat_id: int, text: str, **kwargs: Any) -> int:
+        if failures:
+            raise failures.pop()
+        return await real_send(chat_id, text, **kwargs)
+
+    messenger.send = flaky  # type: ignore[method-assign]
+    await _send(deps, CHAT_ID, "<b>x")
+    assert messenger.texts(CHAT_ID)[-1] == "&lt;b&gt;x"
+    failures.append(RuntimeError("Connection reset"))
+    await _send(deps, CHAT_ID, "<b>fine</b>")
+    assert messenger.texts(CHAT_ID)[-1] == "<b>fine</b>"  # a network blip keeps the markup
+
+
+async def test_transcription_failure_has_its_own_copy(
+    deps: AppDeps, messenger: FakeMessenger, fake_llm: FakeLLM, user: User
+) -> None:
+    from strikt.telegram.voice import TranscriptionError
+
+    class Failing:
+        async def transcribe(
+            self, data: bytes, *, mime: str | None = None, language_hint: str | None = None
+        ) -> str:
+            raise TranscriptionError("upstream 500")
+
+    deps.transcriber = Failing()  # type: ignore[assignment]
+    await handle_message(deps, msg(media=[MediaRef("voice", VOICE_ID, mime="audio/ogg")]))
+    assert messenger.texts(CHAT_ID) == [t("ru", "err.transcribe_failed")]
+    assert fake_llm.calls == []

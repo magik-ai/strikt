@@ -572,3 +572,44 @@ async def test_fire_is_serialised_per_user(
     assert sorted(o.status for o in outcomes) == ["sent", "skipped"] and len(messenger.sent) == 1
     assert engine_.outcomes[-2:] == list(outcomes) or set(engine_.outcomes[-2:]) == set(outcomes)
     assert engine_.followup_delay() == timedelta(minutes=45)
+
+
+async def test_bedtime_after_midnight_is_decided_on_the_evening_day_state(
+    engine_: ProactiveEngine,
+    user: User,
+    clock: FakeClock,
+    decider: FakeDecider,
+    session: AsyncSession,
+) -> None:
+    """Bed 00:30 → bedtime_minus_30 fires at 00:00 on the next calendar date; the decider must
+    see the evening's (closed) day, not the empty new one."""
+    await seed_meal(session, user.id, TODAY, "19:00", kcal=700)
+    await repo.close_day(session, user.id, TODAY, verdict="ok", now=clock.now())
+    await session.commit()
+    clock.set(datetime(2026, 9, 3, 20, 0, tzinfo=UTC))  # 00:00 Dubai on the 4th
+    outcome = await engine_.fire(user.id, "bedtime_minus_30")
+    assert outcome.sent and outcome.window_key == f"bedtime_minus_30:{TODAY}"
+    call = decider.last
+    assert call.fire.day == TODAY
+    assert call.state is not None and call.state.date == TODAY and call.state.closed
+    assert call.state.totals.macros.kcal == 700
+    assert call.fire.facts["day_closed"] is True
+
+
+async def test_user_reminders_do_not_consume_the_proactive_cap(
+    engine_: ProactiveEngine, user: User, clock: FakeClock, session: AsyncSession
+) -> None:
+    clock.set(_at("11:05"))
+    for n in range(5):
+        await repo.add_proactive_send(
+            session,
+            user.id,
+            trigger="reminder_due",
+            window_key=f"reminder_due:{n}",
+            step=1,
+            sent_at=clock.now() - timedelta(minutes=n + 1),
+            text="waist",
+        )
+    await session.commit()
+    outcome = await engine_.fire(user.id, "no_first_meal")
+    assert outcome.sent, outcome

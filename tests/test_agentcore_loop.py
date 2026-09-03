@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import json
-from datetime import UTC, datetime, timedelta
+from datetime import UTC, date, datetime, timedelta
 from typing import Any
 
 import pytest
@@ -508,3 +508,298 @@ async def test_open_proactive_send_is_marked_answered(
     assert "<proactive>" in ctx
     await session.refresh(send)
     assert send.responded_at is not None
+
+
+# ------------------------------------------------------- verify against the day the tools touched
+
+
+class DayArg(ToolInput):
+    """Test double for get_day_state with a date."""
+
+    day: date | None = Field(default=None, description="Local date.")
+
+
+class MealIdArg(ToolInput):
+    """Test double for update_meal."""
+
+    meal_id: int = Field(description="Meal id.")
+
+
+async def fake_day_state_dated(ctx: ToolContext, args: DayArg) -> ToolResult:
+    from strikt.agent.tools.common import state_numbers
+
+    day = args.day or ctx.local_date
+    state = await DayStateBuilder(ctx.clock, ctx.settings).day_state(ctx.session, ctx.user, day)
+    return ToolResult(content=json.dumps({"numbers": state_numbers(state)}))
+
+
+async def fake_undo_last(ctx: ToolContext, args: NoArgs) -> ToolResult:
+    meal = await repo.last_meal(ctx.session, ctx.user_id)
+    assert meal is not None
+    await repo.soft_delete_meal(ctx.session, ctx.user_id, meal.id, now=ctx.clock.now())
+    return ToolResult(
+        content=json.dumps({"undone_meal_id": meal.id, "day": {"date": meal.day_date.isoformat()}})
+    )
+
+
+async def fake_update_meal(ctx: ToolContext, args: MealIdArg) -> ToolResult:
+    meal = await repo.get_meal(ctx.session, ctx.user_id, args.meal_id)
+    assert meal is not None
+    return ToolResult(content=json.dumps({"meal_id": meal.id, "date": meal.day_date.isoformat()}))
+
+
+@pytest.fixture
+def dated_registry(test_registry: Registry) -> Registry:
+    reg = Registry()
+    reg.register(Tool.from_model("log_meal", FakeLogMeal, fake_log_meal))
+    reg.register(Tool.from_model("get_day_state", DayArg, fake_day_state_dated))
+    reg.register(Tool.from_model("undo_last", NoArgs, fake_undo_last))
+    reg.register(Tool.from_model("update_meal", MealIdArg, fake_update_meal))
+    return reg
+
+
+async def seed_day(
+    session: AsyncSession, user: User, day: date, kcal: float, protein: float
+) -> int:
+    meal = await repo.add_meal_with_items(
+        session,
+        user.id,
+        day_date=day,
+        items=[
+            FoodItemIn(name="food", macros=Macros(kcal=kcal, protein_g=protein, carbs_g=0, fat_g=0))
+        ],
+        logged_at=datetime.combine(day, datetime.min.time(), tzinfo=UTC) + timedelta(hours=9),
+    )
+    await session.commit()
+    return meal.id
+
+
+async def test_yesterday_totals_are_verified_against_yesterday_not_today(
+    session: AsyncSession,
+    user: User,
+    fake_llm: FakeLLM,
+    dated_registry: Registry,
+    clock: FakeClock,
+    settings: Settings,
+) -> None:
+    today = datetime(2026, 9, 3, tzinfo=UTC).date()
+    yesterday = today - timedelta(days=1)
+    await seed_day(session, user, yesterday, 1910, 198)
+    await seed_day(session, user, today, 420, 30)
+    fake_llm.queue(
+        FakeLLM.tool_use("get_day_state", {"day": yesterday.isoformat()}),
+        FakeLLM.text("Вчера: курица и рис.\nИтого за вчера: 1 910 ккал / Б 198"),
+    )
+    result = await run_turn(
+        make_deps(session, user, fake_llm, dated_registry, clock, settings),
+        incoming(user, "что я ел вчера?"),
+    )
+    assert len(fake_llm.calls) == 2  # correct numbers about yesterday: no rewrite
+    assert "1 910" in result.text and "420" not in result.text
+
+
+async def test_mixed_days_in_one_reply_skip_the_check(
+    session: AsyncSession,
+    user: User,
+    fake_llm: FakeLLM,
+    dated_registry: Registry,
+    clock: FakeClock,
+    settings: Settings,
+) -> None:
+    today = datetime(2026, 9, 3, tzinfo=UTC).date()
+    yesterday = today - timedelta(days=1)
+    await seed_day(session, user, yesterday, 1910, 198)
+    await seed_day(session, user, today, 420, 30)
+    fake_llm.queue(
+        LLMResult(
+            content=[
+                {
+                    "type": "tool_use",
+                    "id": "a",
+                    "name": "get_day_state",
+                    "input": {"day": yesterday.isoformat()},
+                },
+                {"type": "tool_use", "id": "b", "name": "get_day_state", "input": {}},
+            ],
+            stop_reason="tool_use",
+        ),
+        FakeLLM.text("Итого вчера 1910 ккал, сегодня пока 420 ккал."),
+    )
+    result = await run_turn(
+        make_deps(session, user, fake_llm, dated_registry, clock, settings),
+        incoming(user, "сравни вчера и сегодня"),
+    )
+    assert len(fake_llm.calls) == 2 and "1910" in result.text
+
+
+async def test_dinner_logged_after_midnight_is_checked_against_its_own_day(
+    session: AsyncSession,
+    user: User,
+    fake_llm: FakeLLM,
+    clock: FakeClock,
+    settings: Settings,
+    bus: EventBus,
+    recorder: Recorder,
+) -> None:
+    """The real food registry: bed 00:30, dinner at 00:10 lands on yesterday; the reply states
+    yesterday's total and must not be rewritten to today's empty state."""
+    from strikt.agent.tools import build_registry
+
+    today = datetime(2026, 9, 3, tzinfo=UTC).date()
+    await seed_day(session, user, today, 1490, 110)
+    clock.set(datetime(2026, 9, 3, 20, 10, tzinfo=UTC))  # 00:10 Dubai on the 4th
+    fake_llm.queue(
+        FakeLLM.tool_use(
+            "log_meal",
+            {
+                "items": [
+                    {"name": "творог", "kcal": 392, "protein_g": 40, "carbs_g": 12, "fat_g": 18}
+                ],
+                "slot": "dinner",
+            },
+        ),
+        FakeLLM.text("Творог 392 ккал.\nИтого: 1882 ккал | Б 150"),
+    )
+    result = await run_turn(
+        make_deps(session, user, fake_llm, build_registry(), clock, settings, bus),
+        incoming(user, "ужин: творог"),
+    )
+    assert len(fake_llm.calls) == 2, [c["purpose"] for c in fake_llm.calls]
+    assert "Итого: 1882" in result.text
+    changed = [e for e in recorder.events if isinstance(e, DayStateChanged)]
+    assert [e.date for e in changed] == [today]  # the evening's day, not the calendar's
+    assert await repo.list_meals_for_date(session, user.id, today + timedelta(days=1)) == []
+
+
+async def test_verify_mismatch_rewrites_through_run_turn(
+    session: AsyncSession,
+    user: User,
+    fake_llm: FakeLLM,
+    test_registry: Registry,
+    clock: FakeClock,
+    settings: Settings,
+) -> None:
+    fake_llm.queue(
+        FakeLLM.tool_use("log_meal", {"name": "творог", "kcal": 620, "protein_g": 40}),
+        FakeLLM.text("Творог.\nИтого: 900 ккал | Б 40"),
+        FakeLLM.text("Творог.\nИтого: 620 ккал | Б 40"),
+    )
+    result = await run_turn(
+        make_deps(session, user, fake_llm, test_registry, clock, settings), incoming(user, "творог")
+    )
+    assert [c["purpose"] for c in fake_llm.calls] == ["turn", "turn", "verify"]
+    assert "Итого: 620" in result.outgoings[0].text and "900" not in result.outgoings[0].text
+    turns = await repo.last_n_turns(session, user.id, 2)
+    assert "620" in turns[-1].text and "900" not in turns[-1].text
+    prompt = fake_llm.calls[2]["messages"][0]["content"][0]["text"]
+    assert "<day_state>" in prompt and "totals: 620 kcal" in prompt
+
+
+# ------------------------------------------------------------------------- keyboard targeting
+
+
+async def test_undo_button_never_targets_an_untouched_meal(
+    session: AsyncSession,
+    user: User,
+    fake_llm: FakeLLM,
+    dated_registry: Registry,
+    clock: FakeClock,
+    settings: Settings,
+) -> None:
+    today = datetime(2026, 9, 3, tzinfo=UTC).date()
+    lunch = await seed_day(session, user, today, 700, 50)
+    dinner = await seed_day(session, user, today, 500, 40)
+    deps = make_deps(session, user, fake_llm, dated_registry, clock, settings)
+
+    fake_llm.queue(FakeLLM.tool_use("undo_last", {}), FakeLLM.text("Убрал ужин."))
+    result = await run_turn(deps, incoming(user, "убери ужин"))
+    assert result.outgoings[0].keyboard is None  # no Undo aimed at the surviving lunch
+    assert (await repo.get_meal(session, user.id, dinner)) is None
+    assert (await repo.get_meal(session, user.id, lunch)) is not None
+
+    snack = await seed_day(session, user, today, 200, 10)
+    fake_llm.queue(
+        FakeLLM.tool_use("update_meal", {"meal_id": lunch}), FakeLLM.text("Поправил обед.")
+    )
+    result = await run_turn(deps, incoming(user, "обед был 150 г"))
+    keyboard = result.outgoings[0].keyboard
+    assert keyboard is not None
+    undo = keyboard[-1][0]
+    assert undo.callback_data == f"undo:{lunch}" and undo.callback_data != f"undo:{snack}"
+
+
+async def test_logged_meal_button_targets_the_meal_this_turn_created(
+    session: AsyncSession,
+    user: User,
+    fake_llm: FakeLLM,
+    dated_registry: Registry,
+    clock: FakeClock,
+    settings: Settings,
+) -> None:
+    today = datetime(2026, 9, 3, tzinfo=UTC).date()
+    await seed_day(session, user, today, 700, 50)
+    fake_llm.queue(FakeLLM.tool_use("log_meal", {"name": "eggs", "kcal": 300}), FakeLLM.text("ok"))
+    result = await run_turn(
+        make_deps(session, user, fake_llm, dated_registry, clock, settings), incoming(user, "яйца")
+    )
+    keyboard = result.outgoings[0].keyboard
+    assert keyboard is not None and len(keyboard) == 3  # slot picker + actions
+    meals = await repo.list_meals_for_date(session, user.id, today)
+    new_meal = next(m for m in meals if m.items[0].name == "eggs")
+    assert keyboard[-1][0].callback_data == f"undo:{new_meal.id}"
+
+
+# ---------------------------------------------------------------- truncated inside a tool call
+
+
+async def test_max_tokens_inside_a_tool_call_retries_with_a_larger_cap(
+    session: AsyncSession,
+    user: User,
+    fake_llm: FakeLLM,
+    test_registry: Registry,
+    clock: FakeClock,
+    settings: Settings,
+) -> None:
+    fake_llm.queue(
+        LLMResult(
+            content=[
+                {"type": "text", "text": "Logging"},
+                {"type": "tool_use", "id": "cut", "name": "log_meal", "input": {}},
+            ],
+            stop_reason=STOP_MAX_TOKENS,
+        ),
+        FakeLLM.tool_use("log_meal", {"name": "eggs", "kcal": 300}, id="full"),
+        FakeLLM.text("Записал."),
+    )
+    result = await run_turn(
+        make_deps(session, user, fake_llm, test_registry, clock, settings), incoming(user, "яйца")
+    )
+    assert result.tools_used == ["log_meal"] and result.text == "Записал."
+    first, retry = fake_llm.calls[0], fake_llm.calls[1]
+    assert first["max_tokens"] is None
+    assert retry["max_tokens"] == settings.max_tokens_turn * 2
+    assert retry["messages"] == first["messages"]  # the half tool_use is never re-sent
+    assert all(
+        b.get("type") != "tool_use" or b["id"] != "cut"
+        for m in fake_llm.calls[2]["messages"]
+        for b in m["content"]
+    )
+
+
+async def test_evening_closed_day_without_tools_gets_no_day_actions(
+    session: AsyncSession,
+    user: User,
+    fake_llm: FakeLLM,
+    test_registry: Registry,
+    clock: FakeClock,
+    settings: Settings,
+) -> None:
+    today = datetime(2026, 9, 3, tzinfo=UTC).date()
+    await repo.close_day(session, user.id, today, verdict="ok", now=clock.now())
+    await session.commit()
+    clock.set(datetime(2026, 9, 3, 17, 5, tzinfo=UTC))  # 21:05 in Dubai
+    fake_llm.queue(FakeLLM.text("Спокойной ночи."))
+    result = await run_turn(
+        make_deps(session, user, fake_llm, test_registry, clock, settings), incoming(user, "всё")
+    )
+    assert result.outgoings[0].keyboard is None

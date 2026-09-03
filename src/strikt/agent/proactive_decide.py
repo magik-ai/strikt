@@ -5,7 +5,10 @@
 one user message with the fire facts, the profile block, today's state, the last three day
 summaries, relevant notes, the ladder state and response rate, and what was already sent today.
 The answer is structured output ``{send, text, reason}``. Brief §7.4 is enforced in code as
-well: emoji stripped, at most four lines / 350 characters, never a step below the ladder's.
+well: emoji stripped, at most four lines / 350 characters (the Sunday ``weekly_review`` is the
+brief's own exception — "the week in five lines" plus a pattern and an instruction — and gets
+seven lines / 700 characters), never a step below the ladder's. A response cut off by the output
+cap is reported as ``truncated`` rather than mistaken for bad JSON.
 """
 
 from __future__ import annotations
@@ -39,6 +42,8 @@ log = structlog.get_logger(__name__)
 
 MAX_LINES = 4
 MAX_CHARS = 350
+#: Per-trigger (lines, chars) caps where the brief asks for more than the generic 2–4 lines.
+TRIGGER_CAPS: dict[str, tuple[int, int]] = {"weekly_review": (7, 700)}
 MIN_STEP = 1
 MAX_STEP = 4
 SUMMARY_CHARS = 300
@@ -72,17 +77,24 @@ def strip_emoji(text: str) -> str:
     return _EMOJI.sub("", text)
 
 
-def sanitize_proactive_text(text: str) -> str:
-    """Brief §7.4 in code: no emoji, ≤ 4 lines, ≤ 350 characters, no blank lines, trimmed."""
+def caps_for(trigger: str | None) -> tuple[int, int]:
+    """``(max_lines, max_chars)`` for a trigger (``TRIGGER_CAPS`` or the §7.4 default)."""
+    return TRIGGER_CAPS.get(trigger or "", (MAX_LINES, MAX_CHARS))
+
+
+def sanitize_proactive_text(text: str, trigger: str | None = None) -> str:
+    """Brief §7.4 in code: no emoji, ≤ 4 lines, ≤ 350 characters (per-trigger caps for the
+    weekly review), no blank lines, trimmed."""
+    max_lines, max_chars = caps_for(trigger)
     lines = [_MULTISPACE.sub(" ", strip_emoji(line)).strip() for line in text.splitlines()]
-    lines = [line for line in lines if line][:MAX_LINES]
+    lines = [line for line in lines if line][:max_lines]
     out = "\n".join(lines)
-    if len(out) > MAX_CHARS:
-        cut = out[:MAX_CHARS]
+    if len(out) > max_chars:
+        cut = out[:max_chars]
         # end on a sentence or, failing that, a word boundary
         for sep in (". ", "? ", "! ", "\n", " "):
             idx = cut.rfind(sep)
-            if idx >= MAX_CHARS // 2:
+            if idx >= max_chars // 2:
                 cut = cut[: idx + (1 if sep.strip() else 0)]
                 break
         out = cut.rstrip()
@@ -129,6 +141,16 @@ class LLMDecider:
         if result.refused:
             log.warning("proactive_refused", user_id=user.id, trigger=fire.name)
             return ProactiveDecision(send=False, step=step, reason="refusal")
+        if result.truncated:
+            # thinking counts against max_tokens: a cut JSON is a cap problem, not bad output
+            log.warning(
+                "proactive_truncated",
+                user_id=user.id,
+                trigger=fire.name,
+                stop_reason=result.stop_reason,
+                max_tokens=self._settings.max_tokens_proactive,
+            )
+            return ProactiveDecision(send=False, step=step, reason="truncated")
         try:
             payload = result.json()
         except (ValueError, TypeError) as exc:
@@ -140,7 +162,7 @@ class LLMDecider:
             return ProactiveDecision(send=False, step=step, reason="invalid_output")
 
         send = bool(payload.get("send"))
-        text = sanitize_proactive_text(str(payload.get("text") or ""))
+        text = sanitize_proactive_text(str(payload.get("text") or ""), fire.name)
         reason = _short(str(payload.get("reason") or ""), 200)
         if send and not text:
             log.info("proactive_empty_text", user_id=user.id, trigger=fire.name)

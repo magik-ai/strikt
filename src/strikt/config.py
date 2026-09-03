@@ -25,16 +25,30 @@ DEFAULT_DATABASE_URL = "postgresql+asyncpg://strikt:strikt@postgres:5432/strikt"
 
 
 class ModelPrice(BaseModel):
-    """USD per one million tokens for one model id."""
+    """USD per one million tokens for one model id, plus the per-request server-tool fees.
+
+    ``cache_write`` is the 5-minute cache write price; ``cache_write_1h`` the 1-hour one (the
+    coach prompt uses a 1 h TTL). ``web_search_per_1000`` is the web search fee per 1 000
+    searches (fetches are billed as tokens only).
+    """
 
     input: float
     output: float
     cache_read: float
     cache_write: float
+    cache_write_1h: float | None = None
+    web_search_per_1000: float = 0.0
 
 
 DEFAULT_PRICES: dict[str, ModelPrice] = {
-    "claude-sonnet-5": ModelPrice(input=2.00, output=10.00, cache_read=0.20, cache_write=2.50),
+    "claude-sonnet-5": ModelPrice(
+        input=2.00,
+        output=10.00,
+        cache_read=0.20,
+        cache_write=2.50,
+        cache_write_1h=4.00,
+        web_search_per_1000=10.00,
+    ),
 }
 
 
@@ -73,13 +87,16 @@ class Settings(BaseSettings):
     effort_verify: Effort = "low"
     effort_proactive: Effort = "low"
     effort_summary: Effort = "low"
-    effort_research: Effort = "medium"
+    effort_research: Effort = "low"
     max_tokens_turn: int = 8192
     max_tokens_verify: int = 2048
-    max_tokens_proactive: int = 1024
+    max_tokens_proactive: int = 4096  # the text is ≤ 350 chars; the cap only bounds thinking
     max_tokens_summary: int = 4096
     max_tokens_research: int = 8192
     max_tool_rounds: int = 12
+    # server tool type strings for web_research; a renamed version is a config change, not a deploy
+    web_search_tool_type: str = "web_search_20260318"
+    web_fetch_tool_type: str = "web_fetch_20260318"
     context_max_turns: int = 30
     context_max_tokens: int = 40_000
     llm_timeout_s: float = 120.0

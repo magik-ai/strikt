@@ -277,3 +277,28 @@ async def test_start_is_idempotent_and_resume(
     await asyncio.sleep(0)  # APScheduler flips the state on the next loop tick
     assert not ps.scheduler.running
     ps.shutdown()  # no-op when stopped
+
+
+def test_checkin_times_move_the_silence_slots() -> None:
+    """Brief §4 step 9 / §5.6: the check-in times the user gives during onboarding are the
+    deadlines of the meal-silence triggers, not a stored-and-ignored preference."""
+    specs = {
+        s.trigger: s
+        for s in sched.build_job_specs(make_profile(checkin_times=["13:00", "20:00", "23:30"]))
+    }
+    assert specs["no_lunch"].at == "13:00"
+    assert specs["no_dinner"].at == "20:00"
+    assert specs["day_not_closed"].at == "23:30"
+    assert specs["no_first_meal"].at == "11:00"  # untouched: no morning check-in given
+    assert set(specs) == EXPECTED_TRIGGERS
+    morning = {s.trigger: s for s in sched.build_job_specs(make_profile(checkin_times=["09:30"]))}
+    assert morning["no_first_meal"].at == "09:30" and morning["no_lunch"].at == "15:00"
+    # garbage and duplicates: earliest valid time per window wins, the rest is ignored
+    messy = {
+        s.trigger: s
+        for s in sched.build_job_specs(make_profile(checkin_times=["14:30", "12:15", "noon", ""]))
+    }
+    assert messy["no_lunch"].at == "12:15"
+    assert sched.build_job_specs(make_profile(checkin_times=None)) == sched.build_job_specs(
+        make_profile()
+    )

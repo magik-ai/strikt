@@ -10,7 +10,10 @@ What happens to a message:
 1. Album parts (``media_group_id``) are gathered by ``AlbumCollector``; one ``InboundMessage``
    with every photo continues, the others stop.
 2. Commands: ``/start [code]`` (invite-only), ``/today``, ``/forget_me``, ``/invite`` (admins).
-   Unknown users get one line (``err.not_allowed``) and nothing else.
+   Unknown users get one line (``err.not_allowed``) and nothing else. Updates from anything but
+   a private chat (a group the bot was added to, a channel) are dropped before that: the coach
+   never rebinds ``user.chat_id`` to a group, so the pinned card, proactive nudges and health
+   data can only ever land in the user's own chat.
 3. Everything else becomes an ``Incoming`` (largest photo, image/PDF documents through
    ``media.py``, voice/audio through the ``Transcriber``, forwarded origin, links) and runs
    through ``agent.loop.run_turn`` under the chat's ``PerChatQueue`` lock with a typing heartbeat.
@@ -28,7 +31,7 @@ import html
 import re
 from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass, field
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from typing import TYPE_CHECKING, Any, Literal, Protocol
 
 import structlog
@@ -93,6 +96,23 @@ class MediaRef:
     size: int | None = None
 
 
+PRIVATE_CHAT = "private"
+
+
+def chat_type_of(chat: Any) -> str:
+    """``chat.type`` as a plain string (aiogram may hand over a ``str`` enum)."""
+    value = getattr(chat, "type", None)
+    if value is None:
+        return PRIVATE_CHAT
+    return str(getattr(value, "value", value))
+
+
+def is_private_chat(chat_type: str, chat_id: int, telegram_id: int) -> bool:
+    """A private chat with the sender: Telegram's ``chat.type`` says so and the chat id is the
+    sender's id (belt and braces: a group id is negative and never equals a user id)."""
+    return chat_type == PRIVATE_CHAT and chat_id == telegram_id
+
+
 @dataclass
 class InboundMessage:
     """A Telegram message reduced to what the handlers need (built by ``from_message``)."""
@@ -108,10 +128,15 @@ class InboundMessage:
     forwarded_from: str | None = None
     command: str | None = None
     command_args: str | None = None
+    chat_type: str = PRIVATE_CHAT
 
     @property
     def lang(self) -> str:
         return resolve_lang(self.language_code)
+
+    @property
+    def private(self) -> bool:
+        return is_private_chat(self.chat_type, self.chat_id, self.telegram_id)
 
 
 @dataclass(frozen=True)
@@ -122,6 +147,11 @@ class CallbackInbound:
     callback_id: str
     data: str | None
     language_code: str | None = None
+    chat_type: str = PRIVATE_CHAT
+
+    @property
+    def private(self) -> bool:
+        return is_private_chat(self.chat_type, self.chat_id, self.telegram_id)
 
 
 def parse_command(text: str | None) -> tuple[str | None, str | None]:
@@ -221,12 +251,14 @@ def from_message(message: Message, *, received_at: datetime | None = None) -> In
         forwarded_from=_origin_name(message),
         command=command,
         command_args=args,
+        chat_type=chat_type_of(message.chat),
     )
 
 
 def from_callback(query: CallbackQuery) -> CallbackInbound:
     message = query.message
     chat_id = message.chat.id if message is not None else query.from_user.id
+    chat_type = chat_type_of(message.chat) if message is not None else PRIVATE_CHAT
     message_id = getattr(message, "message_id", None) if message is not None else None
     return CallbackInbound(
         telegram_id=query.from_user.id,
@@ -235,6 +267,7 @@ def from_callback(query: CallbackQuery) -> CallbackInbound:
         callback_id=query.id,
         data=query.data,
         language_code=query.from_user.language_code,
+        chat_type=chat_type,
     )
 
 
@@ -254,6 +287,7 @@ def merge_album(parts: Sequence[InboundMessage]) -> InboundMessage:
         media=media,
         media_group_id=None,
         forwarded_from=forwarded,
+        chat_type=first.chat_type,
     )
 
 
@@ -306,6 +340,12 @@ class AppDeps:
 # ------------------------------------------------------------------------------------ helpers
 
 
+def is_parse_error(exc: BaseException) -> bool:
+    """Telegram rejected the HTML body (``can't parse entities``), as opposed to a network or
+    rate-limit failure where the text itself is fine."""
+    return "parse entities" in str(exc).lower()
+
+
 async def _send(
     deps: AppDeps,
     chat_id: int,
@@ -314,13 +354,16 @@ async def _send(
     keyboard: Sequence[Sequence[Button]] | None = None,
     reply_to: int | None = None,
 ) -> int | None:
-    """Send and never raise: a rejected HTML body is retried escaped, then logged."""
+    """Send and never raise: a rejected HTML body is retried escaped (so the user never sees
+    literal ``<b>`` tags after a transient error), any other failure is retried once as is."""
     try:
         return await deps.messenger.send(chat_id, text, keyboard=keyboard, reply_to=reply_to)
     except Exception as exc:
-        log.warning("send_failed_retrying_plain", chat_id=chat_id, error=repr(exc))
+        parse_error = is_parse_error(exc)
+        log.warning("send_failed_retrying", chat_id=chat_id, error=repr(exc), escaped=parse_error)
+        retry_text = html.escape(text, quote=False) if parse_error else text
     try:
-        return await deps.messenger.send(chat_id, html.escape(text, quote=False), keyboard=keyboard)
+        return await deps.messenger.send(chat_id, retry_text, keyboard=keyboard, reply_to=reply_to)
     except Exception as exc:
         log.error("send_failed", chat_id=chat_id, error=repr(exc))
         return None
@@ -354,6 +397,9 @@ def _links(text: str | None) -> list[Attachment]:
 
 async def handle_message(deps: AppDeps, inbound: InboundMessage) -> None:
     """Entry point for every non-callback update. Never raises."""
+    if not inbound.private:
+        log.info("update_ignored_not_private", chat_id=inbound.chat_id, chat_type=inbound.chat_type)
+        return
     if inbound.media_group_id:
         key = f"{inbound.chat_id}:{inbound.media_group_id}"
         parts = await deps.albums.collect(key, inbound, order=inbound.message_id)
@@ -426,7 +472,8 @@ async def handle_start(deps: AppDeps, inbound: InboundMessage) -> None:
             if invite is not None:
                 await repo.consume_invite(session, invite.code, used_by=user.id, now=now)
         else:
-            user.chat_id = inbound.chat_id
+            if inbound.private:  # never rebind the coach's chat to a group
+                user.chat_id = inbound.chat_id
             user.last_seen_at = now
         await session.commit()
         user_id = user.id
@@ -507,6 +554,7 @@ async def build_incoming(deps: AppDeps, user: User, inbound: InboundMessage) -> 
     lang = resolve_lang(user.language)
     attachments: list[Attachment] = []
     silent_audio = False
+    transcription_failed = False
     for ref in inbound.media:
         try:
             data = await deps.downloader.download(ref.file_id)
@@ -536,9 +584,11 @@ async def build_incoming(deps: AppDeps, user: User, inbound: InboundMessage) -> 
         except TranscriptionError as exc:
             log.warning("transcription_failed", user_id=user.id, error=str(exc))
             silent_audio = True
+            transcription_failed = True
     text = inbound.text.strip() if inbound.text and inbound.text.strip() else None
     if silent_audio and not attachments and text is None:
-        await _send(deps, inbound.chat_id, t(lang, "err.transcribe"))
+        key = "err.transcribe_failed" if transcription_failed else "err.transcribe"
+        await _send(deps, inbound.chat_id, t(lang, key))
         return None
     attachments.extend(_links(text))
     return Incoming(
@@ -608,13 +658,23 @@ async def run_agent_turn(
 
 
 async def handle_callback(deps: AppDeps, cb: CallbackInbound) -> None:
-    """Inline buttons. Always answers the callback (clients spin until we do)."""
+    """Inline buttons. Always answers the callback (clients spin until we do).
+
+    When the chat is busy with a running turn the callback is answered *before* waiting for the
+    lock (Telegram expires an unanswered query in well under a minute; a photo turn can take
+    longer); the action still runs in order and confirms itself through the card refresh."""
+    if not cb.private:
+        log.info("callback_ignored_not_private", chat_id=cb.chat_id, chat_type=cb.chat_type)
+        await deps.messenger.answer_callback(cb.callback_id)
+        return
     parsed = parse_callback(cb.data)
     user = await _load_user(deps, cb.telegram_id)
     if parsed is None or user is None:
         log.info("callback_ignored", data=cb.data, known_user=user is not None)
         await deps.messenger.answer_callback(cb.callback_id)
         return
+    if deps.queue.busy(cb.chat_id):
+        await deps.messenger.answer_callback(cb.callback_id)
     try:
         await deps.queue.run(
             cb.chat_id,
@@ -728,6 +788,10 @@ async def _callback_undo(
         result = await deps.registry.dispatch(ctx, "delete_meal", {"meal_id": meal_id})
     lang = resolve_lang(user.language)
     if result.is_error:
+        if "not found" in str(result.content) or "nothing to undo" in str(result.content):
+            # a second tap, or Undo on a meal removed another way: an idempotent no-op
+            await deps.messenger.answer_callback(cb.callback_id, t(lang, "btn.undo_done"))
+            return
         log.warning("callback_undo_failed", user_id=user.id, meal_id=meal_id, error=result.content)
         await deps.messenger.answer_callback(cb.callback_id, t(lang, "err.unknown"))
         return
@@ -754,9 +818,11 @@ async def forget_user(deps: AppDeps, session: AsyncSession, user: User) -> dict[
     chat_id = user.chat_id
     user_id = user.id
     today = local_date(deps.clock, user.timezone)
-    day = await repo.get_day(session, user_id, today)
-    if day is not None and day.card_message_id is not None:
-        await deps.messenger.unpin(chat_id, day.card_message_id)
+    for offset in (0, 1):  # today's card, or yesterday's when today has none yet
+        day = await repo.get_day(session, user_id, today - timedelta(days=offset))
+        if day is not None and day.card_message_id is not None:
+            await deps.messenger.unpin(chat_id, day.card_message_id)
+            break
     counts = await delete_everything(session, user_id)
     await session.commit()
     if deps.scheduler is not None:

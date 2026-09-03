@@ -368,8 +368,13 @@ async def test_web_research_returns_answer_and_sources(
     assert result["sources"] == ["https://kinoya.ae/menu", "https://example.com/other"]
     assert result["searches"] == 1 and result["verified"] is True
     call = fake_llm.calls[0]
-    assert call["purpose"] == "research" and call["effort"] == "low"
+    assert call["purpose"] == "research" and call["effort"] is None  # EFFORT_RESEARCH applies
     assert [t["type"] for t in call["tools"]] == ["web_search_20260318", "web_fetch_20260318"]
+    assert result["untrusted"] is True
+    assert "untrusted data" in research.SYSTEM_PROMPT
+    tool_ctx.settings.web_search_tool_type = "web_search_20260209"
+    assert research.research_tools(tool_ctx.settings)[0]["type"] == "web_search_20260209"
+    assert tool_ctx.settings.effort_research == "low"
     assert call["tools"][0]["max_uses"] == 5 and call["tools"][1]["max_uses"] == 3
     assert "https://kinoya.ae/menu" in call["messages"][0]["content"][0]["text"]
     assert call["cache_tail"] is False

@@ -7,16 +7,22 @@ Request shape (research/02 §7, shared/prompt-caching.md):
 - ``system[1]`` the profile block — profile + active protocol + active notes rendered
   deterministically (sorted keys, no timestamps, no ids that change between turns) plus the
   onboarding prompt and checklist while onboarding is unfinished — ``cache_control {ephemeral}``;
-- ``messages``  the last N stored turns verbatim (N = ``settings.context_max_turns`` or under
-  ``settings.context_max_tokens`` at 4 chars/token), an explicit ``cache_control`` on the last
-  history block so the growing history is read incrementally; then the current user message:
+- ``messages``  the stored turns verbatim — at least ``settings.context_max_turns`` of them,
+  trimmed with hysteresis (``HISTORY_SLACK``): the window's first row moves only every
+  ``HISTORY_SLACK`` new rows, so between trims the history is a byte-stable prefix and the
+  explicit ``cache_control`` on its last block is actually *read* (a plain sliding window would
+  change ``messages[0]`` every turn and write the whole history at 1.25× each time) — under
+  ``settings.context_max_tokens`` (≈ 4 chars/token for ASCII, 2.5 for Cyrillic); then the
+  current user message:
   a ``<context>`` text block (local now, today's day state, yesterday's close line, the week
   summary, retrieved history when the text asks about the past, pending reminders, the open
   proactive send being answered), then images/documents, then the user's text.
 
 The LLM wrapper adds the top-level automatic ``cache_control`` for the conversation tail
 (``LLM.message(cache_tail=True)``). Nothing in ``system`` depends on the clock: the same inputs
-render the same bytes (tested), so the 1h and 5m entries are actually read.
+render the same bytes (tested), so the 1h and 5m entries are actually read. Caveat: the API
+invalidates the messages tier whenever an image enters or leaves the prompt, so the history
+entry pays off for text-only bursts; a photo turn re-writes it once.
 """
 
 from __future__ import annotations
@@ -56,6 +62,10 @@ log = structlog.get_logger(__name__)
 
 PROMPTS_DIR = Path(__file__).resolve().parent / "prompts"
 CHARS_PER_TOKEN = 4
+#: Cyrillic (and other non-ASCII) tokenises much denser than English prose.
+CHARS_PER_TOKEN_NON_ASCII = 2.5
+#: History trim hysteresis in rows: the window start moves only every this many new rows.
+HISTORY_SLACK = 16
 CONTEXT_HISTORY_TOKENS = 1500
 CONTEXT_SUMMARY_CHARS = 700
 CONTEXT_DAY_SUMMARY_CHARS = 280
@@ -103,12 +113,31 @@ def load_prompt(name: str) -> str:
 
 
 def estimate_tokens(value: Any) -> int:
-    """≈ 4 chars per token over the JSON rendering (research/07: conservative for Cyrillic)."""
+    """≈ 4 chars per token for ASCII and 2.5 for non-ASCII (Cyrillic) over the JSON rendering.
+
+    A budget, not a count: the Sonnet 5 tokenizer is not public. English prose lands near
+    4 chars/token; Russian near 2.5–3, so a flat 4 would undercount a Russian history by ~40 %.
+    """
     if isinstance(value, str):
         text = value
     else:
         text = json.dumps(value, ensure_ascii=False, sort_keys=True)
-    return math.ceil(len(text) / CHARS_PER_TOKEN)
+    non_ascii = sum(1 for ch in text if ord(ch) > 127)
+    ascii_chars = len(text) - non_ascii
+    return math.ceil(ascii_chars / CHARS_PER_TOKEN + non_ascii / CHARS_PER_TOKEN_NON_ASCII)
+
+
+def history_window(total_rows: int, max_turns: int, slack: int = HISTORY_SLACK) -> int:
+    """How many of the newest rows to keep so the window's first row is stable across turns.
+
+    Under ``max_turns`` everything is kept. Above it the cut point advances in steps of
+    ``slack`` rows, so the window holds between ``max_turns`` and ``max_turns + slack - 1`` rows
+    and its prefix (hence the cache entry) survives ``slack`` consecutive turns.
+    """
+    if total_rows <= max_turns:
+        return total_rows
+    start = ((total_rows - max_turns) // max(1, slack)) * max(1, slack)
+    return total_rows - start
 
 
 def looks_like_past_question(text: str | None, *, now_local: datetime, lang: str | None) -> bool:
@@ -267,8 +296,11 @@ async def history_messages(
     """
     max_turns = int(getattr(settings, "context_max_turns", 30))
     max_tokens = int(getattr(settings, "context_max_tokens", 40_000))
-    rows = await repo.last_n_turns(session, user.id, max_turns + 1)
-    rows = [row for row in rows if row.id != exclude_turn_id][-max_turns:]
+    rows = await repo.last_n_turns(session, user.id, max_turns + HISTORY_SLACK + 1)
+    excluded = sum(1 for row in rows if row.id == exclude_turn_id)
+    total = await repo.count_turns(session, user.id) - excluded
+    rows = [row for row in rows if row.id != exclude_turn_id]
+    rows = rows[-history_window(total, max_turns) :] if rows else rows
     kept: list[dict[str, Any]] = []
     used = 0
     for row in reversed(rows):  # newest first, stop when the budget is full

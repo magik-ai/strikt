@@ -10,7 +10,7 @@ import httpx
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from strikt.core.clock import FakeClock
+from strikt.core.clock import FakeClock, ensure_utc
 from strikt.db import repo
 from strikt.db.crypto import TokenCipher
 from strikt.db.models import IntegrationStatus, Measurement, MeasurementType, User
@@ -324,11 +324,19 @@ async def test_webhook_head_and_post(session: AsyncSession, user: User, clock: F
     assert response.status == 200
     assert len(events) == 4
     getmeas = form(router.requests("POST", withings.MEASURE_URL)[0])
-    assert getmeas["startdate"] == "1756800000"
-    assert getmeas["enddate"] == "1756884000"
-    # replayed notification (Withings retries): no duplicate events
+    # the notification's window is untrusted input: the fetch runs from our own cursor
+    assert "startdate" not in getmeas or getmeas["startdate"] != "1756800000"
+    assert "enddate" not in getmeas or getmeas["enddate"] != "1756884000"
+    row = await repo.get_integration(session, user.id, "withings")
+    assert row is not None and row.last_sync_at is None  # only sync() moves the cursor
+    # replayed notification (Withings retries) inside a minute: throttled, no upstream call
     response, events = await integration.handle_webhook(session, post)
-    assert events == []
+    assert events == [] and response.body == "throttled"
+    assert len(router.requests("POST", withings.MEASURE_URL)) == 1
+    clock.advance(timedelta(minutes=2))
+    response, events = await integration.handle_webhook(session, post)
+    assert events == []  # re-fetched, but the readings were already imported
+    assert len(router.requests("POST", withings.MEASURE_URL)) == 2
 
     unknown = WebhookRequest(
         provider="withings",
@@ -358,3 +366,35 @@ async def test_webhook_head_and_post(session: AsyncSession, user: User, clock: F
         body=b"",
     )
     assert (await integration.handle_webhook(session, missing))[0].status == 400
+
+
+async def test_spoofed_webhook_cannot_skip_a_weigh_in(
+    session: AsyncSession, user: User, clock: FakeClock
+) -> None:
+    """An attacker POSTs userid + a bogus window: the cursor must stay where sync() left it, so
+    the next poll (lastupdate = cursor - 1 h) still imports the reading."""
+    settings = make_settings()
+    cipher = TokenCipher(settings.token_encryption_key.get_secret_value())
+    await seed_tokens(session, cipher, user, expires_at=NOW + timedelta(hours=10))
+    await repo.set_integration_status(
+        session, user.id, "withings", IntegrationStatus.connected, last_sync_at=NOW
+    )
+    await session.commit()
+    router = Router()
+    router.json("POST", withings.MEASURE_URL, {"status": 0, "body": {"measuregrps": []}})
+    integration = make_integration(router, settings, clock)
+    clock.advance(timedelta(hours=2))
+    spoof = WebhookRequest(
+        provider="withings",
+        method="POST",
+        path="/webhooks/withings",
+        headers={},
+        query={},
+        body=b"userid=363&appli=1&startdate=0&enddate=1",
+    )
+    response, events = await integration.handle_webhook(session, spoof)
+    assert response.status == 200 and events == [], response
+    getmeas = form(router.requests("POST", withings.MEASURE_URL)[0])
+    assert getmeas["lastupdate"] == str(int((NOW - timedelta(hours=1)).timestamp()))
+    row = await repo.get_integration(session, user.id, "withings")
+    assert row is not None and ensure_utc(row.last_sync_at) == NOW

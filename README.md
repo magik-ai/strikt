@@ -128,13 +128,13 @@ A message: album parts are gathered for 1.2 s and merged; HEIC becomes JPEG, PDF
 
 You need a Linux machine with Docker Compose, a Telegram account and an Anthropic account with billing.
 
-1. **Create the bot.** In Telegram open @BotFather, send `/newbot`, follow the prompts, copy the token.
+1. **Create the bot.** In Telegram open @BotFather, send `/newbot`, follow the prompts, copy the token. Then `/mybots` → the bot → *Bot Settings* → *Allow Groups?* → **Turn off**: the coach is a private chat, and it drops group updates anyway.
 2. **Get an Anthropic key** from the Claude Console.
 3. **Clone.** `git clone https://github.com/magik-ai/bomiso.git && cd bomiso`
 4. **Configure.** `cp .env.example .env`. Fill `TELEGRAM_BOT_TOKEN`, `ANTHROPIC_API_KEY`, `ALLOWED_TELEGRAM_IDS` (your numeric Telegram id) and `ADMIN_TELEGRAM_IDS` (the same id, so you can mint invites). Change `POSTGRES_PASSWORD`. If you do not know your id, finish the steps, send `/start`, and read it from the `start_rejected` log line.
 5. **Encryption key.** `make keygen` prints a `TOKEN_ENCRYPTION_KEY`; paste it into `.env`. It needs `uv`; without it, after step 6: `docker compose run --rm --no-deps bot python -c "from strikt.db.crypto import generate_key; print(generate_key())"`.
 6. **Start.** `docker compose up -d --build`. Compose starts Postgres 18, waits for it to be healthy, runs `alembic upgrade head`, starts the bot.
-7. **Check.** `docker compose logs -f bot` should show `migrations_done` and `strikt_started`; `curl localhost:8080/health` answers `{"status": "ok", ...}`.
+7. **Check.** `docker compose logs -f bot` should show `migrations_done` and `strikt_started`; `curl localhost:8080/health` answers `{"status": "ok", ...}` (the port is published on 127.0.0.1 only; `WEB_PORT` in `.env` changes the host side).
 8. **Name and avatar.** `TELEGRAM_BOT_TOKEN=... uv run python scripts/setup_telegram.py` sets the name, descriptions, commands and the avatar (`brand/avatar/avatar-512.jpg`). The bot sets commands and descriptions itself at start; this adds name and picture.
 9. **Send `/start`.** Ten questions, resumable at any message, food logged along the way.
 
@@ -159,12 +159,14 @@ The list from `.env.example`. Compose sets `DATABASE_URL` from `POSTGRES_PASSWOR
 | `EFFORT_VERIFY` | no | `low` | effort for the verify rewrite |
 | `EFFORT_PROACTIVE` | no | `low` | effort for proactive decisions |
 | `EFFORT_SUMMARY` | no | `low` | effort for day and week summaries |
-| `EFFORT_RESEARCH` | no | `medium` | effort for `web_research` |
+| `EFFORT_RESEARCH` | no | `low` | effort for `web_research` |
 | `MAX_TOKENS_TURN` | no | `8192` | output cap per turn (thinking counts) |
 | `MAX_TOKENS_VERIFY` | no | `2048` | output cap for verify |
-| `MAX_TOKENS_PROACTIVE` | no | `1024` | output cap for proactive text |
+| `MAX_TOKENS_PROACTIVE` | no | `4096` | output cap for a proactive decision (thinking counts; the text itself is ≤ 350 chars) |
 | `MAX_TOKENS_SUMMARY` | no | `4096` | output cap for summaries |
 | `MAX_TOKENS_RESEARCH` | no | `8192` | output cap for research |
+| `WEB_SEARCH_TOOL_TYPE` | no | `web_search_20260318` | server tool type string for `web_research` |
+| `WEB_FETCH_TOOL_TYPE` | no | `web_fetch_20260318` | server tool type string for `web_research` |
 | `MAX_TOOL_ROUNDS` | no | `12` | tool rounds per turn before the loop stops |
 | `CONTEXT_MAX_TURNS` | no | `30` | turns of history sent each turn |
 | `CONTEXT_MAX_TOKENS` | no | `40000` | history token cap, whichever comes first |

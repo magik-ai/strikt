@@ -1285,6 +1285,13 @@ async def add_turn(
     return turn
 
 
+async def count_turns(session: AsyncSession, user_id: int) -> int:
+    value = await session.scalar(
+        select(func.count(ConversationTurn.id)).where(ConversationTurn.user_id == user_id)
+    )
+    return int(value or 0)
+
+
 async def last_n_turns(session: AsyncSession, user_id: int, n: int) -> list[ConversationTurn]:
     """The last ``n`` turns in chronological order."""
     stmt = (
@@ -1587,13 +1594,21 @@ async def last_send_for_window(
     )
 
 
-async def count_sends_today(session: AsyncSession, user_id: int, *, since: datetime) -> int:
-    """Sends since ``since`` (the caller passes the local day start expressed in UTC)."""
-    value = await session.scalar(
-        select(func.count(ProactiveSend.id)).where(
-            ProactiveSend.user_id == user_id, ProactiveSend.sent_at >= since
-        )
+async def count_sends_today(
+    session: AsyncSession,
+    user_id: int,
+    *,
+    since: datetime,
+    exclude_triggers: Sequence[str] = (),
+) -> int:
+    """Sends since ``since`` (the caller passes the local day start expressed in UTC), minus the
+    triggers in ``exclude_triggers`` (user-requested reminders do not count against the cap)."""
+    stmt = select(func.count(ProactiveSend.id)).where(
+        ProactiveSend.user_id == user_id, ProactiveSend.sent_at >= since
     )
+    if exclude_triggers:
+        stmt = stmt.where(ProactiveSend.trigger.not_in(list(exclude_triggers)))
+    value = await session.scalar(stmt)
     return int(value or 0)
 
 

@@ -401,3 +401,17 @@ def test_run_loop_prefers_uvloop() -> None:
 
     app_mod.run_loop(probe())
     assert seen and seen[0].startswith("uvloop")
+
+
+def test_compose_pins_the_container_port_and_binds_loopback() -> None:
+    """WEB_PORT from .env is the host port only: the container must keep listening on 8080
+    (Dockerfile HEALTHCHECK, Caddy's ``bot:8080``), and plain HTTP is not published to the world."""
+    import yaml
+
+    compose = yaml.safe_load((ROOT / "docker-compose.yml").read_text(encoding="utf-8"))
+    bot = compose["services"]["bot"]
+    assert str(bot["environment"]["WEB_PORT"]) == "8080"
+    assert bot["ports"] == ["127.0.0.1:${WEB_PORT:-8080}:8080"]
+    dockerfile = (ROOT / "Dockerfile").read_text(encoding="utf-8")
+    assert "127.0.0.1:8080/health" in dockerfile
+    assert "reverse_proxy bot:8080" in (ROOT / "Caddyfile").read_text(encoding="utf-8")

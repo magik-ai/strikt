@@ -243,3 +243,19 @@ async def test_yesterday_close_line(session: AsyncSession, user: User, clock: Fa
     await session.commit()
     line = await daystate.yesterday_close_line(session, user, TODAY + timedelta(days=1))
     assert line == "Yesterday (2026-09-03, Thu): nothing logged, not closed"
+
+
+async def test_sick_day_pauses_targets_and_the_card_says_so(
+    session: AsyncSession, user: User, clock: FakeClock
+) -> None:
+    """Brief §3.6: protocol paused, no calorie targets on a sick day."""
+    await seed_meal(session, user.id, TODAY, "09:10", [item("broth", 120, 8, 6, 5)])
+    await repo.set_day_flag(session, user.id, TODAY, DayFlag.sick, True, now=clock.now())
+    await session.commit()
+    state = await DayStateBuilder(clock).day_state(session, user, TODAY)
+    assert "sick" in state.flags
+    assert state.targets == Macros.zero()
+    assert state.totals.macros.kcal == 120  # what was eaten is still counted
+    card = render_day_card(state, "en", "Asia/Dubai")
+    assert "targets paused" in card and "Left:" not in card and "no protocol" not in card
+    assert "на паузе" in render_day_card(state, "ru", "Asia/Dubai")

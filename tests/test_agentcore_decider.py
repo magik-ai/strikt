@@ -194,3 +194,44 @@ def test_sanitize_helpers() -> None:
     assert sanitize_proactive_text("") == ""
     text = sanitize_proactive_text("x" * 400)
     assert len(text) <= MAX_CHARS
+
+
+async def test_weekly_review_keeps_five_lines_while_no_lunch_stays_capped(
+    session: AsyncSession, user: User, fake_llm: FakeLLM, decider: LLMDecider
+) -> None:
+    """Brief §7.1/§7.5: the Sunday review is "the week in five lines" plus a pattern and an
+    instruction; the generic 4-line cap must not eat the instruction."""
+    review = (
+        "Неделя: 1 980 ккал в среднем, белок 192 г.\n"
+        "Клетчатка 24 г — ниже цели 30.\n"
+        "Тренировки: 3 из 3. Отбой в срок 4 ночи из 7.\n"
+        "Паттерн: обе субботы — одна еда до вечера, потом 2 600.\n"
+        "Задача недели: обед до 14:00 в субботу, замер талии в четверг."
+    )
+    fake_llm.queue(FakeLLM.json_result({"send": True, "text": review, "reason": "sunday"}))
+    decision = await decider.decide(session, user, fire("weekly_review"), ladder(1), None)
+    assert decision.text == review  # all five lines survive
+    fake_llm.queue(FakeLLM.json_result({"send": True, "text": review, "reason": "x"}))
+    capped = await decider.decide(session, user, fire("no_lunch"), ladder(1), None)
+    assert len(capped.text.split("\n")) == 4
+    assert sanitize_proactive_text("x" * 500, "weekly_review") == "x" * 500
+    assert len(sanitize_proactive_text("x" * 800, "weekly_review")) <= 700
+
+
+async def test_truncated_decision_is_reported_as_truncated(
+    session: AsyncSession, user: User, fake_llm: FakeLLM, decider: LLMDecider, settings: Settings
+) -> None:
+    from strikt.agent.client import STOP_MAX_TOKENS, LLMResult
+
+    fake_llm.queue(
+        LLMResult(
+            content=[
+                {"type": "thinking", "thinking": "…"},
+                {"type": "text", "text": '{"send": true, "text": "14:10. Ничего не за'},
+            ],
+            stop_reason=STOP_MAX_TOKENS,
+        )
+    )
+    decision = await decider.decide(session, user, fire(), ladder(2), None)
+    assert decision.send is False and decision.reason == "truncated"
+    assert settings.max_tokens_proactive >= 4096  # the cap only bounds thinking

@@ -175,7 +175,7 @@ async def test_history_is_limited_alternating_and_cache_marked(
     session: AsyncSession, user: User, clock: FakeClock, settings: Settings, registry: Registry
 ) -> None:
     base = NOW - timedelta(hours=5)
-    for i in range(34):  # ends on an assistant turn: the normal case
+    for i in range(46):  # ends on an assistant turn: the normal case
         role = TurnRole.user if i % 2 == 0 else TurnRole.assistant
         await repo.add_turn(
             session,
@@ -191,7 +191,7 @@ async def test_history_is_limited_alternating_and_cache_marked(
     )
     history = messages[:-1]
     texts = [m["content"][0]["text"] for m in history]
-    assert texts == [f"turn {i}" for i in range(4, 34)]  # the 30 most recent, oldest first
+    assert texts == [f"turn {i}" for i in range(16, 46)]  # 30 rows at a 16-row hysteresis step
     assert history[0]["role"] == "user"
     roles = [m["role"] for m in messages]
     assert all(a != b for a, b in pairwise(roles))
@@ -328,3 +328,55 @@ async def test_context_shows_yesterday_and_summaries(
     ctx = messages[-1]["content"][0]["text"]
     assert "<yesterday>" in ctx and "1910 / 198 P" in ctx
     assert "<summaries>" in ctx and "avg 1950 kcal" in ctx
+
+
+async def test_history_prefix_is_stable_across_turns_hysteresis(
+    session: AsyncSession, user: User, clock: FakeClock, settings: Settings, registry: Registry
+) -> None:
+    """Past ``context_max_turns`` a plain sliding window would move ``messages[0]`` every turn and
+    the history cache entry would be written but never read; the window start must only move
+    every ``HISTORY_SLACK`` rows."""
+    from strikt.agent.context import HISTORY_SLACK, history_messages, history_window
+
+    assert history_window(20, 30) == 20
+    assert history_window(30, 30) == 30
+    assert history_window(31, 30) == 31  # under the slack: keep everything
+    assert history_window(45, 30) == 45
+    assert history_window(46, 30) == 30  # one step: drop the oldest 16
+    assert history_window(61, 30) == 45
+    assert history_window(62, 30) == 30
+    base = NOW - timedelta(hours=5)
+    for i in range(50):
+        role = TurnRole.user if i % 2 == 0 else TurnRole.assistant
+        await repo.add_turn(
+            session,
+            user.id,
+            role=role,
+            content=[{"type": "text", "text": f"turn {i}"}],
+            now=base + timedelta(minutes=i),
+        )
+    await session.commit()
+    settings.context_max_turns = 30
+    first, _ = await history_messages(session, user, settings)
+    for i in (50, 51):
+        await repo.add_turn(
+            session,
+            user.id,
+            role=TurnRole.user if i % 2 == 0 else TurnRole.assistant,
+            content=[{"type": "text", "text": f"turn {i}"}],
+            now=base + timedelta(minutes=i),
+        )
+    await session.commit()
+    second, _ = await history_messages(session, user, settings)
+    assert len(first) == 34 and len(second) == 36
+    assert second[: len(first)] == first  # byte-stable prefix: the cache entry is read
+    assert first[0]["content"][0]["text"] == "turn 16"
+    assert HISTORY_SLACK == 16
+
+
+def test_estimate_tokens_counts_cyrillic_denser() -> None:
+    from strikt.agent.context import estimate_tokens
+
+    assert estimate_tokens("a" * 400) == 100
+    assert estimate_tokens("я" * 400) == 160  # 2.5 chars/token, not 4
+    assert estimate_tokens({"text": "яя"}) >= 3

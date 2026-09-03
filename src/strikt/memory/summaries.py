@@ -307,6 +307,11 @@ async def _call(
     if result.refused:
         log.warning("summary_refused", user_id=user_id, kind=kind.value)
         return None
+    if result.truncated:
+        log.warning(
+            "summary_truncated", user_id=user_id, kind=kind.value, stop_reason=result.stop_reason
+        )
+        return None
     try:
         payload = result.json()
         parsed = SummaryOutput.model_validate(payload)

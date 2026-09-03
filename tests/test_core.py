@@ -182,3 +182,71 @@ async def test_fake_messenger_records_and_splits() -> None:
     assert await m.pin(5, mid) and await m.delete(5, mid) and not await m.delete(5, mid)
     long_id = await m.send(5, "\n".join(["x" * 100] * 60))
     assert long_id > mid and len(m.texts(5)) >= 3
+
+
+def test_coaching_day_rolls_over_after_bedtime_grace() -> None:
+    from strikt.core.clock import coaching_day, day_rollover
+
+    # default profile: bed 00:30 → rollover never before 03:00
+    assert day_rollover(time(0, 30)) == time(3, 0)
+    assert day_rollover(time(23, 45)) == time(3, 0)  # bedtime before midnight: floor at 03:00
+    assert day_rollover(time(4, 0)) == time(5, 0)  # 04:00 + 1 h
+    assert day_rollover(time(5, 30)) == time(6, 0)  # capped
+    assert day_rollover(None) == time(3, 0)
+    assert day_rollover(time(0, 30), wake_time=time(2, 30)) == time.min  # shift worker
+    ten_past_midnight = datetime(2026, 9, 3, 0, 10)
+    assert coaching_day(ten_past_midnight, time(0, 30)) == date(2026, 9, 2)
+    assert coaching_day(datetime(2026, 9, 3, 3, 0), time(0, 30)) == date(2026, 9, 3)
+    assert coaching_day(datetime(2026, 9, 3, 12, 0), time(0, 30)) == date(2026, 9, 3)
+    assert coaching_day(ten_past_midnight, time(0, 30), time(2, 0)) == date(2026, 9, 3)
+
+
+def test_cost_includes_web_searches_and_one_hour_cache_writes() -> None:
+    from strikt.agent.usage import usage_from_message
+    from strikt.config import DEFAULT_PRICES
+
+    price = DEFAULT_PRICES["claude-sonnet-5"]
+    searches = LLMUsage(input_tokens=1500, output_tokens=600, web_search_requests=5)
+    tokens_only = (1500 * 2.0 + 600 * 10.0) / 1_000_000
+    assert compute_cost(price, searches) == pytest.approx(tokens_only + 5 * 10.0 / 1000)
+    # 1h writes are priced at the 1h rate, the rest of the writes at the 5m rate
+    writes = LLMUsage(cache_write_tokens=100_000, cache_write_1h_tokens=40_000)
+    assert compute_cost(price, writes) == pytest.approx((60_000 * 2.5 + 40_000 * 4.0) / 1e6)
+    old_price = ModelPrice(input=2.0, output=10.0, cache_read=0.2, cache_write=2.5)
+    assert compute_cost(old_price, writes) == pytest.approx(100_000 * 2.5 / 1e6)
+    assert (searches + writes).web_search_requests == 5
+
+    from anthropic.types import Message, Usage
+
+    message = Message.model_validate(
+        {
+            "id": "msg_1",
+            "type": "message",
+            "role": "assistant",
+            "model": "claude-sonnet-5",
+            "content": [{"type": "text", "text": "ok"}],
+            "stop_reason": "end_turn",
+            "stop_sequence": None,
+            "usage": {
+                "input_tokens": 10,
+                "output_tokens": 20,
+                "cache_read_input_tokens": 30,
+                "cache_creation_input_tokens": 40,
+                "cache_creation": {
+                    "ephemeral_5m_input_tokens": 15,
+                    "ephemeral_1h_input_tokens": 25,
+                },
+                "server_tool_use": {"web_search_requests": 3, "web_fetch_requests": 2},
+            },
+        }
+    )
+    assert isinstance(message.usage, Usage)
+    usage = usage_from_message(message)
+    assert usage == LLMUsage(
+        input_tokens=10,
+        output_tokens=20,
+        cache_read_tokens=30,
+        cache_write_tokens=40,
+        cache_write_1h_tokens=25,
+        web_search_requests=3,
+    )

@@ -17,14 +17,35 @@ _SECRET_MARKERS = ("token", "secret", "api_key", "apikey", "password", "authoriz
 _NOISY_LOGGERS = ("httpx2", "httpx", "httpcore", "aiogram.event", "apscheduler", "asyncio")
 
 
+def _is_secret_key(key: object) -> bool:
+    lowered = str(key).lower()
+    return any(marker in lowered for marker in _SECRET_MARKERS)
+
+
+def _redact(value: Any, depth: int = 0) -> Any:
+    """Recurse into dicts and lists (a logged request body, a headers mapping)."""
+    if depth > 6:
+        return value
+    if isinstance(value, dict):
+        return {
+            k: ("***" if _is_secret_key(k) and v else _redact(v, depth + 1))
+            for k, v in value.items()
+        }
+    if isinstance(value, list | tuple):
+        return type(value)(_redact(v, depth + 1) for v in value)
+    return value
+
+
 def redact_secrets(
     _logger: object, _method: str, event_dict: MutableMapping[str, Any]
 ) -> MutableMapping[str, Any]:
-    """Mask any key that looks like a credential. Never logs a token, whatever the caller did."""
+    """Mask any key that looks like a credential, at any depth. Never logs a token, whatever the
+    caller did."""
     for key in list(event_dict):
-        lowered = key.lower()
-        if any(marker in lowered for marker in _SECRET_MARKERS) and event_dict[key]:
+        if _is_secret_key(key) and event_dict[key]:
             event_dict[key] = "***"
+        else:
+            event_dict[key] = _redact(event_dict[key])
     return event_dict
 
 

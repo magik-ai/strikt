@@ -24,7 +24,7 @@ from strikt.core.clock import Clock, ensure_utc, in_quiet_hours, local_day_bound
 from strikt.db import repo
 from strikt.db.models import CoachingIntensity, ProactiveSend, Profile, User
 from strikt.proactive import stats
-from strikt.proactive.types import LadderState, TriggerFire, TriggerName
+from strikt.proactive.types import USER_REQUESTED, LadderState, TriggerFire, TriggerName
 
 MAX_STEP = 4
 COOLDOWN_CLEAN_DAYS = 3
@@ -127,7 +127,9 @@ async def compute_ladder(
     if window is None:
         window = await inspect_window(session, user.id, fire.window_key, now=now)
     day_start, _ = local_day_bounds(local_now.date(), tz)
-    sends_today = await repo.count_sends_today(session, user.id, since=day_start)
+    sends_today = await repo.count_sends_today(
+        session, user.id, since=day_start, exclude_triggers=sorted(USER_REQUESTED)
+    )
     intensity = effective_intensity(profile, now)
     rate = await stats.response_rate(session, user, fire.name, now=now)
     if clean_streak_days is None:

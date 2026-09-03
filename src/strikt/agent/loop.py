@@ -233,9 +233,7 @@ def parse_trace(name: str, result: ToolResult) -> ToolTrace:
             candidates.append(nested.get("date"))
     dates = frozenset(d for d in (_as_date(c) for c in candidates) if d is not None)
     meal_id = payload.get("meal_id")
-    return ToolTrace(
-        name=name, dates=dates, meal_id=meal_id if isinstance(meal_id, int) else None
-    )
+    return ToolTrace(name=name, dates=dates, meal_id=meal_id if isinstance(meal_id, int) else None)
 
 
 def touched_dates(traces: Sequence[ToolTrace], tools: frozenset[str], default: date) -> set[date]:
@@ -266,7 +264,9 @@ async def execute_tools(
             block = _tool_result_block(use, f"{use.name} failed: {type(exc).__name__}: {exc}", True)
             return block, ToolTrace(name=use.name, is_error=True)
         log.info("tool_ran", tool=use.name, is_error=result.is_error, user_id=ctx.user_id)
-        return _tool_result_block(use, result.content, result.is_error), parse_trace(use.name, result)
+        return _tool_result_block(use, result.content, result.is_error), parse_trace(
+            use.name, result
+        )
 
     if deps.parallel_tools and len(uses) > 1:
         pairs = list(await asyncio.gather(*(one(use) for use in uses)))
@@ -393,7 +393,9 @@ async def _model_loop(
             if uses:
                 # Cut off while writing a tool call. Re-sending the half tool_use without a
                 # tool_result is a 400; the API's guidance is to retry with a higher cap.
-                log.warning("turn_truncated_in_tool_use", user_id=user.id, tools=[u.name for u in uses])
+                log.warning(
+                    "turn_truncated_in_tool_use", user_id=user.id, tools=[u.name for u in uses]
+                )
                 base = int(getattr(deps.settings, "max_tokens_turn", 8192))
                 max_tokens = base * TRUNCATED_TOOL_RETRY_FACTOR
                 continue

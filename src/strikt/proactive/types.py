@@ -54,6 +54,11 @@ TriggerName = Literal[
 ]
 
 
+#: Triggers the user asked for (their own reminders): they bypass ``proactive_enabled``, quiet
+#: hours and the daily cap, and they do not consume the cap either.
+USER_REQUESTED: frozenset[TriggerName] = frozenset({"reminder_due"})
+
+
 @dataclass(frozen=True, kw_only=True)
 class TriggerFire:
     """One decision request for the decider.

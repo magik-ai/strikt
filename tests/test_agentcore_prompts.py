@@ -120,3 +120,15 @@ def test_summarize_and_import_prompts() -> None:
     for row in ("meal |", "workout |", "sleep |", "measurement |", "lab |", "note |", "protocol |"):
         assert row in importer
     assert "source=imported" in importer
+
+
+def test_coach_prompt_dates_event_notes_and_the_night_boundary() -> None:
+    """Brief §7.1 C: the morning-of confirmation only fires for notes whose ``expires_at`` falls on
+    the event day, so the prompt must say so; brief §3.3: the day ends with the night."""
+    from strikt.agent.tools.schemas import WriteNoteInput
+
+    coach = load_prompt("coach")
+    assert "`expires_at`" in coach and "end of the event's day" in coach
+    assert "after midnight" in coach and "bedtime + 1 h" in coach
+    field = WriteNoteInput.model_fields["expires_at"]
+    assert field.description is not None and "planned event" in field.description

@@ -130,7 +130,8 @@ def render_day_card(state: DayState, lang: str | None, tz: str = "UTC") -> str:
     totals = state.totals.macros
     targets = state.targets
     if targets.kcal <= 0:
-        lines.append(escape(t(lang, "card.no_protocol")))
+        key = "card.paused" if "sick" in state.flags else "card.no_protocol"
+        lines.append(escape(t(lang, key)))
     lines.append(_macro_line("kcal", totals.kcal, targets.kcal))
     lines.append(_macro_line("P", totals.protein_g, targets.protein_g, "g"))
     lines.append(_macro_line("C", totals.carbs_g, targets.carbs_g, "g"))

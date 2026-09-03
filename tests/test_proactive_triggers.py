@@ -603,6 +603,9 @@ def test_same_meal_streak_event_planned_post_travel() -> None:
     with_plan = t.check_event_planned(make_state(plan={"lunch": "ramen"}), make_ctx("08:20"))
     assert with_plan is not None and with_plan.facts["plan"] == {"lunch": "ramen"}
     assert t.check_event_planned(make_state(), make_ctx("08:20")) is None
+    # "Date night Saturday" stored as the coach prompt prescribes (set_day_flag planned_indulgence)
+    flagged = t.check_event_planned(make_state(flags=["planned_indulgence"]), make_ctx("08:20"))
+    assert flagged is not None and flagged.facts["planned_indulgence"] is True
 
     travel = (
         _day(TODAY - timedelta(days=3), 2200, flags=("travel",)),
@@ -707,3 +710,27 @@ def test_reminder_due_from_payload_and_from_pending_rows() -> None:
 )
 def test_trigger_classes(name: TriggerName, klass: str) -> None:
     assert t.TRIGGER_CLASS[name] == klass
+
+
+def test_checkin_deadlines_drive_the_silence_preconditions() -> None:
+    profile = make_profile(checkin_times=["13:00", "20:00"])
+    assert t.checkin_deadlines(profile) == {"no_lunch": time(13, 0), "no_dinner": time(20, 0)}
+    assert t.checkin_deadlines(make_profile()) == {}
+    assert t.checkin_deadlines(None) == {}
+    empty = make_state()
+    # default: nothing before 15:00; with a 13:00 check-in the lunch ping is due at 13:00
+    assert t.check_no_lunch(empty, make_ctx("13:05")) is None
+    assert t.check_no_lunch(empty, make_ctx("13:05", profile=profile)) is not None
+    assert t.check_no_lunch(empty, make_ctx("12:30", profile=profile)) is None
+    assert t.check_no_dinner(empty, make_ctx("20:05", profile=profile)) is not None
+    assert t.check_no_dinner(empty, make_ctx("20:05")) is None
+
+
+def test_sick_and_travel_days_pause_the_meal_pressure() -> None:
+    for flag in ("sick", "travel"):
+        flagged = make_state(flags=[flag])
+        assert t.check_no_lunch(flagged, make_ctx("15:05")) is None
+        assert t.check_protein_check(flagged, make_ctx("18:05")) is None
+        assert t.check_fiber_check(flagged, make_ctx("13:35")) is None
+        assert t.check_no_first_meal(flagged, make_ctx("11:05")) is None
+    assert t.check_no_lunch(make_state(), make_ctx("15:05")) is not None
