@@ -41,7 +41,7 @@ async def test_first_refresh_sends_pins_and_stores(
     assert message_id is not None
     assert [m.message_id for m in messenger.sent] == [message_id]
     assert messenger.sent[0].silent is True
-    assert messenger.sent[0].keyboard is not None  # recalc / close day
+    assert messenger.sent[0].keyboard is None  # the pinned card is a readout, not a panel
     assert messenger.pins == [(user.chat_id, message_id)]
     assert await _card_id(session, user) == message_id
     assert "Сегодня" in messenger.sent[0].text
@@ -179,6 +179,6 @@ async def test_close_appends_verdict_and_drops_buttons(
 async def test_without_actions_no_keyboard(
     session: AsyncSession, user: User, messenger: FakeMessenger, clock: FakeClock
 ) -> None:
-    card = DayCard(messenger, clock, with_actions=False)
+    card = DayCard(messenger, clock)
     await card.refresh(session, user, _state())
     assert messenger.sent[0].keyboard is None

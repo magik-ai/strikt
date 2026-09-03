@@ -14,7 +14,7 @@ from strikt.core.clock import FakeClock, in_quiet_hours, local_date, local_day_b
 from strikt.db.crypto import TokenCipher, generate_key
 from strikt.events import DayStateChanged, Event, EventBus, WorkoutEvent
 from strikt.telegram.copy import t
-from strikt.telegram.keyboards import forget_confirm, meal_actions, parse_callback, yes_no
+from strikt.telegram.keyboards import forget_confirm, parse_callback, undo_action
 from strikt.telegram.messenger import FakeMessenger
 from strikt.telegram.queue import PerChatQueue
 
@@ -155,22 +155,21 @@ async def test_per_chat_queue_serialises_and_never_drops() -> None:
 
 
 def test_keyboards_and_callbacks() -> None:
-    assert parse_callback("s:12:lunch") is not None and parse_callback("s:12:lunch").slot == "lunch"  # type: ignore[union-attr]
-    assert parse_callback("s:12:brunch") is None
+    """Three keyboards survive: undo, the /forget_me confirmation and the language question.
+    Data from the buttons that were removed parses to None, so an old message goes quiet
+    instead of raising."""
+    assert parse_callback("undo:7").meal_id == 7  # type: ignore[union-attr]
     assert parse_callback("undo:x") is None
     assert parse_callback("forget:yes").answer is True  # type: ignore[union-attr]
-    assert parse_callback("yn:close_day:no").action == "close_day"  # type: ignore[union-attr]
-    assert parse_callback("") is None and parse_callback("recalc").kind == "recalc"  # type: ignore[union-attr]
-    rows = meal_actions(7, "ru", ask_slot=True)
-    assert (
-        len(rows) == 3
-        and rows[0][0].callback_data == "s:7:breakfast"
-        and rows[2][0].text == t("ru", "btn.undo")
-    )
+    assert parse_callback("lang:ru").language == "ru"  # type: ignore[union-attr]
+    assert parse_callback("lang:xx") is None
+    assert parse_callback("") is None
+    for gone in ("s:12:lunch", "recalc", "close", "yn:close_day:no"):
+        assert parse_callback(gone) is None, gone
+    rows = undo_action(7, "ru")
+    assert len(rows) == 1 and len(rows[0]) == 1
+    assert rows[0][0].text == t("ru", "btn.undo") and rows[0][0].callback_data == "undo:7"
     assert forget_confirm("en")[0][0].callback_data == "forget:yes"
-    assert yes_no("close_day", "en")[0][1].callback_data == "yn:close_day:no"
-    with pytest.raises(ValueError, match="action"):
-        yes_no("a:b", "en")
 
 
 async def test_fake_messenger_records_and_splits() -> None:

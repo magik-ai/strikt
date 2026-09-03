@@ -341,36 +341,37 @@ async def test_photo_logs_meal_and_pins_refreshed_card(
     content = fake_llm.calls[0]["messages"][-1]["content"]
     assert [b["type"] for b in content][:2] == ["text", "image"]
     assert content[1]["source"]["media_type"] == "image/jpeg"
-    # the pinned card carries the number, the reply carries the slot picker + undo
+    # the pinned card carries the number, the reply carries one undo button
     assert len(messenger.pins) == 1
     card = next(m for m in messenger.sent if m.silent)
     assert "420" in card.text and "Сегодня" in card.text
     reply = messenger.sent[-1]
     assert reply.text == "Омлет: 420 ккал / 30 Б / 5 У / 30 Ж."
     assert reply.keyboard is not None
-    labels = [b.text for row in reply.keyboard for b in row]
-    slots = [t("ru", f"btn.{slot}") for slot in ("breakfast", "lunch", "dinner", "snack")]
-    assert labels[:4] == slots and t("ru", "btn.undo") in labels
+    assert [b.text for row in reply.keyboard for b in row] == [t("ru", "btn.undo")]
     # the persisted user turn keeps a hash stub, never the bytes
     turns = await repo.last_n_turns(session, user.id, 5)
     assert any("[image: " in str(turn.content) for turn in turns)
 
 
-async def test_callback_slot_updates_meal_and_edits_card(
+async def test_a_dead_callback_is_answered_and_changes_nothing(
     deps: AppDeps, messenger: FakeMessenger, fake_llm: FakeLLM, user: User, session: AsyncSession
 ) -> None:
+    """Messages sent before the buttons were cut still have them. Their data no longer parses,
+    so the tap is answered and dropped instead of raising."""
     log_meal_script(fake_llm)
     await handle_message(deps, photo_msg())
     meal = (await session.scalars(select(Meal))).one()
-    edits_before = len(messenger.edits)
+    edits_before, calls_before = len(messenger.edits), len(fake_llm.calls)
 
     await handle_callback(deps, cb(f"s:{meal.id}:lunch"))
+    await handle_callback(deps, cb("recalc"))
 
     await session.refresh(meal)
-    assert meal.slot == MealSlot.lunch
-    assert messenger.callbacks[-1] == (f"cb-s:{meal.id}:lunch", t("ru", "btn.lunch"))
-    assert len(messenger.edits) == edits_before + 1 and "обед" in messenger.edits[-1][2]
-    assert len(fake_llm.calls) == 2  # no model call for a button
+    assert meal.slot == MealSlot.unknown
+    assert len(messenger.edits) == edits_before
+    assert len(fake_llm.calls) == calls_before
+    assert [c[0] for c in messenger.callbacks[-2:]] == [f"cb-s:{meal.id}:lunch", "cb-recalc"]
 
 
 async def test_callback_undo_soft_deletes_and_refreshes(
@@ -393,19 +394,6 @@ async def test_callback_undo_soft_deletes_and_refreshes(
     assert messenger.callbacks[-1][1] == t("ru", "btn.undo")
     assert "пока ничего не записано" in messenger.edits[-1][2]
     assert seen == ["undo"]
-
-
-async def test_callback_recalc_and_close_run_synthetic_turns(
-    deps: AppDeps, messenger: FakeMessenger, fake_llm: FakeLLM, user: User
-) -> None:
-    fake_llm.queue(FakeLLM.text("Пересчитал: 0 ккал."))
-    await handle_callback(deps, cb("recalc"))
-    assert last_user_text(fake_llm).endswith(t("ru", "synthetic.recalc"))
-    assert messenger.texts(CHAT_ID)[-1] == "Пересчитал: 0 ккал."
-    fake_llm.queue(FakeLLM.text("Закрыт."))
-    await handle_callback(deps, cb("close"))
-    assert last_user_text(fake_llm).endswith(t("ru", "synthetic.close"))
-    assert messenger.callbacks[-1][0] == "cb-close"
 
 
 async def test_malformed_callback_is_answered_and_ignored(
@@ -704,14 +692,14 @@ async def test_callback_is_answered_before_waiting_for_a_busy_chat(
     holder = asyncio.create_task(deps.queue.run(CHAT_ID, long_turn))
     await asyncio.sleep(0)
     assert deps.queue.busy(CHAT_ID)
-    tap = asyncio.create_task(handle_callback(deps, cb(f"s:{meal.id}:lunch")))
+    tap = asyncio.create_task(handle_callback(deps, cb(f"undo:{meal.id}")))
     await asyncio.sleep(0.05)
     assert not tap.done()
-    assert messenger.callbacks[-1] == (f"cb-s:{meal.id}:lunch", None)  # answered while waiting
+    assert messenger.callbacks[-1] == (f"cb-undo:{meal.id}", None)  # answered while waiting
     release.set()
     await asyncio.gather(holder, tap)
     await session.refresh(meal)
-    assert meal.slot == MealSlot.lunch  # the action still ran, in order
+    assert meal.deleted_at is not None  # the action still ran, in order
 
 
 async def test_second_undo_tap_is_a_quiet_no_op(

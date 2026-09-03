@@ -52,11 +52,11 @@ from strikt.agent.verify import STATE_CHANGING_TOOLS, VERIFY_TOOLS, should_verif
 from strikt.core.clock import ensure_utc, to_local
 from strikt.core.types import Button, Outgoing
 from strikt.db import repo
-from strikt.db.models import MealSlot, TurnRole
+from strikt.db.models import TurnRole
 from strikt.events import DayStateChanged, UserReplied
 from strikt.memory.daystate import DayStateBuilder
 from strikt.telegram.copy import resolve_lang, t
-from strikt.telegram.keyboards import day_actions, meal_actions
+from strikt.telegram.keyboards import undo_action
 
 if TYPE_CHECKING:
     from sqlalchemy.ext.asyncio import AsyncSession
@@ -290,25 +290,19 @@ def keyboard_meal_id(traces: Sequence[ToolTrace]) -> int | None:
 async def _keyboard(
     deps: TurnDeps, user: User, traces: Sequence[ToolTrace], state: DayState | None, today: date
 ) -> list[list[Button]] | None:
-    """Slot picker + undo after an unslotted meal, meal actions after a meal change, day actions
-    in the evening while the day is open, else nothing."""
-    lang = user.language
+    """Undo under a meal the coach just touched, nothing anywhere else.
+
+    Recalculating and closing the day used to hang off every evening reply, which put two
+    buttons under sentences that had nothing to do with either - an error message included.
+    Both are ordinary requests: the user says them, the coach does them.
+    """
     meal_id = keyboard_meal_id(traces)
-    if meal_id is not None:
-        meal = await repo.get_meal(deps.session, user.id, meal_id)
-        if meal is not None:
-            logged = any(tr.name == "log_meal" and tr.meal_id == meal_id for tr in traces)
-            ask_slot = logged and meal.slot == MealSlot.unknown
-            return meal_actions(meal.id, lang, ask_slot=ask_slot)
-    local_now = to_local(deps.clock.now(), user.timezone or "UTC")
-    if local_now.hour < EVENING_HOUR:
+    if meal_id is None:
         return None
-    if state is not None:
-        closed = state.closed
-    else:
-        day = await repo.get_day(deps.session, user.id, today)
-        closed = bool(day is not None and day.closed_at is not None)
-    return None if closed else day_actions(lang)
+    meal = await repo.get_meal(deps.session, user.id, meal_id)
+    if meal is None:
+        return None
+    return undo_action(meal.id, user.language)
 
 
 # --------------------------------------------------------------------------------- the loop

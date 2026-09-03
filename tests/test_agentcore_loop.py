@@ -229,14 +229,14 @@ async def test_tool_round_trip_publishes_day_state_changed_and_picks_slot_keyboa
         and "log_meal" in changed[0].reason
     )
     keyboard = result.outgoings[0].keyboard
-    assert keyboard is not None and len(keyboard) == 3
-    assert keyboard[0][0].text == "Завтрак" and keyboard[0][0].callback_data is not None
-    assert keyboard[0][0].callback_data.startswith("s:")
-    assert [b.text for b in keyboard[2]] == [t("ru", "btn.undo"), t("ru", "btn.recalc")]
+    # one button, whatever the slot: the slot itself is corrected in words
+    assert keyboard is not None and len(keyboard) == 1 and len(keyboard[0]) == 1
+    assert keyboard[0][0].text == t("ru", "btn.undo")
+    assert keyboard[0][0].callback_data == "undo:1"
     assert "Итого: 620 ккал" in result.outgoings[0].text
 
 
-async def test_slotted_meal_gets_actions_without_slot_picker(
+async def test_a_logged_meal_gets_exactly_one_button(
     session: AsyncSession,
     user: User,
     fake_llm: FakeLLM,
@@ -254,7 +254,7 @@ async def test_slotted_meal_gets_actions_without_slot_picker(
     )
     keyboard = result.outgoings[0].keyboard
     assert keyboard is not None and len(keyboard) == 1
-    assert [b.text for b in keyboard[0]] == [t("ru", "btn.undo"), t("ru", "btn.recalc")]
+    assert [b.text for b in keyboard[0]] == [t("ru", "btn.undo")]
 
 
 async def test_parallel_tool_calls_return_in_one_message_with_is_error(
@@ -422,7 +422,7 @@ async def test_empty_anthropic_balance_names_the_balance_not_the_model(
     assert result.assistant_turn_id is None
 
 
-async def test_evening_open_day_gets_day_actions(
+async def test_evening_reply_without_a_meal_carries_no_buttons(
     session: AsyncSession,
     user: User,
     fake_llm: FakeLLM,
@@ -430,14 +430,14 @@ async def test_evening_open_day_gets_day_actions(
     clock: FakeClock,
     settings: Settings,
 ) -> None:
+    """Recalculate and Close day used to hang off every evening reply, which is how two buttons
+    ended up under an error message. Both are ordinary sentences now."""
     clock.set(datetime(2026, 9, 3, 17, 5, tzinfo=UTC))  # 21:05 in Dubai
     fake_llm.queue(FakeLLM.text("Ужин?"))
     result = await run_turn(
         make_deps(session, user, fake_llm, test_registry, clock, settings), incoming(user, "привет")
     )
-    keyboard = result.outgoings[0].keyboard
-    assert keyboard is not None
-    assert [b.text for b in keyboard[0]] == ["Пересчитать", "Закрыть день"]
+    assert result.outgoings[0].keyboard is None
 
 
 async def test_images_go_to_the_model_and_are_stubbed_in_history(
@@ -761,7 +761,7 @@ async def test_logged_meal_button_targets_the_meal_this_turn_created(
         make_deps(session, user, fake_llm, dated_registry, clock, settings), incoming(user, "яйца")
     )
     keyboard = result.outgoings[0].keyboard
-    assert keyboard is not None and len(keyboard) == 3  # slot picker + actions
+    assert keyboard is not None and len(keyboard) == 1
     meals = await repo.list_meals_for_date(session, user.id, today)
     new_meal = next(m for m in meals if m.items[0].name == "eggs")
     assert keyboard[-1][0].callback_data == f"undo:{new_meal.id}"
@@ -804,7 +804,7 @@ async def test_max_tokens_inside_a_tool_call_retries_with_a_larger_cap(
     )
 
 
-async def test_evening_closed_day_without_tools_gets_no_day_actions(
+async def test_evening_closed_day_without_tools_gets_no_buttons(
     session: AsyncSession,
     user: User,
     fake_llm: FakeLLM,

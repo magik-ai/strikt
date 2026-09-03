@@ -115,7 +115,7 @@ targets are zero: the bars are empty, there is no `Left` line and the card says
   edited only if it already has a card) **or on `/today`**, which always sends a fresh copy, pins it
   and unpins the old one.
 - **Closed with the verdict line.** `close_day` marks the day closed; the title gets `· closed`,
-  the `Left` line goes, `Verdict:` is appended, and the card's buttons are removed. The brand mark
+  the `Left` line goes and `Verdict:` is appended. The brand mark
   does the same thing: four strokes for the meals, the red strike when the day is closed.
 - **Under 1,000 characters.** Meals are dropped from the end until the card fits; the tests hold
   it under the limit with twelve meals.
@@ -166,7 +166,7 @@ Total: 1 240 kcal / 118 P / 44 C / 61 F / 12 fiber
 Left: 760 kcal · 92 P · 31 C · 44 F · 18 fiber
 ```
 
-**Recalculate** (button or any "doesn't add up"): every item with its numbers, the line-by-line
+**Recalculate** (any "doesn't add up"): every item with its numbers, the line-by-line
 sum, the 4/4/9 cross-check, the corrected total, the new `Left`. Never a reassurance.
 
 **Menu ranking** (a menu or a cart being decided → no tool, no log):
@@ -239,24 +239,29 @@ that was not verified.
 
 ## 3. Buttons and keyboards
 
-Inline buttons appear only where they remove typing. Callback data is at most 64 bytes.
+Three keyboards, and a reason for each. A button exists only where it removes typing that
+conversation cannot: everything else is said in words, because this is a chat and not a control
+panel. Callback data is at most 64 bytes.
 
 | When shown | Buttons | Callback data | What happens | Model call |
 |---|---|---|---|---|
-| Reply after a turn whose `log_meal` left the slot unknown | `Breakfast` `Lunch` / `Dinner` `Snack` (2 rows) + the row below | `s:<meal_id>:<slot>` | `update_meal` sets the slot, card refreshed, toast with the slot name | no |
-| Reply after a turn that logged a meal (`log_meal`) or, failing that, corrected one (`update_meal`); the buttons target that meal, not whatever meal is last. Nothing after `delete_meal` or `undo_last` alone | `Undo` `Recalculate` | `undo:<meal_id>`, `recalc` | Undo: `undo_last` if it is still the latest meal, else `delete_meal`; card refreshed; toast `Undo` (a second tap: `Already removed`). Recalculate: see below | Undo no; Recalculate yes |
-| The pinned card while the day is open; replies after 20:00 local while open, when the turn logged or corrected no meal | `Recalculate` `Close day` | `recalc`, `close` | A synthetic user message (`Recalculate the day.` / `Close the day.`) runs through the agent so the Reflexion check applies; `close` ends in `close_day` and the verdict on the card | yes |
+| The first message a new user gets, before any language is known | every language in its own name, three to a row, Telegram's guess first | `lang:<code>` | the language is stored, then the welcome and the key walkthrough follow in it | no |
+| Reply after a turn that logged a meal (`log_meal`) or, failing that, corrected one (`update_meal`); it targets that meal, not whatever meal is last. Nothing after `delete_meal` or `undo_last` alone | `Undo` | `undo:<meal_id>` | `undo_last` if it is still the latest meal, else `delete_meal`; card refreshed; toast `Undo` (a second tap: `Already removed`) | no |
 | `/forget_me` | `Yes, delete everything` / `Cancel` | `forget:yes`, `forget:no` | Yes: card unpinned, every row deleted in one transaction, jobs removed, one line back. No: `Kept everything.` | no |
-| Confirmations the agent asks for (defined, not wired to a flow yet) | `Yes` `No` | `yn:<action>:yes\|no` | The answer is handed to the agent as text `Yes (<action>)` | yes |
 
-Russian labels: `Завтрак` `Обед` `Ужин` `Перекус` · `Убрать` (not «Отменить»: the button takes a
-meal back) · `Пересчитать` · `Закрыть день` · `Да, удалить всё` / `Отмена`.
+Russian labels: `Убрать` (not «Отменить»: the button takes a meal back) · `Да, удалить всё` /
+`Отмена`.
 
-Nothing else has a button. Connect links (WHOOP, Withings) are sent as plain text in the reply.
+What used to have buttons and now does not: the meal slot (the coach names the slot it guessed
+and one word corrects it), recalculating, closing the day, and the yes/no confirmations the agent
+asks for. The pinned card carries no buttons at all: it is a readout. Connect links (WHOOP,
+Withings) are sent as plain text in the reply.
+
 Malformed or foreign callback data, and any tap outside a private chat, is answered silently and
-ignored. A tap while the chat is still busy with an earlier message is acknowledged at once
-(Telegram expires an unanswered tap in well under a minute) and the action runs in order
-afterwards; the card refresh confirms it.
+ignored - which is also what happens to a tap on a button from before this change. A tap while
+the chat is still busy with an earlier message is acknowledged at once (Telegram expires an
+unanswered tap in well under a minute) and the action runs in order afterwards; the card refresh
+confirms it.
 
 ## 4. Slash commands
 

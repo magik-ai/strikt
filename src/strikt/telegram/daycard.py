@@ -21,7 +21,6 @@ import structlog
 
 from strikt.core.clock import Clock, local_date
 from strikt.db import repo
-from strikt.telegram.keyboards import day_actions
 from strikt.telegram.render import render_day_card
 
 if TYPE_CHECKING:
@@ -37,10 +36,9 @@ log = structlog.get_logger(__name__)
 
 
 class DayCard:
-    def __init__(self, messenger: Messenger, clock: Clock, *, with_actions: bool = True) -> None:
+    def __init__(self, messenger: Messenger, clock: Clock) -> None:
         self._messenger = messenger
         self._clock = clock
-        self._with_actions = with_actions
         # (chat_id, message_id) → last text we put there. Lets us skip no-op edits and tell
         # "not modified" from "gone" (the Messenger protocol collapses both into False).
         self._last_text: dict[tuple[int, int], str] = {}
@@ -50,7 +48,7 @@ class DayCard:
     async def refresh(self, session: AsyncSession, user: User, state: DayState) -> int | None:
         """Edit the day's card in place, or post one for today. Returns the card's message id."""
         text = self._render(user, state)
-        keyboard = self._keyboard(user, state)
+        keyboard = None
         day = await repo.get_day(session, user.id, state.date)
         message_id = day.card_message_id if day is not None else None
         chat_id = user.chat_id
@@ -79,7 +77,7 @@ class DayCard:
     async def repost(self, session: AsyncSession, user: User, state: DayState) -> int:
         """``/today``: send a new card, pin it, unpin the old one, store the id."""
         text = self._render(user, state)
-        keyboard = self._keyboard(user, state)
+        keyboard = None
         day = await repo.get_day(session, user.id, state.date)
         old_id = day.card_message_id if day is not None else None
         return await self._post(session, user, state.date, text, keyboard, unpin=old_id)
@@ -95,11 +93,6 @@ class DayCard:
 
     def _render(self, user: User, state: DayState) -> str:
         return render_day_card(state, user.language, user.timezone)
-
-    def _keyboard(self, user: User, state: DayState) -> list[list[Button]] | None:
-        if not self._with_actions or state.closed:
-            return None
-        return day_actions(user.language)
 
     async def _post(
         self,

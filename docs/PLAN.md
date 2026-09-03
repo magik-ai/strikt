@@ -13,7 +13,7 @@ Bot runtime model: `claude-sonnet-5`. Voice transcription: OpenAI (best model pe
 
 - One window, zero settings. No menus, no `/settings`. Everything by message. The only slash commands
   are `/start` (with optional invite code), `/today` (re-post the card), `/forget_me` (delete everything).
-- Act, then confirm. Food arrives → log → show totals → offer buttons to correct.
+- Act, then confirm. Food arrives → log → show totals → say what can be corrected, in words.
 - The number is the product. Every food message: per-item kcal/P/C/F(+fiber), day total, remaining, one
   line of advice at most.
 - Infinite memory: the agent must never say it lacks context that exists in the DB.
@@ -260,7 +260,10 @@ The text is always model-written; never a template.
   4096, the card renderer.
 - `daycard.py`: one pinned message per day; `refresh(user)` edits in place (ignores "message is not
   modified"); re-posts and re-pins when the message is gone or older than today; `/today` re-posts.
-- `keyboards.py`: inline keyboards only where they remove typing: slot picker (breakfast/lunch/dinner/
+- `keyboards.py`: three keyboards, and nothing else: the language question, `Undo` on a meal just
+  logged, and the `/forget_me` confirmation. The slot picker, `Recalculate`, `Close day` and the
+  yes/no pair were removed - fewer buttons, more dialogue (UX.md §3). Historical shape: slot picker
+  (breakfast/lunch/dinner/
   snack) when slot unknown; `undo`; `recalculate`; `close day`; `yes/no` for confirmations; callback
   data `s:<meal_id>:<slot>`, `undo:<meal_id>`, `recalc`, `close`, `forget:yes`.
 - `messenger.py`: `Messenger` protocol (send, edit, pin, delete, chat_action) with an aiogram

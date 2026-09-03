@@ -1,7 +1,12 @@
-"""Inline keyboards only where they remove typing (PLAN §7) and their callback data.
+"""The three inline keyboards that survive, and their callback data.
 
-Callback data formats (≤ 64 bytes): ``s:<meal_id>:<slot>``, ``undo:<meal_id>``, ``recalc``,
-``close``, ``forget:yes`` / ``forget:no``, ``yn:<action>:yes|no``, ``lang:ru`` / ``lang:en``.
+A button is here only when it removes typing that conversation cannot: the language question
+(before any language is known), the /forget_me confirmation (destructive, needs an explicit yes)
+and undo on a meal just logged. Everything else - the slot of a meal, recalculating, closing the
+day, yes or no to the coach - is said in words, because this is a chat and not a control panel.
+
+Callback data formats (≤ 64 bytes): ``undo:<meal_id>``, ``forget:yes`` / ``forget:no``,
+``lang:<code>``.
 """
 
 from __future__ import annotations
@@ -12,19 +17,16 @@ from typing import Literal
 from strikt.core.types import Button
 from strikt.telegram.copy import LANGUAGES, NATIVE_NAMES, t
 
-CallbackKind = Literal["slot", "undo", "recalc", "close", "forget", "yesno", "lang"]
+CallbackKind = Literal["undo", "forget", "lang"]
 #: How many language buttons fit a phone row without the text truncating.
 LANGUAGES_PER_ROW = 3
-SLOTS: tuple[str, ...] = ("breakfast", "lunch", "dinner", "snack")
 
 
 @dataclass(frozen=True)
 class Callback:
     kind: CallbackKind
     meal_id: int | None = None
-    slot: str | None = None
     answer: bool | None = None
-    action: str | None = None
     language: str | None = None
 
 
@@ -35,18 +37,10 @@ def parse_callback(data: str | None) -> Callback | None:
     parts = data.split(":")
     try:
         match parts:
-            case ["s", meal_id, slot] if slot in SLOTS:
-                return Callback("slot", meal_id=int(meal_id), slot=slot)
             case ["undo", meal_id]:
                 return Callback("undo", meal_id=int(meal_id))
-            case ["recalc"]:
-                return Callback("recalc")
-            case ["close"]:
-                return Callback("close")
             case ["forget", answer] if answer in {"yes", "no"}:
                 return Callback("forget", answer=answer == "yes")
-            case ["yn", action, answer] if answer in {"yes", "no"} and action:
-                return Callback("yesno", action=action, answer=answer == "yes")
             case ["lang", language] if language in LANGUAGES:
                 return Callback("lang", language=language)
     except ValueError:
@@ -54,46 +48,14 @@ def parse_callback(data: str | None) -> Callback | None:
     return None
 
 
-def slot_data(meal_id: int, slot: str) -> str:
-    return f"s:{meal_id}:{slot}"
-
-
 def undo_data(meal_id: int) -> str:
     return f"undo:{meal_id}"
 
 
-def slot_picker(meal_id: int, lang: str | None) -> list[list[Button]]:
-    return [
-        [
-            Button(text=t(lang, "btn.breakfast"), callback_data=slot_data(meal_id, "breakfast")),
-            Button(text=t(lang, "btn.lunch"), callback_data=slot_data(meal_id, "lunch")),
-        ],
-        [
-            Button(text=t(lang, "btn.dinner"), callback_data=slot_data(meal_id, "dinner")),
-            Button(text=t(lang, "btn.snack"), callback_data=slot_data(meal_id, "snack")),
-        ],
-    ]
-
-
-def meal_actions(meal_id: int, lang: str | None, *, ask_slot: bool) -> list[list[Button]]:
-    """After a food log: slot picker when the slot is unknown, plus Undo / Recalculate."""
-    rows = slot_picker(meal_id, lang) if ask_slot else []
-    rows.append(
-        [
-            Button(text=t(lang, "btn.undo"), callback_data=undo_data(meal_id)),
-            Button(text=t(lang, "btn.recalc"), callback_data="recalc"),
-        ]
-    )
-    return rows
-
-
-def day_actions(lang: str | None) -> list[list[Button]]:
-    return [
-        [
-            Button(text=t(lang, "btn.recalc"), callback_data="recalc"),
-            Button(text=t(lang, "btn.close"), callback_data="close"),
-        ]
-    ]
+def undo_action(meal_id: int, lang: str | None) -> list[list[Button]]:
+    """One button under a meal the coach just logged. Saying "remove that" works too, but a
+    mis-logged meal is the one thing worth a single tap."""
+    return [[Button(text=t(lang, "btn.undo"), callback_data=undo_data(meal_id))]]
 
 
 def forget_confirm(lang: str | None) -> list[list[Button]]:
@@ -118,15 +80,4 @@ def language_picker(guess: str | None = None) -> list[list[Button]]:
     return [
         buttons[start : start + LANGUAGES_PER_ROW]
         for start in range(0, len(buttons), LANGUAGES_PER_ROW)
-    ]
-
-
-def yes_no(action: str, lang: str | None) -> list[list[Button]]:
-    if ":" in action or not action:
-        raise ValueError("action must be a non-empty token without ':'")
-    return [
-        [
-            Button(text=t(lang, "btn.yes"), callback_data=f"yn:{action}:yes"),
-            Button(text=t(lang, "btn.no"), callback_data=f"yn:{action}:no"),
-        ]
     ]

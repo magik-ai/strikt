@@ -275,9 +275,12 @@ async def test_keyless_user_gets_the_walkthrough_and_no_model_call(
 async def test_buttons_for_a_keyless_user_send_the_walkthrough(
     byok: Byok, messenger: FakeMessenger, fake_llm: FakeLLM, user: User
 ) -> None:
-    await handle_callback(byok.deps, cb("recalc"))
-    assert messenger.callbacks == [("cb-recalc", None)]
-    assert messenger.texts(CHAT_ID) == [t("ru", "key.needed")] and fake_llm.calls == []
+    """The language button is the one button a user without a key can reach; it ends in the
+    walkthrough, and nothing is sent to a model on the way."""
+    await handle_callback(byok.deps, cb("lang:ru"))
+    assert messenger.callbacks == [("cb-lang:ru", None)]
+    assert messenger.texts(CHAT_ID) == [t("ru", "start.welcome"), t("ru", "key.needed")]
+    assert fake_llm.calls == []
 
 
 async def test_start_for_a_new_user_ends_with_the_key_line_then_the_interview_after_the_key(

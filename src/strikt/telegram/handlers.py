@@ -813,24 +813,8 @@ async def _dispatch_callback(
                     received_at=ensure_utc(deps.clock.now()),
                 ),
             )
-        elif parsed.kind == "slot" and parsed.meal_id is not None and parsed.slot is not None:
-            await _callback_slot(deps, session, user, cb, parsed.meal_id, parsed.slot)
         elif parsed.kind == "undo" and parsed.meal_id is not None:
             await _callback_undo(deps, session, user, cb, parsed.meal_id)
-        elif parsed.kind in {"recalc", "close"}:
-            await deps.messenger.answer_callback(cb.callback_id)
-            llm = await resolve_llm(deps, session, user, None)
-            if llm is None:
-                return
-            key = "synthetic.recalc" if parsed.kind == "recalc" else "synthetic.close"
-            incoming = Incoming(
-                user_id=user.id,
-                chat_id=cb.chat_id,
-                message_id=cb.message_id or 0,
-                text=t(lang, key),
-                received_at=ensure_utc(deps.clock.now()),
-            )
-            await run_agent_turn(deps, session, user, incoming, llm)
         elif parsed.kind == "forget":
             await deps.messenger.answer_callback(cb.callback_id)
             if parsed.answer:
@@ -838,26 +822,13 @@ async def _dispatch_callback(
             else:
                 await _send(deps, cb.chat_id, t(lang, "forget.cancelled"))
         else:
-            # yes/no confirmations are answered by the agent: hand the choice over as text
             await deps.messenger.answer_callback(cb.callback_id)
-            llm = await resolve_llm(deps, session, user, None)
-            if llm is None:
-                return
-            answer = t(lang, "btn.yes" if parsed.answer else "btn.no")
-            incoming = Incoming(
-                user_id=user.id,
-                chat_id=cb.chat_id,
-                message_id=cb.message_id or 0,
-                text=f"{answer} ({parsed.action})" if parsed.action else answer,
-                received_at=ensure_utc(deps.clock.now()),
-            )
-            await run_agent_turn(deps, session, user, incoming, llm)
 
 
 def _tool_ctx(
     deps: AppDeps, session: AsyncSession, user: User, llm: LLMClient | None = None
 ) -> ToolContext:
-    """A ``ToolContext`` for the button handlers (slot, undo): tools that never call the model,
+    """A ``ToolContext`` for the undo button: a tool that never calls the model,
     so ``services["llm"]`` stays empty unless a caller resolved the user's client."""
     return ToolContext(
         session=session,
@@ -880,25 +851,6 @@ async def _refresh_card(deps: AppDeps, session: AsyncSession, user: User) -> Non
         await deps.card.refresh(session, user, state)
     except Exception as exc:
         log.warning("daycard_refresh_failed", user_id=user.id, error=repr(exc))
-
-
-async def _callback_slot(
-    deps: AppDeps, session: AsyncSession, user: User, cb: CallbackInbound, meal_id: int, slot: str
-) -> None:
-    ctx = _tool_ctx(deps, session, user)
-    ctx.profile = await repo.get_profile(session, user.id)
-    ctx.protocol = await repo.get_active_protocol(session, user.id)
-    result = await deps.registry.dispatch(
-        ctx, "update_meal", {"meal_id": meal_id, "changes": {"slot": slot}}
-    )
-    lang = resolve_lang(user.language)
-    if result.is_error:
-        log.warning("callback_slot_failed", user_id=user.id, meal_id=meal_id, error=result.content)
-        await deps.messenger.answer_callback(cb.callback_id, t(lang, "err.unknown"))
-        return
-    await _refresh_card(deps, session, user)
-    await session.commit()
-    await deps.messenger.answer_callback(cb.callback_id, t(lang, f"btn.{slot}"))
 
 
 async def _callback_undo(
