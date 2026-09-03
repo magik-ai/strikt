@@ -142,7 +142,12 @@ class LogMealInput(ToolInput):
         description="breakfast/lunch/dinner/snack. Omit when unclear; the user gets a slot button.",
     )
     eaten_at: datetime | None = Field(
-        default=None, description="When it was eaten (ISO 8601 with offset). Omit for 'now'."
+        default=None,
+        description=(
+            "When it was eaten (ISO 8601 with offset). Omit for 'now'. A meal eaten after "
+            "midnight but before the user's bedtime + 1 h is dated to the evening's day by the "
+            "system; the result's `date` says which day it landed on."
+        ),
     )
     note: str | None = Field(default=None, description="Short context, e.g. 'Kinoya, ramen'.")
 
@@ -427,7 +432,12 @@ class WriteNoteInput(ToolInput):
     text: str = Field(description="One sentence, specific, in the user's language.")
     confidence: float = Field(default=0.8, description="0..1 how sure you are.")
     expires_at: datetime | None = Field(
-        default=None, description="For temporary facts (a trip, a temporary intensity)."
+        default=None,
+        description=(
+            "For temporary facts (a trip, a temporary intensity). For a planned event (dinner, "
+            "flight, date night) set it to the end of the event's day: the morning-of "
+            "confirmation depends on it."
+        ),
     )
     supersedes_id: int | None = Field(default=None, description="Id of the note this one replaces.")
 

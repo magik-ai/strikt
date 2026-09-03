@@ -14,7 +14,7 @@ from typing import TYPE_CHECKING, Any
 
 from pydantic import BaseModel
 
-from strikt.core.clock import ensure_utc, to_local, zone
+from strikt.core.clock import coaching_day, ensure_utc, to_local, zone
 from strikt.core.types import DayState, Flag, Macros
 from strikt.memory.daystate import DayStateBuilder
 
@@ -106,6 +106,15 @@ def to_utc(dt: datetime, tz: str) -> datetime:
 
 def local_day(dt: datetime, tz: str) -> date:
     return to_local(dt, tz).date()
+
+
+def meal_day(ctx: ToolContext, eaten_at: datetime) -> date:
+    """The coaching date a meal belongs to: the calendar date, except that a meal eaten after
+    midnight but before the profile's bedtime + 1 h (never past 06:00) is the evening's day."""
+    profile = ctx.profile
+    bed = profile.bed_time if profile is not None else None
+    wake = profile.wake_time if profile is not None else None
+    return coaching_day(to_local(eaten_at, ctx.tz), bed, wake)
 
 
 def hhmm(dt: datetime, tz: str) -> str:

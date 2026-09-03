@@ -18,9 +18,12 @@ from dataclasses import dataclass, fields
 _THOUSANDS = re.compile(r"(?<=\d)[     ,](?=\d{3}\b)")
 _NUMBER = r"(\d{1,3}(?:[     ,]\d{3})+|\d+)(?:[.,](\d+))?"
 
+# Deliberately no bare "day" / "today" / "сегодня": an advice line ("Today you still need 60 g
+# protein") or a per-meal line ("Dinner today: 640 kcal") is not a day total. The coach prompt
+# mandates a line starting with Total/Итого; the other markers are the explicit phrasings.
 TOTAL_MARKERS = re.compile(
-    r"(?i)(\btotal\b|\bso far\b|\bday\b|\btoday\b|\bday total\b|\bsum\b|\bitog\b"
-    r"|итог|всего|за день|за сегодня|сегодня|сумма|в сумме|набрано|получается)"
+    r"(?i)(\btotal\b|\bso far\b|\bday total\b|\bsum\b|\bitog\b"
+    r"|итог|всего|за день|за сегодня|сумма|в сумме|набрано|получается)"
 )
 REMAINING_MARKERS = re.compile(
     r"(?i)(\bremain\w*\b|\bleft\b|\bbudget\b|\bto go\b|\bunder\b|\bover by\b|\bover\b"

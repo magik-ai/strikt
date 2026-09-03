@@ -8,13 +8,20 @@ Order of operations in ``run_turn``:
 3. publish ``UserReplied`` and mark open proactive sends as answered;
 4. call the model with tools until ``end_turn``: tool calls of one round are executed and their
    results returned in **one** user message (``is_error`` on failure); ``pause_turn`` is re-sent
-   as is; ``max_tokens`` gets one continuation; a ``refusal`` becomes an honest one-liner;
-   at most ``settings.max_tool_rounds`` rounds;
+   as is; ``max_tokens`` gets one continuation (or, when the cut fell inside a tool call, one
+   retry with a doubled output cap — a half-written ``tool_use`` cannot be re-sent); a
+   ``refusal`` becomes an honest one-liner; at most ``settings.max_tool_rounds`` rounds;
 5. Reflexion verify (``agent/verify.py``) — only after a state-changing tool or a recalculation
-   request, and only rewrites on a real mismatch;
+   request, against the day the tools actually touched (``log_meal`` at 00:10 with a 00:30
+   bedtime, or ``get_day_state(date=yesterday)``, is checked against *that* day; a reply that
+   mixes days is not checked), and only rewrites on a real mismatch;
 6. persist the assistant turn (final text only — intermediate tool rounds are not history, the
-   day state carries the ids), publish ``DayStateChanged`` when a state-changing tool ran,
-   refresh the Today card when a refresher is wired, pick the keyboard, commit.
+   day state carries the ids), publish ``DayStateChanged`` for every day a state-changing tool
+   touched, refresh those days' cards when a refresher is wired, pick the keyboard, commit.
+
+Every tool result is parsed once (``ToolTrace``) for the date(s) it reports and the meal id it
+created or changed, so the keyboard's Undo button always targets the meal of *this* turn — never
+"whatever meal is now last" after an undo or a correction of an older meal.
 
 Tool calls in one round run sequentially by default: the handlers share the turn's
 ``AsyncSession`` and SQLAlchemy forbids concurrent operations on one session. Set
@@ -28,9 +35,11 @@ import asyncio
 import base64
 import hashlib
 import html
+import json
 import re
 from collections.abc import Sequence
 from dataclasses import dataclass, field
+from datetime import date
 from typing import TYPE_CHECKING, Any, Protocol
 
 import structlog
@@ -39,7 +48,7 @@ from strikt.agent.client import LLMError, LLMResult, ToolUse
 from strikt.agent.context import ContextBundle, build_context, user_blocks
 from strikt.agent.tools.registry import ToolContext
 from strikt.agent.usage import LLMUsage
-from strikt.agent.verify import STATE_CHANGING_TOOLS, should_verify, verify_reply
+from strikt.agent.verify import STATE_CHANGING_TOOLS, VERIFY_TOOLS, should_verify, verify_reply
 from strikt.core.clock import ensure_utc, to_local
 from strikt.core.types import Button, Outgoing
 from strikt.db import repo
@@ -53,7 +62,7 @@ if TYPE_CHECKING:
     from sqlalchemy.ext.asyncio import AsyncSession
 
     from strikt.agent.client import LLMClient
-    from strikt.agent.tools.registry import Registry
+    from strikt.agent.tools.registry import Registry, ToolResult
     from strikt.config import Settings
     from strikt.core.clock import Clock
     from strikt.core.types import Attachment, DayState, Incoming
@@ -65,7 +74,11 @@ log = structlog.get_logger(__name__)
 
 EVENING_HOUR = 20
 MEAL_TOOLS: frozenset[str] = frozenset({"log_meal", "update_meal", "delete_meal", "undo_last"})
+#: Tools whose result names the meal the reply keyboard should act on (in priority order).
+KEYBOARD_MEAL_TOOLS: tuple[str, ...] = ("log_meal", "update_meal")
 CONTINUE_TEXT = "Continue exactly where you stopped. Do not repeat what you already wrote."
+#: A response cut off inside a tool call is retried once with this multiple of the output cap.
+TRUNCATED_TOOL_RETRY_FACTOR = 2
 
 # Code-rendered fallbacks the model cannot write for us (wish: move to telegram/copy.py).
 _COPY: dict[str, dict[str, str]] = {
@@ -179,40 +192,123 @@ def _tool_result_block(
     return block
 
 
-async def execute_tools(
-    deps: TurnDeps, ctx: ToolContext, uses: Sequence[ToolUse]
-) -> list[dict[str, Any]]:
-    """Run every tool call of one round; results in call order, failures as ``is_error``."""
+@dataclass(frozen=True)
+class ToolTrace:
+    """What one tool call reported: the local date(s) it touched and the meal it created/changed.
 
-    async def one(use: ToolUse) -> dict[str, Any]:
+    Read from the handler's JSON (``date``, ``day.date``, ``numbers.date``, ``meal_id``); a
+    non-JSON or failed result yields an empty trace. The loop uses it to verify the reply against
+    the right day, publish ``DayStateChanged`` for the right day and aim the Undo button.
+    """
+
+    name: str
+    is_error: bool = False
+    dates: frozenset[date] = frozenset()
+    meal_id: int | None = None
+
+
+def _as_date(value: Any) -> date | None:
+    if isinstance(value, str):
+        try:
+            return date.fromisoformat(value[:10])
+        except ValueError:
+            return None
+    return None
+
+
+def parse_trace(name: str, result: ToolResult) -> ToolTrace:
+    """``ToolTrace`` from a handler result (never raises)."""
+    if result.is_error or not isinstance(result.content, str):
+        return ToolTrace(name=name, is_error=result.is_error)
+    try:
+        payload = json.loads(result.content)
+    except ValueError:
+        return ToolTrace(name=name)
+    if not isinstance(payload, dict):
+        return ToolTrace(name=name)
+    candidates = [payload.get("date")]
+    for key in ("day", "numbers"):
+        nested = payload.get(key)
+        if isinstance(nested, dict):
+            candidates.append(nested.get("date"))
+    dates = frozenset(d for d in (_as_date(c) for c in candidates) if d is not None)
+    meal_id = payload.get("meal_id")
+    return ToolTrace(
+        name=name, dates=dates, meal_id=meal_id if isinstance(meal_id, int) else None
+    )
+
+
+def touched_dates(traces: Sequence[ToolTrace], tools: frozenset[str], default: date) -> set[date]:
+    """Every date reported by a successful call of one of ``tools``; a call that reports no date
+    counts as ``default`` (today)."""
+    out: set[date] = set()
+    for tr in traces:
+        if tr.name in tools and not tr.is_error:
+            out |= set(tr.dates) or {default}
+    return out
+
+
+async def execute_tools(
+    deps: TurnDeps,
+    ctx: ToolContext,
+    uses: Sequence[ToolUse],
+    traces: list[ToolTrace] | None = None,
+) -> list[dict[str, Any]]:
+    """Run every tool call of one round; results in call order, failures as ``is_error``.
+
+    ``traces`` (when given) receives one ``ToolTrace`` per call, in call order."""
+
+    async def one(use: ToolUse) -> tuple[dict[str, Any], ToolTrace]:
         try:
             result = await deps.registry.dispatch(ctx, use.name, use.input)
         except Exception as exc:  # dispatch never raises, but a handler bug must not kill the turn
             log.exception("tool_dispatch_crashed", tool=use.name)
-            return _tool_result_block(use, f"{use.name} failed: {type(exc).__name__}: {exc}", True)
+            block = _tool_result_block(use, f"{use.name} failed: {type(exc).__name__}: {exc}", True)
+            return block, ToolTrace(name=use.name, is_error=True)
         log.info("tool_ran", tool=use.name, is_error=result.is_error, user_id=ctx.user_id)
-        return _tool_result_block(use, result.content, result.is_error)
+        return _tool_result_block(use, result.content, result.is_error), parse_trace(use.name, result)
 
     if deps.parallel_tools and len(uses) > 1:
-        return list(await asyncio.gather(*(one(use) for use in uses)))
-    return [await one(use) for use in uses]
+        pairs = list(await asyncio.gather(*(one(use) for use in uses)))
+    else:
+        pairs = [await one(use) for use in uses]
+    if traces is not None:
+        traces.extend(trace for _, trace in pairs)
+    return [block for block, _ in pairs]
+
+
+def keyboard_meal_id(traces: Sequence[ToolTrace]) -> int | None:
+    """The meal the reply keyboard acts on: the last meal this turn logged, else the last one it
+    corrected. After ``undo_last`` / ``delete_meal`` alone there is nothing to undo."""
+    for tool in KEYBOARD_MEAL_TOOLS:
+        ids = [tr.meal_id for tr in traces if tr.name == tool and tr.meal_id is not None]
+        if ids:
+            return ids[-1]
+    return None
 
 
 async def _keyboard(
-    deps: TurnDeps, user: User, tools_used: Sequence[str], state: DayState | None
+    deps: TurnDeps, user: User, traces: Sequence[ToolTrace], state: DayState | None, today: date
 ) -> list[list[Button]] | None:
     """Slot picker + undo after an unslotted meal, meal actions after a meal change, day actions
     in the evening while the day is open, else nothing."""
     lang = user.language
-    if MEAL_TOOLS.intersection(tools_used):
-        meal = await repo.last_meal(deps.session, user.id)
+    meal_id = keyboard_meal_id(traces)
+    if meal_id is not None:
+        meal = await repo.get_meal(deps.session, user.id, meal_id)
         if meal is not None:
-            ask_slot = "log_meal" in tools_used and meal.slot == MealSlot.unknown
+            logged = any(tr.name == "log_meal" and tr.meal_id == meal_id for tr in traces)
+            ask_slot = logged and meal.slot == MealSlot.unknown
             return meal_actions(meal.id, lang, ask_slot=ask_slot)
     local_now = to_local(deps.clock.now(), user.timezone or "UTC")
-    if local_now.hour >= EVENING_HOUR and (state is None or not state.closed):
-        return day_actions(lang)
-    return None
+    if local_now.hour < EVENING_HOUR:
+        return None
+    if state is not None:
+        closed = state.closed
+    else:
+        day = await repo.get_day(deps.session, user.id, today)
+        closed = bool(day is not None and day.closed_at is not None)
+    return None if closed else day_actions(lang)
 
 
 # --------------------------------------------------------------------------------- the loop
@@ -226,6 +322,7 @@ class _LoopOutcome:
     cost_usd: float
     rounds: int
     refused: bool = False
+    traces: list[ToolTrace] = field(default_factory=list)
 
 
 async def _model_loop(
@@ -233,11 +330,13 @@ async def _model_loop(
 ) -> _LoopOutcome:
     messages: list[dict[str, Any]] = [dict(m) for m in bundle.messages]
     tools_used: list[str] = []
+    traces: list[ToolTrace] = []
     usage = LLMUsage()
     cost = 0.0
     rounds = 0
     calls = 0
     continued = False
+    max_tokens: int | None = None
     text_parts: list[str] = []
     max_rounds = int(getattr(deps.settings, "max_tool_rounds", 12))
     max_calls = max_rounds * 2 + 2  # pause_turn / continuation re-sends never loop forever
@@ -254,7 +353,9 @@ async def _model_loop(
             messages=messages,
             tools=bundle.tools,
             user_id=user.id,
+            max_tokens=max_tokens,
         )
+        max_tokens = None
         usage = usage + result.usage
         cost += result.cost_usd
 
@@ -265,7 +366,7 @@ async def _model_loop(
                 explanation=result.refusal and result.refusal.explanation,
             )
             return _LoopOutcome(
-                _copy(user.language, "refused"), tools_used, usage, cost, rounds, True
+                _copy(user.language, "refused"), tools_used, usage, cost, rounds, True, traces
             )
 
         if result.paused:
@@ -282,13 +383,20 @@ async def _model_loop(
                 break
             rounds += 1
             messages.append(result.assistant_message())
-            results = await execute_tools(deps, ctx, uses)
+            results = await execute_tools(deps, ctx, uses, traces)
             tools_used += [use.name for use in uses]
             messages.append({"role": "user", "content": results})
             continue
 
         if result.truncated and not continued:
             continued = True
+            if uses:
+                # Cut off while writing a tool call. Re-sending the half tool_use without a
+                # tool_result is a 400; the API's guidance is to retry with a higher cap.
+                log.warning("turn_truncated_in_tool_use", user_id=user.id, tools=[u.name for u in uses])
+                base = int(getattr(deps.settings, "max_tokens_turn", 8192))
+                max_tokens = base * TRUNCATED_TOOL_RETRY_FACTOR
+                continue
             text_parts.append(result.text)
             messages.append(
                 result.assistant_message()
@@ -305,7 +413,7 @@ async def _model_loop(
         break
 
     text = "\n".join(part.strip() for part in text_parts if part and part.strip()).strip()
-    return _LoopOutcome(text, tools_used, usage, cost, rounds)
+    return _LoopOutcome(text, tools_used, usage, cost, rounds, traces=traces)
 
 
 # ------------------------------------------------------------------------------------ run
@@ -377,17 +485,41 @@ async def run_turn(deps: TurnDeps, incoming: Incoming) -> TurnResult:
         outcome = _LoopOutcome(t(lang, "err.llm_down"), [], LLMUsage(), 0.0, 0)
 
     tools_used = outcome.tools_used
+    traces = outcome.traces
     state_changed = bool(STATE_CHANGING_TOOLS.intersection(tools_used))
-    state: DayState | None = None
-    if state_changed or should_verify(tools_used, incoming):
-        try:
-            state = await deps.provider().day_state(session, user, today)
-        except Exception as exc:
-            log.warning("turn_day_state_failed", user_id=user.id, error=repr(exc))
+    changed_dates = touched_dates(traces, STATE_CHANGING_TOOLS, today)
+    verified_dates = touched_dates(traces, VERIFY_TOOLS, today)
+    # The day the reply's totals are checked against: the one day the verified tools reported,
+    # today when none did (a recalculation request), none when the reply mixes several days.
+    verify_day: date | None = today
+    if len(verified_dates) == 1:
+        verify_day = next(iter(verified_dates))
+    elif len(verified_dates) > 1:
+        verify_day = None
+
+    states: dict[date, DayState] = {}
+
+    async def state_for(day: date) -> DayState | None:
+        if day not in states:
+            try:
+                states[day] = await deps.provider().day_state(session, user, day)
+            except Exception as exc:
+                log.warning("turn_day_state_failed", user_id=user.id, day=str(day), error=repr(exc))
+                return None
+        return states[day]
 
     text = outcome.text
-    if error is None and not outcome.refused:
-        text = await verify_reply(deps, user, text, tools_used, incoming, state=state)
+    if error is None and not outcome.refused and should_verify(tools_used, incoming):
+        verify_state = await state_for(verify_day) if verify_day is not None else None
+        if verify_state is None:
+            log.info(
+                "verify_skipped",
+                user_id=user.id,
+                reason="mixed_days" if verify_day is None else "no_state",
+                days=sorted(map(str, verified_dates)),
+            )
+        else:
+            text = await verify_reply(deps, user, text, tools_used, incoming, state=verify_state)
     if not text.strip():
         text = t(lang, "err.unknown")
 
@@ -409,23 +541,25 @@ async def run_turn(deps: TurnDeps, incoming: Incoming) -> TurnResult:
     user_turn.content = stub_media_blocks(own_blocks, incoming.attachments)
     await session.flush()
 
-    if state_changed:
+    for day in sorted(changed_dates):
         if deps.bus is not None:
             await deps.bus.publish(
                 DayStateChanged(
                     user_id=user.id,
                     occurred_at=ensure_utc(deps.clock.now()),
-                    date=today,
+                    date=day,
                     reason=",".join(sorted(set(tools_used) & STATE_CHANGING_TOOLS)),
                 )
             )
-        if deps.card is not None and state is not None:
-            try:
-                await deps.card.refresh(session, user, state)
-            except Exception as exc:
-                log.warning("daycard_refresh_failed", user_id=user.id, error=repr(exc))
+        if deps.card is not None:
+            day_state = await state_for(day)
+            if day_state is not None:
+                try:
+                    await deps.card.refresh(session, user, day_state)
+                except Exception as exc:
+                    log.warning("daycard_refresh_failed", user_id=user.id, error=repr(exc))
 
-    keyboard = await _keyboard(deps, user, tools_used, state)
+    keyboard = await _keyboard(deps, user, traces, states.get(today), today)
     outgoing = Outgoing(text=to_telegram_html(text), keyboard=keyboard, reply_to=None)
 
     if deps.commit:

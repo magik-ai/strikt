@@ -73,3 +73,23 @@ def test_items_lists_only_present_fields() -> None:
     assert claimed.items() == [("kcal", 100), ("fat_g", 3)]
     assert claimed.any
     assert not ClaimedTotals().any
+
+
+def test_advice_lines_with_today_do_not_override_the_total() -> None:
+    text = (
+        "Total: 1240 kcal / P 95 / C 110 / F 48 / fiber 18\n"
+        "Left: 760 kcal, P 115\n"
+        "Today you still need 60 g protein — add a shake."
+    )
+    assert extract_numbers(text) == ClaimedTotals(
+        kcal=1240, protein_g=95, carbs_g=110, fat_g=48, fiber_g=18
+    )
+    ru = "Итого: 1240 ккал | Б 95 | У 110 | Ж 48\nСегодня ещё 40 г белка можно добавить творогом."
+    assert extract_numbers(ru).protein_g == 95
+
+
+def test_per_meal_line_with_today_is_not_a_total() -> None:
+    text = "Total: 1240 kcal / P 95 / C 110 / F 48\nDinner today: 640 kcal / P 45 / C 60 / F 20"
+    assert extract_numbers(text) == ClaimedTotals(kcal=1240, protein_g=95, carbs_g=110, fat_g=48)
+    assert not is_total_line("Dinner today: 640 kcal / P 45")
+    assert not extract_numbers("Today you still need 60 g protein").any

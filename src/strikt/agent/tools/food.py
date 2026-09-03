@@ -18,8 +18,8 @@ from strikt.agent.tools.common import (
     fail,
     flag_lines,
     health_context,
-    local_day,
     macros_dict,
+    meal_day,
     ok,
     rnd,
     state_numbers,
@@ -194,7 +194,7 @@ async def log_meal(ctx: ToolContext, args: schemas.LogMealInput) -> ToolResult:
         return fail(f"log_meal: too many items ({len(args.items)}); split the meal")
     now = ctx.clock.now()
     eaten_at = to_utc(args.eaten_at, ctx.tz) if args.eaten_at is not None else now
-    day = local_day(eaten_at, ctx.tz)
+    day = meal_day(ctx, eaten_at)
     buffer = float(getattr(ctx.settings, "loose_food_buffer", 0.25))
     context = health_context(ctx)
 
@@ -356,7 +356,7 @@ async def _apply_meal_changes(
     ctx: ToolContext, meal: Meal, changes: schemas.MealItemChanges
 ) -> None:
     eaten_at = to_utc(changes.eaten_at, ctx.tz) if changes.eaten_at is not None else None
-    day_date = local_day(eaten_at, ctx.tz) if eaten_at is not None else None
+    day_date = meal_day(ctx, eaten_at) if eaten_at is not None else None
     await repo.update_meal(
         ctx.session,
         ctx.user_id,
