@@ -347,7 +347,7 @@ def allowed_workout_gap_days(profile: Profile | None) -> int:
 
 
 def normalise_item_name(name: str) -> str:
-    return re.sub(r"[^a-zа-яё0-9 ]+", " ", name.lower()).strip()
+    return re.sub(r"\s+", " ", re.sub(r"[^a-zа-яё0-9 ]+", " ", name.lower())).strip()
 
 
 # ---------------------------------------------------------------------------------- day facts
@@ -738,8 +738,7 @@ async def load_history(
         same_meal=same_meal_streak(items),
         streaks=streaks,
         scorecard=card,
-        last_user_message_at=last_msg
-        or (ensure_utc(user.last_seen_at) if user.last_seen_at else None),
+        last_user_message_at=last_msg,
         unanswered_sends=unanswered,
         pending_reminders=tuple(reminders),
         yesterday_summary=y_summary,

@@ -1,0 +1,14 @@
+<!doctype html><html lang="en"><head><meta charset="utf-8"><title>Strikt ladder</title><link rel="stylesheet" href="../fonts/local.css"><link rel="stylesheet" href="strikt.css"><style>
+.stage{padding-top:80px}
+.top{position:absolute;left:112px;top:80px}
+.lad{position:absolute;left:112px;right:112px;top:400px}
+.line{position:absolute;left:0;right:0;top:0;height:1px;background:var(--rule)}
+.steps{display:grid;grid-template-columns:repeat(4,1fr);column-gap:40px}
+.step{position:relative;padding-top:0}
+.tick{position:absolute;left:0;top:-4px;width:1px;height:9px;background:var(--mute)}
+.step .cap{padding-top:22px;line-height:1.7}
+.step .cap b{color:var(--ink);font-weight:500}
+.step .row{margin-top:26px;align-items:flex-start}
+.step .bubble{font-size:23px;padding:18px 22px 12px}
+.note{position:absolute;left:112px;right:112px;bottom:80px;display:flex;justify-content:space-between;align-items:flex-end}
+</style></head><body><div class="stage"><div class="top cap">the escalation ladder · one silent day · four sends, 45 minutes apart</div><div class="lad"><div class="line"></div><div class="steps"><div class="step"><div class="tick"></div><div class="cap"><b>14:10</b> · 1 · prompt<br>one line, factual</div><div class="row"><div class="av" style="width:40px;height:40px"><div data-mark="small" data-size="27"></div></div><div class="bubble">Nothing logged yet. Breakfast?<div class="time">14:10</div></div></div></div><div class="step"><div class="tick"></div><div class="cap"><b>14:55</b> · 2 · push<br>the pattern, from data</div><div class="row"><div class="av" style="width:40px;height:40px"><div data-mark="small" data-size="27"></div></div><div class="bubble">Two hours past your usual first meal. Skipped breakfasts in your history end at 2 600 kcal evenings.<div class="time">14:55</div></div></div></div><div class="step"><div class="tick"></div><div class="cap"><b>15:40</b> · 3 · demand<br>an instruction with a deadline</div><div class="row"><div class="av" style="width:40px;height:40px"><div data-mark="small" data-size="27"></div></div><div class="bubble">Eat something with 40 g protein in the next hour and send me a photo.<div class="time">15:40</div></div></div></div><div class="step"><div class="tick"></div><div class="cap"><b>16:25</b> · 4 · consequence<br>the goal in concrete terms</div><div class="row"><div class="av" style="width:40px;height:40px"><div data-mark="small" data-size="27"></div></div><div class="bubble">Waist target is 94. You're at 103. Days like this cost a week each.<div class="time">16:25</div></div></div></div></div></div><div class="note"><div class="foot" style="position:static"><div data-lockup="34"></div><div class="cap">never beyond step four · resets on any reply · quiet hours 00:00–07:30 · at most five sends a day</div></div></div></div><script src="mark.js"></script><script>StriktMark.mount()</script></body></html>

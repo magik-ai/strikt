@@ -513,7 +513,7 @@ def check_whoop_workout_synced(state: DayState | None, ctx: TriggerContext) -> T
         facts["ended"] = ended.strftime("%H:%M")
         facts["bed_time"] = _hhmm(ctx.bed_time)
         facts["ended_within_2h_of_bed"] = (
-            minutes_after_noon(ctx.bed_time) - minutes_after_noon(ended.time())
+            (minutes_after_noon(ctx.bed_time) - minutes_after_noon(ended.time())) % 1440
         ) <= 120
     key = ctx.payload.get("external_id") or started.isoformat()
     return _fire(

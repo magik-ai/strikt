@@ -140,6 +140,7 @@ class ProactiveScheduler:
         self._scheduler: Any = scheduler or AsyncIOScheduler(timezone=zone("UTC"))
         self._nightly = nightly_summary
         self._sync = integration_sync
+        self._stopping = False
         engine.attach_followups(self)
 
     @property
@@ -152,13 +153,16 @@ class ProactiveScheduler:
         """Start the scheduler (needs a running event loop). ``paused`` = no job processing."""
         if not self._scheduler.running:
             self._scheduler.start(paused=paused)
+        self._stopping = False
         self.add_global_jobs()
 
     def resume(self) -> None:
         self._scheduler.resume()
 
     def shutdown(self, *, wait: bool = False) -> None:
-        if self._scheduler.running:
+        """Stop job processing. APScheduler flips ``running`` on the next loop tick."""
+        if self._scheduler.running and not self._stopping:
+            self._stopping = True
             self._scheduler.shutdown(wait=wait)
 
     # ------------------------------------------------------------------------- user jobs

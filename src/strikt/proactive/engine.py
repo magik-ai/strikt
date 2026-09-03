@@ -26,13 +26,13 @@ import asyncio
 import dataclasses
 from collections.abc import Callable, Sequence
 from dataclasses import dataclass
-from datetime import date, datetime, timedelta
+from datetime import UTC, date, datetime, time, timedelta
 from typing import Any, Literal, Protocol
 
 import structlog
 
 from strikt.config import Settings
-from strikt.core.clock import Clock, local_day_bounds, to_local
+from strikt.core.clock import Clock, ensure_utc, local_day_bounds, to_local
 from strikt.core.types import DayState
 from strikt.db import repo
 from strikt.db.models import Profile, Protocol as ProtocolRow, User, UserStatus
@@ -92,6 +92,8 @@ COOLDOWN_SUPPRESSED: frozenset[TriggerName] = frozenset(
 USER_REQUESTED: frozenset[TriggerName] = frozenset({"reminder_due"})
 #: Workouts/weights that arrived through the chat were already answered in the turn.
 CHAT_SOURCES: frozenset[str] = frozenset({"manual", "screenshot", "internal"})
+#: A backfill (first sync, re-sync) replays old rows: data older than this gets no message.
+STALE_EVENT = timedelta(days=2)
 
 
 @dataclass(frozen=True, kw_only=True)
@@ -430,24 +432,31 @@ class ProactiveEngine:
             "proactive_reset", user_id=event.user_id, marked=count, followups_cancelled=cancelled
         )
 
+    def _stale(self, at: datetime) -> bool:
+        return ensure_utc(at) < self._clock.now() - STALE_EVENT
+
     async def on_workout(self, event: WorkoutEvent) -> None:
-        if event.source in CHAT_SOURCES:
+        if event.source in CHAT_SOURCES or self._stale(event.ended_at or event.started_at):
             return
         await self.fire(event.user_id, "whoop_workout_synced", event_payload(event))
 
     async def on_recovery(self, event: RecoveryEvent) -> None:
+        if self._stale(datetime.combine(event.date, time.min, tzinfo=UTC) + timedelta(days=1)):
+            return
         payload = event_payload(event)
         await self.fire(event.user_id, "whoop_recovery_low", payload)
         await self.fire(event.user_id, "whoop_recovery_high", payload)
 
     async def on_sleep(self, event: SleepEvent) -> None:
+        if self._stale(event.ended_at):
+            return
         payload = event_payload(event)
         await self.fire(event.user_id, "wake_check", payload)
         await self.fire(event.user_id, "sleep_onset_late", payload)
         await self.fire(event.user_id, "sleep_debt_accumulating", payload)
 
     async def on_measurement(self, event: MeasurementEvent) -> None:
-        if event.type != "weight" or event.source in CHAT_SOURCES:
+        if event.type != "weight" or event.source in CHAT_SOURCES or self._stale(event.measured_at):
             return
         await self.fire(event.user_id, "scale_weight_received", event_payload(event))
 

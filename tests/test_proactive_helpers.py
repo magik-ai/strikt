@@ -76,7 +76,9 @@ class FakeDecider:
         if self.raise_error:
             raise RuntimeError("llm down")
         step = self.step or ladder.step
-        facts = ", ".join(f"{k}={v}" for k, v in sorted(fire.facts.items()) if k in ("protein_so_far", "hours_since_wake"))
+        facts = ", ".join(
+            f"{k}={v}" for k, v in sorted(fire.facts.items()) if k == "hours_since_wake"
+        )
         return ProactiveDecision(
             send=self.send,
             text=self.text.format(name=fire.name, step=step, facts=facts),
@@ -121,12 +123,16 @@ class DbStateProvider:
         recovery = await repo.recovery_for_date(session, user.id, day)
         return DayState(
             date=day,
-            totals=DayTotals(macros=total, items=sum(len(m.items) for m in views), meals=len(views)),
+            totals=DayTotals(
+                macros=total, items=sum(len(m.items) for m in views), meals=len(views)
+            ),
             targets=targets,
             remaining=Remaining.from_targets(targets, total),
             meals=views,
             recovery=(
-                RecoveryView(date=day, score=recovery.score, rhr=recovery.rhr, hrv_ms=recovery.hrv_ms)
+                RecoveryView(
+                    date=day, score=recovery.score, rhr=recovery.rhr, hrv_ms=recovery.hrv_ms
+                )
                 if recovery
                 else None
             ),
@@ -159,8 +165,12 @@ def at_local(day: date, hhmm: str, tz: str = TZ) -> datetime:
     return local_datetime(day, time(hour, minute), tz)
 
 
-def item(name: str, kcal: float, p: float, c: float = 20, f: float = 10, fiber: float = 2) -> FoodItemIn:
-    return FoodItemIn(name=name, macros=Macros(kcal=kcal, protein_g=p, carbs_g=c, fat_g=f, fiber_g=fiber))
+def item(
+    name: str, kcal: float, p: float, c: float = 20, f: float = 10, fiber: float = 2
+) -> FoodItemIn:
+    return FoodItemIn(
+        name=name, macros=Macros(kcal=kcal, protein_g=p, carbs_g=c, fat_g=f, fiber_g=fiber)
+    )
 
 
 async def seed_meal(
@@ -188,7 +198,9 @@ async def seed_meal(
     )
 
 
-async def seed_day_flag(session: AsyncSession, user_id: int, day: date, flag: str, now: datetime) -> None:
+async def seed_day_flag(
+    session: AsyncSession, user_id: int, day: date, flag: str, now: datetime
+) -> None:
     await repo.set_day_flag(session, user_id, day, flag, True, now=now)
 
 
@@ -259,7 +271,13 @@ async def seed_measurement(
     session: AsyncSession, user_id: int, mtype: str, value: float, when: datetime, unit: str = "kg"
 ) -> None:
     await repo.add_measurement(
-        session, user_id, type=MeasurementType(mtype), value=value, unit=unit, measured_at=when, source="scale"
+        session,
+        user_id,
+        type=MeasurementType(mtype),
+        value=value,
+        unit=unit,
+        measured_at=when,
+        source="scale",
     )
 
 
