@@ -210,17 +210,17 @@ About, en (76 chars, limit 120):
 
 > A coach in one chat. Send food, get the number. The day ends with a verdict.
 
-About, ru (80 chars):
+About, ru (79 chars):
 
-> Тренер в одном чате. Присылай еду — получай цифру. День заканчивается вердиктом.
+> Тренер в одном чате. Присылай еду, получай цифру. День заканчивается вердиктом.
 
 Description, en (466 chars, limit 512):
 
 > Strikt logs food, training, sleep and measurements from one Telegram chat. Send a photo, a screenshot, a voice note or text; the reply is kcal, protein, carbs, fat and fiber per item, the day so far and what is left. The Today card stays pinned and is edited in place. When you go quiet it writes first: the fact, then the pattern from your own data, then an instruction with a deadline. The day closes with a verdict. No greetings, no emoji, no praise. Invite-only.
 
-Description, ru (448 chars):
+Description, ru (454 chars):
 
-> Strikt записывает еду, тренировки, сон и замеры из одного чата в Telegram. Пришли фото, скриншот, голосовое или текст — в ответ ккал, белки, углеводы, жиры и клетчатка по каждому пункту, итог дня и остаток. Карточка дня закреплена и правится на месте. Если ты замолчал, пишет первым: факт, затем закономерность из твоих же данных, затем указание со сроком. День закрывается вердиктом. Без приветствий, без эмодзи, без похвал. Доступ по приглашению.
+> Strikt записывает еду, тренировки, сон и замеры из одного чата в Telegram. Пришли фото, скриншот, голосовое или текст, в ответ придут ккал, белки, углеводы, жиры и клетчатка по каждому пункту, итог дня и остаток. Карточка дня закреплена и правится на месте. Если ты замолчал, пишет первым: факт, затем закономерность из твоих же данных, затем указание со сроком. День закрывается вердиктом. Без приветствий, без эмодзи, без похвал. Доступ по приглашению.
 
 Commands (`/setcommands` or `setMyCommands`, en and ru):
 

@@ -49,8 +49,13 @@ from strikt.db import repo
 from strikt.db.models import User, UserStatus
 from strikt.events import DayStateChanged
 from strikt.privacy import delete_everything
-from strikt.telegram.copy import resolve_lang, t
-from strikt.telegram.keyboards import Callback, forget_confirm, parse_callback
+from strikt.telegram.copy import detect_lang, resolve_lang, t
+from strikt.telegram.keyboards import (
+    Callback,
+    forget_confirm,
+    language_picker,
+    parse_callback,
+)
 from strikt.telegram.keys import extract_key, mentions_key
 from strikt.telegram.media import MediaError, MediaTooLargeError, prepare_document, prepare_image
 from strikt.telegram.voice import TranscriptionError
@@ -438,6 +443,13 @@ async def _dispatch_message(deps: AppDeps, inbound: InboundMessage) -> None:
         log.info("message_from_unknown_user", telegram_id=inbound.telegram_id)
         await _send(deps, inbound.chat_id, t(inbound.lang, "err.not_allowed"))
         return
+    if (
+        user.status == UserStatus.language
+        and inbound.command is None
+        and extract_key(inbound.text) is None
+    ):
+        await handle_language_message(deps, user, inbound)
+        return
     if inbound.command == "today":
         await handle_today(deps, user.id)
     elif inbound.command == "forget_me":
@@ -452,7 +464,8 @@ async def _dispatch_message(deps: AppDeps, inbound: InboundMessage) -> None:
 
 
 async def handle_start(deps: AppDeps, inbound: InboundMessage) -> None:
-    """Invite-only entry: allowed ids or a valid code create the user; the agent asks question 1."""
+    """Invite-only entry: allowed ids or a valid code create the user, who is then asked which
+    language to speak. Everything after that lives in ``_start_after_language``."""
     lang = inbound.lang
     now = ensure_utc(inbound.received_at)
     code = (inbound.command_args or "").strip() or None
@@ -477,7 +490,7 @@ async def handle_start(deps: AppDeps, inbound: InboundMessage) -> None:
                 now=now,
                 language=inbound.language_code or "en",
                 timezone="UTC",
-                status=UserStatus.onboarding,
+                status=UserStatus.language,
                 invite_code=invite.code if invite is not None else None,
             )
             if invite is not None:
@@ -493,26 +506,77 @@ async def handle_start(deps: AppDeps, inbound: InboundMessage) -> None:
             created and code is not None and not deps.settings.is_allowed(inbound.telegram_id)
         )
         user_lang = resolve_lang(user.language)
-        llm = await deps.llm_factory.for_user(session, user)
 
     if created:
-        lines = [t(user_lang, "start.welcome")]
-        if used_invite:
-            lines.insert(0, t(user_lang, "start.invite_ok"))
-        await _send(deps, inbound.chat_id, "\n".join(lines))
         log.info("user_created", user_id=user_id, telegram_id=inbound.telegram_id)
+    if status == UserStatus.language:
+        # the language is the first thing asked and the only thing answered until it is set
+        lines = [t(user_lang, "start.invite_ok")] if used_invite else []
+        lines.append(t(user_lang, "lang.ask"))
+        await _send(
+            deps,
+            inbound.chat_id,
+            "\n\n".join(lines),
+            keyboard=language_picker(user_lang),
+        )
+        return
+    await _start_after_language(
+        deps, user_id, inbound, welcome=False, resume=status == UserStatus.onboarding
+    )
+
+
+async def handle_language_message(deps: AppDeps, user: User, inbound: InboundMessage) -> None:
+    """The typed answer to ``lang.ask``. A named language wins over the alphabet it is written
+    in; anything the bot cannot read at all gets the question again."""
+    chosen = detect_lang(inbound.text)
+    if chosen is None:
+        current = resolve_lang(user.language)
+        await _send(
+            deps, inbound.chat_id, t(current, "lang.ask"), keyboard=language_picker(current)
+        )
+        return
+    await set_language(deps, user.id, chosen, inbound)
+
+
+async def set_language(deps: AppDeps, user_id: int, language: str, inbound: InboundMessage) -> None:
+    """Store the answer and carry on with /start in that language."""
+    async with deps.sessions() as session:
+        user = await repo.get_user(session, user_id)
+        if user is None:
+            return
+        user.language = language
+        if user.status == UserStatus.language:
+            user.status = UserStatus.onboarding
+        await session.commit()
+    log.info("language_set", user_id=user_id, language=language)
+    await _start_after_language(deps, user_id, inbound, welcome=True, resume=False)
+
+
+async def _start_after_language(
+    deps: AppDeps, user_id: int, inbound: InboundMessage, *, welcome: bool, resume: bool
+) -> None:
+    """What /start does once the language is known: the welcome line, then either the key
+    walkthrough (no key stored) or the interview's first question. A keyless user never sees
+    the resume line: there is nothing to resume until the key is in."""
+    async with deps.sessions() as session:
+        user = await repo.get_user(session, user_id)
+        if user is None:
+            return
+        lang = resolve_lang(user.language)
+        llm = await deps.llm_factory.for_user(session, user)
+    if welcome:
+        await _send(deps, inbound.chat_id, t(lang, "start.welcome"))
     if llm is None:
         # bring-your-own-key: the interview starts once the key is in (``handle_key_message``)
-        await _send(deps, inbound.chat_id, t(user_lang, "key.needed"))
+        await _send(deps, inbound.chat_id, t(lang, "key.needed"))
         return
-    if not created and status == UserStatus.onboarding:
-        await _send(deps, inbound.chat_id, t(user_lang, "start.resume"))
-
+    if resume:
+        await _send(deps, inbound.chat_id, t(lang, "start.resume"))
     synthetic = InboundMessage(
         telegram_id=inbound.telegram_id,
         chat_id=inbound.chat_id,
         message_id=inbound.message_id,
-        received_at=now,
+        received_at=ensure_utc(inbound.received_at),
         text=START_TEXT,
         language_code=inbound.language_code,
     )
@@ -736,7 +800,20 @@ async def _dispatch_callback(
             await deps.messenger.answer_callback(cb.callback_id)
             return
         lang = resolve_lang(user.language)
-        if parsed.kind == "slot" and parsed.meal_id is not None and parsed.slot is not None:
+        if parsed.kind == "lang" and parsed.language is not None:
+            await deps.messenger.answer_callback(cb.callback_id)
+            await set_language(
+                deps,
+                user.id,
+                parsed.language,
+                InboundMessage(
+                    telegram_id=cb.telegram_id,
+                    chat_id=cb.chat_id,
+                    message_id=cb.message_id or 0,
+                    received_at=ensure_utc(deps.clock.now()),
+                ),
+            )
+        elif parsed.kind == "slot" and parsed.meal_id is not None and parsed.slot is not None:
             await _callback_slot(deps, session, user, cb, parsed.meal_id, parsed.slot)
         elif parsed.kind == "undo" and parsed.meal_id is not None:
             await _callback_undo(deps, session, user, cb, parsed.meal_id)
@@ -914,6 +991,10 @@ async def handle_key_message(
         lines.append(t(lang, "key.unchecked"))
     await _send(deps, inbound.chat_id, "\n".join(lines))
 
+    if user.status == UserStatus.language:
+        # the key arrived before the language answer; ask again, the interview waits for it
+        await _send(deps, inbound.chat_id, t(lang, "lang.ask"), keyboard=language_picker(lang))
+        return
     if user.status == UserStatus.onboarding:
         llm = await deps.llm_factory.for_user(session, user)
         if llm is None:

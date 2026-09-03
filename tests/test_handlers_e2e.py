@@ -273,15 +273,21 @@ async def test_start_with_invite_creates_user_and_agent_asks_first_question(
     fake_llm.queue(FakeLLM.text("Как тебя зовут?"))
 
     await handle_message(deps, msg("/start WELCOME1", telegram_id=NEW_ID, language_code="ru"))
+    user = await repo.get_user_by_telegram_id(session, NEW_ID)
+    assert user is not None and user.status == UserStatus.language
+    assert messenger.texts(NEW_ID) == [f"{t('ru', 'start.invite_ok')}\n\n{t('ru', 'lang.ask')}"]
 
+    await handle_message(deps, msg("русский", telegram_id=NEW_ID, message_id=100))
+
+    session.expire_all()  # the language answer was committed in the handler's own session
     user = await repo.get_user_by_telegram_id(session, NEW_ID)
     assert user is not None and user.status == UserStatus.onboarding and user.language == "ru"
     assert user.invite_code == "WELCOME1"
     await session.refresh(invite)
     assert invite.used_by == user.id and invite.used_at is not None
     texts = messenger.texts(NEW_ID)
-    assert texts[0] == f"{t('ru', 'start.invite_ok')}\n{t('ru', 'start.welcome')}"
-    assert texts[1] == "Как тебя зовут?"
+    assert texts[1] == t("ru", "start.welcome")
+    assert texts[2] == "Как тебя зовут?"
     # the synthetic "/start" turn carried the onboarding prompt and checklist
     call = fake_llm.calls[0]
     assert call["purpose"] == "turn" and call["user_id"] == user.id
@@ -589,7 +595,7 @@ async def test_forget_me_flow_deletes_everything(
     assert (CHAT_ID, card_id) in messenger.unpins
     done = messenger.texts(CHAT_ID)[-1]
     assert done.startswith("Удалено строк:") and "/start" in done
-    rows = int(done.split(":")[1].split(".")[0])
+    rows = int(done.split(":")[1].split(",")[0])
     assert rows >= 6  # user, profile, protocol, day, meal, item, turns
     session.expunge_all()
     assert await repo.get_user(session, user.id) is None

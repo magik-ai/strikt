@@ -1,7 +1,7 @@
 """Inline keyboards only where they remove typing (PLAN §7) and their callback data.
 
 Callback data formats (≤ 64 bytes): ``s:<meal_id>:<slot>``, ``undo:<meal_id>``, ``recalc``,
-``close``, ``forget:yes`` / ``forget:no``, ``yn:<action>:yes|no``.
+``close``, ``forget:yes`` / ``forget:no``, ``yn:<action>:yes|no``, ``lang:ru`` / ``lang:en``.
 """
 
 from __future__ import annotations
@@ -12,7 +12,8 @@ from typing import Literal
 from strikt.core.types import Button
 from strikt.telegram.copy import t
 
-CallbackKind = Literal["slot", "undo", "recalc", "close", "forget", "yesno"]
+CallbackKind = Literal["slot", "undo", "recalc", "close", "forget", "yesno", "lang"]
+LANGUAGES: tuple[str, ...] = ("ru", "en")
 SLOTS: tuple[str, ...] = ("breakfast", "lunch", "dinner", "snack")
 
 
@@ -23,6 +24,7 @@ class Callback:
     slot: str | None = None
     answer: bool | None = None
     action: str | None = None
+    language: str | None = None
 
 
 def parse_callback(data: str | None) -> Callback | None:
@@ -44,6 +46,8 @@ def parse_callback(data: str | None) -> Callback | None:
                 return Callback("forget", answer=answer == "yes")
             case ["yn", action, answer] if answer in {"yes", "no"} and action:
                 return Callback("yesno", action=action, answer=answer == "yes")
+            case ["lang", language] if language in LANGUAGES:
+                return Callback("lang", language=language)
     except ValueError:
         return None
     return None
@@ -95,6 +99,17 @@ def forget_confirm(lang: str | None) -> list[list[Button]]:
     return [
         [Button(text=t(lang, "btn.forget_confirm"), callback_data="forget:yes")],
         [Button(text=t(lang, "btn.cancel"), callback_data="forget:no")],
+    ]
+
+
+def language_picker(lang: str | None) -> list[list[Button]]:
+    """The one question asked before anything else. Typing the answer works too
+    (``copy.detect_lang``); the buttons are there so it takes one tap."""
+    return [
+        [
+            Button(text=t(lang, "btn.lang_ru"), callback_data="lang:ru"),
+            Button(text=t(lang, "btn.lang_en"), callback_data="lang:en"),
+        ]
     ]
 
 

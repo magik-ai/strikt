@@ -405,12 +405,14 @@ def test_key_copy_is_a_short_html_safe_walkthrough(lang: str) -> None:
         assert all(len(line) <= 120 for line in lines), key
         assert not any(ch in text for ch in "<>&"), key
         assert "console.anthropic.com" in text and "Billing" in text and "sk-ant-" in text
-        assert "/forget_me" in text and text.count("1.") == 1 and "4." in text
+        # four one-line bullets, not a numbered wall: STYLE.md, and Telegram reads it better
+        assert [line for line in lines if line.startswith("- ")].__len__() == 4, key
+        assert len(text) <= 420, (key, len(text))
     saved = t(lang, "key.saved", last4="WXYZ")
     assert "WXYZ" in saved and "…WXYZ" in saved
     assert "WXYZ" in t(lang, "key.saved_keep", last4="WXYZ")
     invalid = t(lang, "key.invalid")
-    assert ("step 3" in invalid or "шаг 3" in invalid) and "Billing" in invalid
+    assert "API keys" in invalid and "Billing" in invalid
     assert "console.anthropic.com" in t(lang, "key.rejected")
     api_key = "API key" if lang == "en" else "API-ключ"
     assert api_key in t(lang, "forget.question") and api_key in t(lang, "forget.done", rows=3)

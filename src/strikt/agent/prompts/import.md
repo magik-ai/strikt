@@ -20,7 +20,7 @@ protocol | 2026-08-01 | kcal=2000 p=210 f=105 c=75 fiber=30 | chosen after discu
 ```
 
 Rules:
-- A meal line may list several items separated by `;` — the tool splits them and divides the
+- A meal line may list several items separated by `;` - the tool splits them and divides the
   macros only if per-item numbers are given; otherwise the meal is stored as one item.
 - Mark loose foods (pasta, rice, soups, sauces) with a trailing `| loose`.
 - Preferences, patterns, health facts, rules and planned events become notes; the most recent

@@ -10,7 +10,7 @@ import pytest
 from pydantic import Field
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from strikt.agent.client import STOP_MAX_TOKENS, FakeLLM, LLMError, LLMResult
+from strikt.agent.client import STOP_MAX_TOKENS, FakeLLM, LLMCreditError, LLMError, LLMResult
 from strikt.agent.loop import CONTINUE_TEXT, TurnDeps, run_turn, stub_media_blocks, to_telegram_html
 from strikt.agent.tools import Registry, Tool, ToolContext, ToolResult
 from strikt.agent.tools.schemas import ToolInput
@@ -398,10 +398,28 @@ async def test_llm_error_yields_down_copy_and_keeps_user_turn(
         make_deps(session, user, DownLLM(), test_registry, clock, settings), incoming(user, "hi")
     )
     assert result.error == "boom"
-    assert "Claude недоступен" in result.outgoings[0].text
+    assert result.outgoings[0].text == t("ru", "err.llm_down")
     assert result.assistant_turn_id is None
     turns = await repo.last_n_turns(session, user.id, 5)
     assert [t.role for t in turns] == [TurnRole.user]
+
+
+async def test_empty_anthropic_balance_names_the_balance_not_the_model(
+    session: AsyncSession, user: User, test_registry: Registry, clock: FakeClock, settings: Settings
+) -> None:
+    """A 400 about credit is the user's billing, not an outage: saying "Claude is down" sends
+    them looking in the wrong place."""
+
+    class BrokeLLM(FakeLLM):
+        async def message(self, **kwargs: Any) -> LLMResult:  # type: ignore[override]
+            raise LLMCreditError("api error 400: credit balance is too low", status=400)
+
+    result = await run_turn(
+        make_deps(session, user, BrokeLLM(), test_registry, clock, settings), incoming(user, "hi")
+    )
+    assert result.outgoings[0].text == t("ru", "err.llm_no_credit")
+    assert result.outgoings[0].text != t("ru", "err.llm_down")
+    assert result.assistant_turn_id is None
 
 
 async def test_evening_open_day_gets_day_actions(

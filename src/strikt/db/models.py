@@ -26,6 +26,7 @@ from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column, relationship
 
 class UserStatus(StrEnum):
     invited = "invited"
+    language = "language"
     onboarding = "onboarding"
     active = "active"
     paused = "paused"

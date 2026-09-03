@@ -284,11 +284,17 @@ async def test_start_for_a_new_user_ends_with_the_key_line_then_the_interview_af
     byok: Byok, messenger: FakeMessenger, fake_llm: FakeLLM, session: AsyncSession
 ) -> None:
     await handle_message(byok.deps, msg("/start", telegram_id=NEW_ID, language_code="en"))
-    texts = messenger.texts(NEW_ID)
-    assert texts == [t("en", "start.welcome"), t("en", "key.needed")]
-    assert fake_llm.calls == []
+    assert messenger.texts(NEW_ID) == [t("en", "lang.ask")]
     user = await repo.get_user_by_telegram_id(session, NEW_ID)
-    assert user is not None and user.status == UserStatus.onboarding
+    assert user is not None and user.status == UserStatus.language
+    # the language answer is what starts everything else
+    await handle_message(byok.deps, msg("english", telegram_id=NEW_ID, message_id=100))
+    texts = messenger.texts(NEW_ID)
+    assert texts[-2:] == [t("en", "start.welcome"), t("en", "key.needed")]
+    assert fake_llm.calls == []
+    session.expunge_all()
+    user = await repo.get_user_by_telegram_id(session, NEW_ID)
+    assert user is not None and user.status == UserStatus.onboarding and user.language == "en"
     # a second /start before the key: the key line again, still no model call
     await handle_message(byok.deps, msg("/start", telegram_id=NEW_ID, message_id=101))
     assert messenger.texts(NEW_ID)[-1] == t("en", "key.needed") and fake_llm.calls == []
@@ -334,8 +340,14 @@ async def test_server_mode_uses_the_server_key_for_everyone(
     fake_llm.queue(FakeLLM.text("Понял."), FakeLLM.text("Your name?"))
     await handle_message(b.deps, msg("привет"))
     await handle_message(b.deps, msg("/start", telegram_id=NEW_ID, language_code="en"))
+    await handle_message(b.deps, msg("english", telegram_id=NEW_ID, message_id=100))
     assert messenger.texts(CHAT_ID) == ["Понял."]
-    assert messenger.texts(NEW_ID) == [t("en", "start.welcome"), "Your name?"]  # no key line
+    # no key line in server mode: the language answer goes straight into the interview
+    assert messenger.texts(NEW_ID) == [
+        t("en", "lang.ask"),
+        t("en", "start.welcome"),
+        "Your name?",
+    ]
     assert b.built == [SERVER_KEY] and len(fake_llm.calls) == 2
 
 

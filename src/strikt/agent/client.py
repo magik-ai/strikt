@@ -69,6 +69,24 @@ class LLMAuthError(LLMError):
         super().__init__(message, retryable=False, status=status)
 
 
+class LLMCreditError(LLMError):
+    """The key is fine, its Anthropic account is out of credit. Anthropic answers 400 and the
+    message text is the only thing that separates this from a malformed request, so the caller
+    can tell the user to top up Billing instead of blaming the model."""
+
+    def __init__(self, message: str, *, status: int | None = None) -> None:
+        super().__init__(message, retryable=False, status=status)
+
+
+#: Substrings Anthropic uses in the 400 it returns for an empty balance.
+CREDIT_MARKERS: tuple[str, ...] = ("credit balance is too low", "insufficient credit")
+
+
+def is_credit_error(message: str | None) -> bool:
+    lowered = (message or "").lower()
+    return any(marker in lowered for marker in CREDIT_MARKERS)
+
+
 @dataclass(frozen=True)
 class ToolUse:
     id: str
@@ -313,8 +331,12 @@ class LLM:
                 f"api key rejected ({exc.status_code})", status=exc.status_code
             ) from exc
         except anthropic.APIStatusError as exc:
+            detail = f"api error {exc.status_code}: {exc.message}"
+            if exc.status_code == 400 and is_credit_error(exc.message):
+                log.warning("llm_no_credit", purpose=purpose_str, user_id=user_id)
+                raise LLMCreditError(detail, status=exc.status_code) from exc
             raise LLMError(
-                f"api error {exc.status_code}: {exc.message}",
+                detail,
                 retryable=exc.status_code >= 500,
                 status=exc.status_code,
             ) from exc

@@ -44,7 +44,7 @@ from typing import TYPE_CHECKING, Any, Protocol
 
 import structlog
 
-from strikt.agent.client import LLMAuthError, LLMError, LLMResult, ToolUse
+from strikt.agent.client import LLMAuthError, LLMCreditError, LLMError, LLMResult, ToolUse
 from strikt.agent.context import ContextBundle, build_context, user_blocks
 from strikt.agent.tools.registry import ToolContext
 from strikt.agent.usage import LLMUsage
@@ -486,6 +486,11 @@ async def run_turn(deps: TurnDeps, incoming: Incoming) -> TurnResult:
         log.warning("turn_key_rejected", user_id=user.id, status=exc.status)
         error = str(exc)
         outcome = _LoopOutcome(t(lang, "key.rejected"), [], LLMUsage(), 0.0, 0)
+    except LLMCreditError as exc:
+        # the key works, the account is empty: say so instead of blaming Claude
+        log.warning("turn_no_credit", user_id=user.id)
+        error = str(exc)
+        outcome = _LoopOutcome(t(lang, "err.llm_no_credit"), [], LLMUsage(), 0.0, 0)
     except LLMError as exc:
         log.error("turn_llm_failed", user_id=user.id, error=str(exc), retryable=exc.retryable)
         error = str(exc)
