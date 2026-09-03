@@ -4,16 +4,16 @@ FROM python:3.14-slim AS build
 COPY --from=ghcr.io/astral-sh/uv:0.12.9 /uv /uvx /bin/
 ENV UV_COMPILE_BYTECODE=1 UV_LINK_MODE=copy UV_PYTHON_DOWNLOADS=never UV_PROJECT_ENVIRONMENT=/app/.venv
 WORKDIR /app
-# Dependencies first so they cache independently of source changes. The cache mounts carry an
-# explicit id: BuildKit defaults it to the target path, Railway's builder rejects it as missing.
+# Dependencies first so they cache independently of source changes: this layer only re-runs when
+# pyproject.toml or uv.lock change, which is the caching that matters. No `--mount=type=cache`
+# here — Railway's builder demands its own cacheKey prefix in the mount id, and the layer cache
+# already covers the expensive sync.
 COPY pyproject.toml uv.lock ./
-RUN --mount=type=cache,id=uv-cache,target=/root/.cache/uv \
-    uv sync --locked --no-dev --no-install-project
+RUN uv sync --locked --no-dev --no-install-project
 COPY src ./src
 COPY migrations ./migrations
 COPY alembic.ini README.md ./
-RUN --mount=type=cache,id=uv-cache,target=/root/.cache/uv \
-    uv sync --locked --no-dev
+RUN uv sync --locked --no-dev
 
 # ---- runtime: slim image, non-root, no uv ----------------------------------------------
 FROM python:3.14-slim AS runtime
