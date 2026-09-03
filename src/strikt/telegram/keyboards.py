@@ -10,10 +10,11 @@ from dataclasses import dataclass
 from typing import Literal
 
 from strikt.core.types import Button
-from strikt.telegram.copy import t
+from strikt.telegram.copy import LANGUAGES, NATIVE_NAMES, t
 
 CallbackKind = Literal["slot", "undo", "recalc", "close", "forget", "yesno", "lang"]
-LANGUAGES: tuple[str, ...] = ("ru", "en")
+#: How many language buttons fit a phone row without the text truncating.
+LANGUAGES_PER_ROW = 3
 SLOTS: tuple[str, ...] = ("breakfast", "lunch", "dinner", "snack")
 
 
@@ -102,14 +103,21 @@ def forget_confirm(lang: str | None) -> list[list[Button]]:
     ]
 
 
-def language_picker(lang: str | None) -> list[list[Button]]:
-    """The one question asked before anything else. Typing the answer works too
-    (``copy.detect_lang``); the buttons are there so it takes one tap."""
+def language_picker(guess: str | None = None) -> list[list[Button]]:
+    """The one question asked before anything else, in every language the bot carries.
+
+    Each button says the language in its own words. Typing the answer works just as well
+    (``copy.detect_lang``); the buttons are there so it takes one tap. The language Telegram
+    reported comes first, because it is usually the right one.
+    """
+    codes = list(LANGUAGES)
+    if guess in codes:
+        codes.remove(guess)
+        codes.insert(0, guess)
+    buttons = [Button(text=NATIVE_NAMES[code], callback_data=f"lang:{code}") for code in codes]
     return [
-        [
-            Button(text=t(lang, "btn.lang_ru"), callback_data="lang:ru"),
-            Button(text=t(lang, "btn.lang_en"), callback_data="lang:en"),
-        ]
+        buttons[start : start + LANGUAGES_PER_ROW]
+        for start in range(0, len(buttons), LANGUAGES_PER_ROW)
     ]
 
 

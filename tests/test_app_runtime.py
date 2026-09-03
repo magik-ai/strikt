@@ -33,7 +33,7 @@ from strikt.events import WorkoutEvent
 from strikt.integrations import whoop
 from strikt.logging import configure_logging
 from strikt.telegram import commands
-from strikt.telegram.copy import t
+from strikt.telegram.copy import LANGUAGES, t
 from strikt.telegram.messenger import FakeMessenger
 from tests.conftest import CHAT_ID, TELEGRAM_ID
 from tests.test_handlers_e2e import FakeDownloader, FakeTranscriber
@@ -341,20 +341,26 @@ def test_bot_commands_respect_telegram_limits() -> None:
     assert commands.bot_commands("ru")[1].description == t("ru", "cmd.today")
 
 
-async def test_apply_bot_profile_sets_both_languages() -> None:
+async def test_apply_bot_profile_covers_every_language() -> None:
+    """English is the profile Telegram falls back to, so it goes without a language code; every
+    other locale gets its own."""
     recorder = ProfileRecorder()
     await commands.apply_bot_profile(recorder)
     kinds = [(kind, lang) for kind, _, lang in recorder.calls]
-    assert kinds == [
-        ("commands", None),
-        ("short", None),
-        ("description", None),
-        ("commands", "ru"),
-        ("short", "ru"),
-        ("description", "ru"),
-    ]
-    assert recorder.calls[3][1] == ["start", "today", "forget_me"]
-    assert recorder.calls[5][1] == t("ru", "bot.description")
+    assert kinds[:3] == [("commands", None), ("short", None), ("description", None)]
+    assert len(kinds) == 3 * len(LANGUAGES)
+    for index, lang in enumerate(LANGUAGES):
+        code = None if lang == "en" else lang
+        assert kinds[index * 3 : index * 3 + 3] == [
+            ("commands", code),
+            ("short", code),
+            ("description", code),
+        ]
+    by_lang = {lang: (kind, payload) for kind, payload, lang in recorder.calls}
+    assert by_lang["ru"][0] == "description"
+    ru_calls = [payload for kind, payload, lang in recorder.calls if lang == "ru"]
+    assert ru_calls[0] == ["start", "today", "forget_me"]
+    assert ru_calls[2] == t("ru", "bot.description")
 
 
 # ------------------------------------------------------------------------- config & deploy

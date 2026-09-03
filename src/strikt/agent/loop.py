@@ -494,7 +494,11 @@ async def run_turn(deps: TurnDeps, incoming: Incoming) -> TurnResult:
     except LLMError as exc:
         log.error("turn_llm_failed", user_id=user.id, error=str(exc), retryable=exc.retryable)
         error = str(exc)
-        outcome = _LoopOutcome(t(lang, "err.llm_down"), [], LLMUsage(), 0.0, 0)
+        # a 4xx the SDK will never retry is a request this code built wrong, not an outage: two
+        # of those shipped in one evening and both told the user "Claude is unavailable"
+        ours = exc.status is not None and 400 <= exc.status < 500 and exc.status != 429
+        copy_key = "err.llm_bug" if ours else "err.llm_down"
+        outcome = _LoopOutcome(t(lang, copy_key), [], LLMUsage(), 0.0, 0)
 
     tools_used = outcome.tools_used
     traces = outcome.traces

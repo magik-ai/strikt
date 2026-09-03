@@ -55,7 +55,8 @@ src/strikt/
   agent/usage.py  cost from the price table
   agent/tools/    registry (strict schemas, dispatch), schemas (one model per tool), handlers
   agent/prompts/  coach, onboarding, proactive, verify, summarize, import (→ PROMPTS.md)
-  telegram/       messenger (Protocol + aiogram + Fake), copy (ru/en), render (card), keyboards, queue,
+  telegram/       messenger (Protocol + aiogram + Fake), copy + locales/ (20 languages), render (card),
+                  keyboards, queue,
                   keys (sk-ant-… detection; the key handler itself is handlers.handle_key_message)
 migrations/       alembic (async env); 0001_initial + 0002_user_llm_key match Base.metadata (tested)
 tests/            conftest: sqlite engine, session, FakeClock, FakeLLM, FakeMessenger, seeded user
@@ -76,7 +77,9 @@ server: health, OAuth callbacks, webhooks, optional Telegram webhook), `app.py` 
 - `structlog.get_logger()`; never `print`. Never log a secret.
 - Time: store UTC, compute local with `zoneinfo` via `core/clock.py`; SQLite returns naive
   datetimes — normalise with `ensure_utc`.
-- Copy: model-written replies; code-rendered strings live in `telegram/copy.py` (ru/en).
+- Copy: model-written replies come out in the user's language on their own; code-rendered strings
+  live in `telegram/locales/<code>.json`, one file per language, English as the fallback. The
+  language is asked once on `/start` (button or free text) and stored on the user.
 - Tool schemas: docstring = tool description, `Field(description=…)` on every field,
   `extra="forbid"`, no free `dict` fields, no numeric constraints (strict mode subset).
 - Prompt caching: the coach prompt is static; the tool list is sorted and byte-stable; anything

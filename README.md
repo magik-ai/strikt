@@ -77,7 +77,7 @@ A message: album parts are gathered for 1.2 s and merged; a pasted Anthropic key
 |---|---|
 | `app.py` | wiring, migrations on boot, start/stop |
 | `config.py` | settings from `.env`, price table |
-| `telegram/` | aiogram bot, handlers, per-chat queue, media (HEIC, albums, PDFs), voice, the card, buttons, ru/en copy, the key flow (`keys.py`) |
+| `telegram/` | aiogram bot, handlers, per-chat queue, media (HEIC, albums, PDFs), voice, the card, buttons, copy in 20 languages (`locales/`), the key flow (`keys.py`) |
 | `agent/client.py` | one `LLM` per API key (`LLMFactory`, `LLM_KEY_MODE`), usage recording, the key validator |
 | `agent/loop.py`, `context.py`, `verify.py` | the turn loop, context assembly and caching, the Reflexion check |
 | `agent/tools/` | 27 tools: strict schemas, registry, handlers for food, training, body, state, profile, research, memory |

@@ -1,4 +1,4 @@
-"""The bot's public surface: the three commands and the profile texts, in ru and en.
+"""The bot's public surface: the three commands and the profile texts, in every language.
 
 ``setMyCommands`` is per language (Telegram picks the client's language, default = English);
 ``setMyDescription`` / ``setMyShortDescription`` come from ``telegram/copy.py`` so the copy has
@@ -13,12 +13,11 @@ from typing import Protocol
 import structlog
 from aiogram.types import BotCommand
 
-from strikt.telegram.copy import t
+from strikt.telegram.copy import DEFAULT_LANG, LANGUAGES, t
 
 log = structlog.get_logger(__name__)
 
 COMMAND_NAMES: tuple[str, ...] = ("start", "today", "forget_me")
-LANGUAGES: tuple[str, ...] = ("en", "ru")
 MAX_SHORT_DESCRIPTION = 120
 MAX_DESCRIPTION = 512
 MAX_COMMAND_DESCRIPTION = 256
@@ -58,7 +57,7 @@ def description(lang: str | None) -> str:
 async def apply_bot_profile(bot: BotProfileAPI) -> None:
     """Set commands and descriptions for every language (English is the default profile)."""
     for lang in LANGUAGES:
-        code = None if lang == "en" else lang
+        code = None if lang == DEFAULT_LANG else lang
         await bot.set_my_commands(bot_commands(lang), language_code=code)
         await bot.set_my_short_description(short_description(lang), language_code=code)
         await bot.set_my_description(description(lang), language_code=code)
