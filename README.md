@@ -98,6 +98,7 @@ A message: album parts are gathered for 1.2 s and merged; a pasted Anthropic key
 - **Postgres 18.** The memory is typed rows, not a vector store: numbers live in tables, summaries cite them. Tests run the same models on SQLite. Migrations from day one.
 - **APScheduler 3.11.** Per-user cron jobs in the user's timezone, in-process, recomputed when the profile changes. 4.x is still alpha.
 - **Claude Sonnet 5 for everything.** Effort `medium` for turns, `low` for verify, proactive decisions, summaries and `web_research`. A cheaper second model was rejected: its 4,096-token cache minimum would silently skip caching the system block (`RESEARCH.md` §7).
+- **Bring your own key.** Each user's model calls run on that user's Anthropic key, pasted once into the chat; the operator pays for hosting, not for other people's tokens, and the "one window" rule holds — the key is a message, not a settings screen. A private deployment flips `LLM_KEY_MODE=server` and pays for everyone with one key.
 - **OpenAI `gpt-transcribe` for voice.** Sonnet 5 takes text and images only. Telegram's OGG goes to OpenAI as is, no ffmpeg; `whisper-1` is the fallback. Optional.
 - **Server-side web search in a separate call.** `web_research` is its own model call carrying Anthropic's `web_search` and `web_fetch` tools, so the main tool list never changes and the cache holds. It costs money, so it is for restaurant dishes, not for eggs. The tool type strings are settings (`WEB_SEARCH_TOOL_TYPE`, `WEB_FETCH_TOOL_TYPE`), so a renamed version is a config change, not a deploy; what comes back is marked untrusted and used as data, never as instructions.
 
@@ -294,7 +295,7 @@ The coach prompt and the profile block come from cache on almost every turn, so 
 | `uv sync` | dependencies from `uv.lock` |
 | `make fmt` / `make lint` | ruff fix and format / ruff check and format check |
 | `make type` | `mypy --strict src` |
-| `make test` | pytest: 717 tests, SQLite, no network |
+| `make test` | pytest: 760 tests, SQLite, no network |
 | `make check` | lint, type, test, and `PROMPTS.md` in sync |
 | `make prompts` | regenerate `PROMPTS.md` from `agent/prompts/*.md` |
 | `make run` | run the bot locally against `.env` |
@@ -313,7 +314,7 @@ To add a tool: input model in `agent/tools/schemas.py`, handler in the owning mo
 |---|---|
 | `src/strikt/` | the package (module map above) |
 | `migrations/` | alembic, async env; `0001_initial`, `0002_user_llm_key` |
-| `tests/` | 717 tests; fixtures in `conftest.py` |
+| `tests/` | 760 tests; fixtures in `conftest.py` |
 | `scripts/` | `setup_telegram.py`, `build_prompts_md.py` |
 | `brand/` | marks, avatar, images, fonts, render script (see `BRAND.md`) |
 | `docker-compose.yml` | bot + `postgres:18`, optional `caddy` profile |

@@ -18,7 +18,12 @@ change, change PLAN.md in the same commit and say why.
 - The brief's voice rules are as important as the code. Prompts live in `agent/prompts/*.md`;
   regenerate `PROMPTS.md` with `make prompts`.
 - Never say the bot "lacks context": if the DB has it, look it up.
-- No real network in tests. Use `FakeLLM`, `FakeMessenger`, `FakeClock`.
+- Every model call for a user is billed to that user's own Anthropic key: get the client from
+  `llm_factory.for_user(session, user)` (never a process-wide `LLM`); `None` means no key —
+  reply `key.needed` or skip with `llm_key_missing`. Never log a key; `logging.py` masks
+  `sk-ant-…` strings as a last line of defence, not as permission.
+- No real network in tests. Use `FakeLLM`, `FakeLLMFactory`, `FakeKeyValidator`,
+  `FakeMessenger`, `FakeClock`.
 
 ## Module ownership
 

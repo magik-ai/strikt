@@ -414,19 +414,20 @@ async def test_nightly_summary_skips_a_keyless_user(
     nightly = app_mod.make_nightly_summary(
         app_mod.make_session_factory(engine), byok.factory, clock
     )
+    user_id = user.id
     yesterday = date(2026, 9, 2)
     with capture_logs() as logs:
-        await nightly(user.id, yesterday)
+        await nightly(user_id, yesterday)
     assert fake_llm.calls == []
-    assert await repo.get_summary(session, user.id, SummaryKind.day, yesterday) is None
+    assert await repo.get_summary(session, user_id, SummaryKind.day, yesterday) is None
     assert any(entry["event"] == "llm_key_missing" for entry in logs)
     assert any(entry["event"] == "nightly_summary_skipped" for entry in logs)
-    await repo.set_llm_key(session, user.id, KEY, byok.cipher, now=clock.now())
+    await repo.set_llm_key(session, user_id, KEY, byok.cipher, now=clock.now())
     await session.commit()
     fake_llm.queue(FakeLLM.text("not json"), FakeLLM.text("not json"))
-    await nightly(user.id, yesterday)
+    await nightly(user_id, yesterday)
     session.expire_all()
-    assert await repo.get_summary(session, user.id, SummaryKind.day, yesterday) is not None
+    assert await repo.get_summary(session, user_id, SummaryKind.day, yesterday) is not None
     assert [c["purpose"] for c in fake_llm.calls] == ["summary", "summary"]
 
 

@@ -25,7 +25,7 @@ pastes in the first minute (`LLM_KEY_MODE=user`).
 Я проверю его, сохраню в зашифрованном виде, удалю твоё сообщение и больше не покажу.
 Новый ключ заменяет старый. /forget_me удаляет его вместе со всем остальным.
 
-**08:30 · Ilya:** `sk-ant-api03-…7Q2f` *(one call checks it — `GET /v1/models/claude-sonnet-5`
+**08:31 · Ilya:** `sk-ant-api03-…7Q2f` *(one call checks it — `GET /v1/models/claude-sonnet-5`
 on that key — then it is Fernet-encrypted into `users`; the message is deleted from the chat and
 never becomes a turn)*
 

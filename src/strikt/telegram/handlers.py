@@ -882,13 +882,14 @@ async def handle_key_message(
     never logged (only the last four characters). A user still in onboarding then gets the
     interview's first question at once — the key was the missing piece after ``/start``."""
     lang = resolve_lang(user.language)
+    # the secret leaves the chat first; the check may take up to KEY_CHECK_TIMEOUT_S
+    deleted = await _delete_quietly(deps, inbound.chat_id, inbound.message_id)
     check: KeyCheck = "unknown"
     if deps.key_validator is not None:
         try:
             check = await deps.key_validator.check(key)
         except Exception as exc:
             log.warning("llm_key_check_crashed", user_id=user.id, error=type(exc).__name__)
-    deleted = await _delete_quietly(deps, inbound.chat_id, inbound.message_id)
     if check == "invalid":
         log.info("llm_key_invalid", user_id=user.id, message_deleted=deleted)
         await _send(deps, inbound.chat_id, t(lang, "key.invalid"))
