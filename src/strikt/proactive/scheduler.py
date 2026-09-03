@@ -303,13 +303,19 @@ class ProactiveScheduler:
         return [GLOBAL_SYNC_ID, GLOBAL_REMINDERS_ID]
 
     async def _run_reminder_checks(self) -> int:
-        """Every minute: fire ``reminder_due`` for each pending reminder whose time has come."""
+        """Every minute: fire ``reminder_due`` for each pending reminder whose time has come.
+
+        The attempt consumes the reminder, the delivery does not. The engine marks it sent when
+        it sends; every other outcome (no profile yet, no API key, the decider passing, an error)
+        is retired here as ``missed`` with the reason. Leaving it pending would put it back in
+        this query sixty seconds later and every sixty seconds after that.
+        """
         now = self._clock.now()
         async with self._session_factory() as session:
             due = await repo.pending_reminders(session, due_before=now)
         fired = 0
         for reminder in due:
-            await self._engine.fire(
+            outcome = await self._engine.fire(
                 reminder.user_id,
                 "reminder_due",
                 {
@@ -319,6 +325,18 @@ class ProactiveScheduler:
                 },
             )
             fired += 1
+            if outcome.status == "sent":
+                continue
+            log.info(
+                "reminder_missed",
+                user_id=reminder.user_id,
+                reminder_id=reminder.id,
+                status=outcome.status,
+                reason=outcome.reason,
+            )
+            async with self._session_factory() as session:
+                await repo.mark_reminder_missed(session, reminder.user_id, reminder.id)
+                await session.commit()
         return fired
 
     async def _run_integration_sync(self) -> None:

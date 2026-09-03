@@ -14,7 +14,7 @@ from strikt.config import Settings
 from strikt.core.clock import FakeClock, zone
 from strikt.db import repo
 from strikt.db.engine import make_session_factory
-from strikt.db.models import Profile, ReminderStatus, User
+from strikt.db.models import Profile, ReminderStatus, User, UserStatus
 from strikt.proactive import scheduler as sched
 from strikt.proactive.engine import ProactiveEngine
 from strikt.telegram.messenger import FakeMessenger
@@ -246,6 +246,31 @@ async def test_global_jobs_reminder_check_and_nightly(
     await ps._run_nightly_summary(999)
     await ps._run_integration_sync()
     assert ps.nightly_calls == [(user.id, TODAY - timedelta(days=1)), (0, TODAY)]  # type: ignore[attr-defined]
+
+
+async def test_a_reminder_that_cannot_be_sent_is_retired_not_retried(
+    proactive: tuple[ProactiveEngine, sched.ProactiveScheduler],
+    user: User,
+    clock: FakeClock,
+    session: AsyncSession,
+    messenger: FakeMessenger,
+) -> None:
+    """The minute job picks up every pending reminder whose time has come. When the attempt ends
+    in anything but a message, leaving it pending fires it again in sixty seconds, and again
+    after that, for as long as the process runs."""
+    _, ps = proactive
+    user.status = UserStatus.paused  # the engine skips this one with reason user_not_active
+    due = await repo.add_reminder(
+        session, user.id, due_at=clock.now() - timedelta(minutes=2), text="waist", now=clock.now()
+    )
+    await session.commit()
+
+    assert await ps._run_reminder_checks() == 1
+    assert messenger.texts(user.chat_id) == []
+    session.expire_all()
+    await session.refresh(due)
+    assert due.status == ReminderStatus.missed
+    assert await ps._run_reminder_checks() == 0
 
 
 async def test_reschedule_all_active_users(

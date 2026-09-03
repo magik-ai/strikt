@@ -1261,6 +1261,21 @@ async def cancel_reminder(session: AsyncSession, user_id: int, reminder_id: int)
     return _rowcount(result) > 0
 
 
+async def mark_reminder_missed(session: AsyncSession, user_id: int, reminder_id: int) -> bool:
+    """The reminder came due and the attempt produced no message. It leaves ``pending`` anyway:
+    a reminder that stays pending is picked up by the minute job again, and again, forever."""
+    result = await session.execute(
+        update(Reminder)
+        .where(
+            Reminder.user_id == user_id,
+            Reminder.id == reminder_id,
+            Reminder.status == ReminderStatus.pending,
+        )
+        .values(status=ReminderStatus.missed)
+    )
+    return _rowcount(result) > 0
+
+
 async def mark_reminder_sent(session: AsyncSession, user_id: int, reminder_id: int) -> bool:
     result = await session.execute(
         update(Reminder)

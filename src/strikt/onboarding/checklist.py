@@ -4,7 +4,7 @@ the system block (PLAN §6.2: the profile block is cached, so the text must be b
 the same profile).
 
 A step counts as done when the model marked it (``profile.onboarding_step >= step.id``) or when
-every required field for it is already filled — a user who pastes their whole story in one
+every required field for it is already filled - a user who pastes their whole story in one
 message does not get asked again.
 """
 
@@ -43,8 +43,8 @@ STEPS: tuple[Step, ...] = (
         "identity",
         ("name", "language", "timezone", "city", "country"),
         ("name", "timezone"),
-        "name, language, city → timezone",
-        "имя, язык, город → часовой пояс",
+        "name, city → timezone",
+        "имя, город → часовой пояс",
     ),
     Step(
         2,
@@ -76,15 +76,15 @@ STEPS: tuple[Step, ...] = (
         ("wake_time", "bed_time", "work_pattern", "training_plan", "meal_sources"),
         ("wake_time", "bed_time"),
         "wake and bed times (wake is the anchor), work pattern, training days, where meals come from",
-        "подъём и отбой (подъём — якорь), режим работы, дни тренировок, откуда еда",
+        "подъём и отбой (подъём - якорь), режим работы, дни тренировок, откуда еда",
     ),
     Step(
         5,
         "training",
         ("training_plan", "wearable"),
         ("wearable",),
-        "what and how often; wearable — offer connect_integration right there",
-        "что и как часто; трекер — сразу предложить connect_integration",
+        "what and how often; wearable - offer connect_integration right there",
+        "что и как часто; трекер - сразу предложить connect_integration",
     ),
     Step(
         6,
@@ -254,7 +254,7 @@ def render_state(profile: Profile | None, lang: str | None, facts: Facts | None 
     lines = ["Онбординг:" if ru else "Onboarding:"]
     for status in statuses:
         mark = "[x]" if status.done else "[ ]"
-        line = f"{mark} {status.step.id}. {status.step.key} — {status.step.hint(lang)}"
+        line = f"{mark} {status.step.id}. {status.step.key} - {status.step.hint(lang)}"
         if status.missing:
             label = "не хватает" if ru else "missing"
             line += f" ({label}: {', '.join(status.missing)})"

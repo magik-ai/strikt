@@ -9,7 +9,6 @@ from itertools import pairwise
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from strikt.agent.context import (
-    ONBOARDING_STEPS,
     build_context,
     looks_like_past_question,
     render_onboarding_checklist,
@@ -156,19 +155,21 @@ async def test_onboarding_user_gets_the_interview_and_checklist(
     system, _, _, _ = await build(session, user, clock, settings, registry, incoming(user, "hi"))
     text = str(system[1]["text"])
     assert "Onboarding interview" in text
-    assert "<onboarding_checklist>" in text
-    assert "1. [todo] identity" in text
-    assert "next step: 1" in text
+    assert "Onboarding:" in text
+    assert "[ ] 1. identity" in text
+    assert "Continue from step 1 (identity)." in text
     assert "no profile yet" in text
 
 
-def test_checklist_marks_done_steps(profile: Profile) -> None:
+def test_checklist_marks_done_steps_and_names_what_is_missing(profile: Profile) -> None:
+    """The checklist comes from ``strikt.onboarding.checklist``, so it names the empty fields
+    instead of only counting steps."""
     profile.onboarding_step = 4
-    text = render_onboarding_checklist(profile)
-    assert "4. [done]" in text
-    assert "5. [todo]" in text
-    assert "next step: 5" in text
-    assert len(ONBOARDING_STEPS) == 10
+    text = render_onboarding_checklist(profile, "en")
+    assert "[x] 4. schedule" in text
+    assert "[ ] 5. training" in text
+    assert "missing: wearable" in text
+    assert "Continue from step 5 (training)." in text
 
 
 async def test_history_is_limited_alternating_and_cache_marked(

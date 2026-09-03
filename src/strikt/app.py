@@ -417,7 +417,16 @@ def main() -> None:
         mode=settings.telegram_mode,
         key_mode=settings.llm_key_mode,
         server_key=settings.server_api_key is not None,
+        allowed_ids=len(settings.allowed_telegram_ids),
+        admin_ids=len(settings.admin_telegram_ids),
     )
+    if not settings.allowed_telegram_ids and not settings.admin_telegram_ids:
+        # /start is invite-only and only an admin can mint an invite, so with both lists empty
+        # nobody can ever get in: the bot boots, answers /health, and refuses every message.
+        log.warning(
+            "nobody_can_start",
+            hint="set ALLOWED_TELEGRAM_IDS (and ADMIN_TELEGRAM_IDS) to the owner's Telegram id",
+        )
     run_loop(serve(settings))
 
 

@@ -114,6 +114,9 @@ class ReminderStatus(StrEnum):
     pending = "pending"
     sent = "sent"
     cancelled = "cancelled"
+    #: Came due, the attempt did not end in a message. Never retried: see
+    #: ``ProactiveScheduler._run_reminder_checks``.
+    missed = "missed"
 
 
 class TurnRole(StrEnum):

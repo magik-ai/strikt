@@ -32,6 +32,16 @@ def test_prompts_have_no_long_dash() -> None:
         assert LONG_DASH not in path.read_text(encoding="utf-8"), path.name
 
 
+def test_the_onboarding_checklist_has_no_long_dash() -> None:
+    """It goes into the system prompt, where a long dash teaches the model to write one."""
+    from strikt.onboarding import checklist
+
+    source = Path(checklist.__file__).read_text(encoding="utf-8")
+    assert LONG_DASH not in source
+    for lang in ("en", "ru"):
+        assert LONG_DASH not in checklist.render_state(None, lang)
+
+
 def test_rendered_copy_reads_on_a_phone() -> None:
     for lang, table in STRINGS.items():
         for key, text in table.items():

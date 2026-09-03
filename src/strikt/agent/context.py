@@ -27,7 +27,6 @@ entry pays off for text-only bursts; a photo turn re-writes it once.
 
 from __future__ import annotations
 
-import importlib
 import json
 import math
 import re
@@ -42,11 +41,20 @@ import structlog
 
 from strikt.core.clock import ensure_utc, local_day_bounds, to_local
 from strikt.db import repo
-from strikt.db.models import ProactiveSend, Profile, Protocol, SummaryKind, User, UserStatus
+from strikt.db.models import (
+    MeasurementType,
+    ProactiveSend,
+    Profile,
+    Protocol,
+    SummaryKind,
+    User,
+    UserStatus,
+)
 from strikt.memory.daystate import DayStateBuilder, render_context, yesterday_close_line
 from strikt.memory.notes import active_notes, render_notes_block
 from strikt.memory.periods import find_period
 from strikt.memory.retrieval import render_rows, search_history
+from strikt.onboarding.checklist import Facts, facts_for, render_state
 from strikt.telegram.copy import resolve_lang, weekday_name
 
 if TYPE_CHECKING:
@@ -78,23 +86,6 @@ CACHE_5M: dict[str, str] = {"type": "ephemeral"}
 
 #: Profile columns never rendered: volatile timestamps, the FK, the relationship.
 _PROFILE_SKIP = frozenset({"user_id", "updated_at", "onboarding_done_at", "user"})
-
-ONBOARDING_STEPS: tuple[tuple[int, str], ...] = (
-    (1, "identity: name, language, timezone, city"),
-    (2, "goal in their words → one primary KPI, targets, measurement cadence"),
-    (3, "body: height, weight, waist, age, sex (log weight and waist)"),
-    (4, "schedule: wake/bed times, work pattern, training days, where meals come from"),
-    (5, "training and wearable; offer WHOOP / Withings / Apple Health connection"),
-    (6, "food: likes, dislikes, allergies, dietary rules, alcohol, sweet tooth, comfort food"),
-    (7, "health context: conditions, labs (photos accepted), medications, doctor's instructions"),
-    (8, "macro scheme: propose, 2–3 alternatives, trade-offs, user picks → update_protocol"),
-    (9, "coaching style: bluntness, explanation level, proactive check-ins and times, quiet hours"),
-    (
-        10,
-        "close: summarise the profile, ask for corrections, finish_onboarding, say what to send first",
-    ),
-)
-"""The ten steps of brief §4; used when ``strikt.onboarding.checklist`` is not available."""
 
 _PAST_QUESTION = re.compile(
     r"(?i)(\bwhat did i\b|\bhow (?:much|many|often|did)\b|\blast (?:time|week|month|year|\w+day)\b"
@@ -241,29 +232,15 @@ def is_onboarding(user: User, profile: Profile | None) -> bool:
     return profile is None or profile.onboarding_done_at is None
 
 
-def render_onboarding_checklist(profile: Profile | None) -> str:
-    """Which of the ten steps are done. Prefers ``strikt.onboarding.checklist`` when it exists."""
-    try:  # the onboarding package is owned by a later build stage
-        module = importlib.import_module("strikt.onboarding.checklist")
-        renderer = getattr(module, "render_checklist", None)
-        if callable(renderer):
-            rendered = renderer(profile)
-            if isinstance(rendered, str) and rendered.strip():
-                return rendered.strip()
-    except Exception as exc:  # pragma: no cover - depends on a module that may not exist yet
-        log.debug("onboarding_checklist_fallback", error=repr(exc))
-    done = int(profile.onboarding_step) if profile is not None else 0
-    lines = ["<onboarding_checklist>"]
-    for number, title in ONBOARDING_STEPS:
-        mark = "done" if number <= done else "todo"
-        lines.append(f"{number}. [{mark}] {title}")
-    nxt = min(done + 1, 10)
-    lines.append(f"next step: {nxt}")
-    lines.append("</onboarding_checklist>")
-    return "\n".join(lines)
+def render_onboarding_checklist(
+    profile: Profile | None, lang: str | None = None, facts: Facts | None = None
+) -> str:
+    """Which of the ten steps are done and what each unfinished one is still missing.
 
-
-# ------------------------------------------------------------------------------ history turns
+    The text comes from ``strikt.onboarding.checklist``, which reads the profile columns rather
+    than trusting ``onboarding_step`` alone, so a step the user answered out of order counts.
+    """
+    return render_state(profile, lang, facts)
 
 
 def _merge_same_role(messages: list[dict[str, Any]]) -> list[dict[str, Any]]:
@@ -523,8 +500,14 @@ async def build_context(
     profile_text = render_profile_block(user, profile, protocol, render_notes_block(notes))
     onboarding = is_onboarding(user, profile)
     if onboarding:
+        weighed = await repo.latest_by_type(session, user.id, MeasurementType.weight)
+        facts = facts_for(user, protocol, has_weight=weighed is not None)
         profile_text = "\n\n".join(
-            [profile_text, load_prompt("onboarding"), render_onboarding_checklist(profile)]
+            [
+                profile_text,
+                load_prompt("onboarding"),
+                render_onboarding_checklist(profile, user.language, facts),
+            ]
         )
 
     system: list[dict[str, Any]] = [
