@@ -7,15 +7,7 @@ from typing import Any
 
 from pydantic import BaseModel, ConfigDict, Field
 
-from strikt.agent.tools import (
-    MAX_STRICT_TOOLS,
-    NON_STRICT_TOOLS,
-    Registry,
-    Tool,
-    ToolContext,
-    ToolResult,
-    build_registry,
-)
+from strikt.agent.tools import Registry, Tool, ToolContext, ToolResult, build_registry
 from strikt.agent.tools.registry import strict_schema
 from strikt.agent.tools.schemas import SCHEMAS, TOOL_NAMES
 
@@ -156,27 +148,20 @@ def test_tool_context_helpers(tool_ctx: ToolContext) -> None:
     assert tool_ctx.service("llm") is tool_ctx.services["llm"]
 
 
-def test_strict_tool_count_stays_inside_the_api_limit() -> None:
-    """Anthropic answers 400 "Too many strict tools (27). The maximum ... is 20" and the coach
-    has 27 tools, so every turn failed until the flag was rationed. Nothing but a real API call
-    shows it, which is why the budget is pinned here."""
+def test_definitions_carry_no_strict_flag_and_stay_closed() -> None:
+    """Strict tool use is off on purpose: Anthropic budgets it per request (20 strict tools, 24
+    optional parameters across them) and the coach is well past both - 27 tools and 44 optional
+    parameters - so turning it on returns a 400 for every single turn. The schema shaping stays,
+    because that is what the model actually reads."""
     definitions = build_registry().definitions()
-    strict = [d["name"] for d in definitions if d.get("strict")]
-    assert len(strict) <= MAX_STRICT_TOOLS, f"{len(strict)} strict tools of {len(definitions)}"
-    assert set(NON_STRICT_TOOLS) <= set(TOOL_NAMES)
-    # the flag is dropped, the schema is not: a non-strict tool still forbids extra properties
+    assert len(definitions) == len(TOOL_NAMES)
+    optional = 0
     for definition in definitions:
-        assert definition["input_schema"]["additionalProperties"] is False
-        assert "strict" not in definition or definition["strict"] is True
-
-
-def test_non_strict_tools_are_the_simple_ones() -> None:
-    """Strict mode earns its place on nested and enum-heavy schemas. What ships without it takes
-    one scalar argument at most, where a wrong call is cheap to catch in ``dispatch``."""
-    registry = build_registry()
-    for name in NON_STRICT_TOOLS:
-        tool = registry.get(name)
-        assert tool is not None and not tool.strict
-        schema = tool.definition()["input_schema"]
-        assert len(schema.get("properties", {})) <= 1, name
-        assert "enum" not in json.dumps(schema), name
+        assert "strict" not in definition, definition["name"]
+        schema = definition["input_schema"]
+        assert schema["additionalProperties"] is False
+        required = set(schema.get("required", []))
+        optional += len([p for p in schema.get("properties", {}) if p not in required])
+    # the numbers the comment in registry.py quotes; if they drop under 20/24 the flag is worth
+    # another look
+    assert len(definitions) > 20 or optional > 24, (len(definitions), optional)

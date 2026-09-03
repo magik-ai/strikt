@@ -3,42 +3,9 @@
 from __future__ import annotations
 
 from strikt.agent.tools import schemas
-from strikt.agent.tools.registry import (
-    MAX_STRICT_TOOLS,
-    Handler,
-    Registry,
-    Tool,
-    ToolContext,
-    ToolResult,
-)
+from strikt.agent.tools.registry import Handler, Registry, Tool, ToolContext, ToolResult
 
-__all__ = [
-    "MAX_STRICT_TOOLS",
-    "NON_STRICT_TOOLS",
-    "Handler",
-    "Registry",
-    "Tool",
-    "ToolContext",
-    "ToolResult",
-    "build_registry",
-]
-
-#: The coach has more tools than Anthropic allows in strict mode, so the flag goes to the
-#: schemas where it earns its place: nested objects, enums, many fields. These take one scalar
-#: argument at most, and a malformed call to one of them comes back through
-#: ``Registry.dispatch`` as a tool error the model can fix on the next round.
-NON_STRICT_TOOLS: frozenset[str] = frozenset(
-    {
-        "cancel_reminder",
-        "delete_meal",
-        "finish_onboarding",
-        "get_day_state",
-        "import_history",
-        "render_day_card",
-        "retire_note",
-        "undo_last",
-    }
-)
+__all__ = ["Handler", "Registry", "Tool", "ToolContext", "ToolResult", "build_registry"]
 
 
 def _handlers() -> dict[str, Handler]:
@@ -82,20 +49,7 @@ def build_registry() -> Registry:
     extra = set(handlers) - set(schemas.TOOL_NAMES)
     if missing or extra:
         raise RuntimeError(f"tool wiring mismatch: missing={sorted(missing)} extra={sorted(extra)}")
-    strict_names = [name for name in schemas.TOOL_NAMES if name not in NON_STRICT_TOOLS]
-    if len(strict_names) > MAX_STRICT_TOOLS:
-        raise RuntimeError(
-            f"{len(strict_names)} strict tools, Anthropic accepts {MAX_STRICT_TOOLS}: "
-            f"add the simplest ones to NON_STRICT_TOOLS"
-        )
     registry = Registry()
     for name in schemas.TOOL_NAMES:
-        registry.register(
-            Tool.from_model(
-                name,
-                schemas.SCHEMAS[name],
-                handlers[name],
-                strict=name not in NON_STRICT_TOOLS,
-            )
-        )
+        registry.register(Tool.from_model(name, schemas.SCHEMAS[name], handlers[name]))
     return registry

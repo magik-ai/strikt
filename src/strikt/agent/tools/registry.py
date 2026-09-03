@@ -82,9 +82,15 @@ class ToolContext:
 Handler = Callable[[ToolContext, Any], Awaitable[ToolResult]]
 
 
-#: Anthropic refuses a request carrying more strict tools than this ("Too many strict tools").
-#: ``build_registry`` checks the count at startup so the limit is hit in CI, not mid-conversation.
-MAX_STRICT_TOOLS = 20
+# Strict tool use is not used here, deliberately. Anthropic budgets it per request - at the time
+# of writing 20 strict tools and 24 optional parameters across them - and the coach ships 27 tools
+# with 44 optional parameters between them. Both budgets were hit in production, each as a plain
+# 400 in the middle of a conversation that no local test reproduces, and neither can be satisfied
+# without deleting tools or arguments the coach needs. What strict actually bought is still here:
+# ``strict_schema`` closes every object and drops the keywords the tool-use subset rejects, and
+# ``Registry.dispatch`` validates each call against the pydantic model and hands the model a
+# readable error to correct. Before turning the flag back on, check both budgets against the
+# numbers in ``tests/test_registry.py``.
 
 
 @dataclass(frozen=True)
@@ -93,7 +99,6 @@ class Tool:
     description: str
     input_model: type[BaseModel]
     handler: Handler
-    strict: bool = True
 
     @classmethod
     def from_model(
@@ -102,32 +107,19 @@ class Tool:
         input_model: type[BaseModel],
         handler: Handler,
         description: str | None = None,
-        *,
-        strict: bool = True,
     ) -> Tool:
         """Use the input model's docstring as the tool description."""
         doc = description or inspect.cleandoc(input_model.__doc__ or "")
         if not doc:
             raise ValueError(f"tool {name}: input model {input_model.__name__} has no docstring")
-        return cls(
-            name=name,
-            description=doc,
-            input_model=input_model,
-            handler=handler,
-            strict=strict,
-        )
+        return cls(name=name, description=doc, input_model=input_model, handler=handler)
 
     def definition(self) -> dict[str, Any]:
-        """The schema is built the strict way either way; only the flag is dropped, so a
-        non-strict tool still gets ``additionalProperties: false`` and no unsupported keywords."""
-        definition: dict[str, Any] = {
+        return {
             "name": self.name,
             "description": self.description,
             "input_schema": strict_schema(self.input_model),
         }
-        if self.strict:
-            definition["strict"] = True
-        return definition
 
 
 # ------------------------------------------------------------------------------ strict schema
