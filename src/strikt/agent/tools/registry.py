@@ -82,12 +82,18 @@ class ToolContext:
 Handler = Callable[[ToolContext, Any], Awaitable[ToolResult]]
 
 
+#: Anthropic refuses a request carrying more strict tools than this ("Too many strict tools").
+#: ``build_registry`` checks the count at startup so the limit is hit in CI, not mid-conversation.
+MAX_STRICT_TOOLS = 20
+
+
 @dataclass(frozen=True)
 class Tool:
     name: str
     description: str
     input_model: type[BaseModel]
     handler: Handler
+    strict: bool = True
 
     @classmethod
     def from_model(
@@ -96,20 +102,32 @@ class Tool:
         input_model: type[BaseModel],
         handler: Handler,
         description: str | None = None,
+        *,
+        strict: bool = True,
     ) -> Tool:
         """Use the input model's docstring as the tool description."""
         doc = description or inspect.cleandoc(input_model.__doc__ or "")
         if not doc:
             raise ValueError(f"tool {name}: input model {input_model.__name__} has no docstring")
-        return cls(name=name, description=doc, input_model=input_model, handler=handler)
+        return cls(
+            name=name,
+            description=doc,
+            input_model=input_model,
+            handler=handler,
+            strict=strict,
+        )
 
     def definition(self) -> dict[str, Any]:
-        return {
+        """The schema is built the strict way either way; only the flag is dropped, so a
+        non-strict tool still gets ``additionalProperties: false`` and no unsupported keywords."""
+        definition: dict[str, Any] = {
             "name": self.name,
             "description": self.description,
             "input_schema": strict_schema(self.input_model),
-            "strict": True,
         }
+        if self.strict:
+            definition["strict"] = True
+        return definition
 
 
 # ------------------------------------------------------------------------------ strict schema
