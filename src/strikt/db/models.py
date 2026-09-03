@@ -110,6 +110,14 @@ class NoteKind(StrEnum):
     commitment = "commitment"
 
 
+class SecretService(StrEnum):
+    """The optional keys a user can hand over in the chat. The Anthropic key is not here:
+    it is required, and it lives on ``users`` (``llm_key_enc``)."""
+
+    openai = "openai"  # voice notes get transcribed
+    usda = "usda"  # the food database answers faster and more often
+
+
 class ReminderStatus(StrEnum):
     pending = "pending"
     sent = "sent"
@@ -173,6 +181,7 @@ ALL_ENUMS: tuple[type[StrEnum], ...] = (
     MeasurementType,
     NoteKind,
     ReminderStatus,
+    SecretService,
     TurnRole,
     SummaryKind,
     Provider,
@@ -231,6 +240,9 @@ class User(Base):
     llm_key_enc: Mapped[str | None] = mapped_column(sa.Text)
     llm_key_last4: Mapped[str | None] = mapped_column(sa.String(4))
     llm_key_set_at: Mapped[datetime | None] = mapped_column(TZDateTime)
+    # The optional key the coach just asked for, if any. A USDA key is forty plain characters
+    # and matches nothing on sight, so the next message is read as one only while this is set.
+    awaiting_secret: Mapped[str | None] = mapped_column(sa.String(16))
 
     profile: Mapped[Profile | None] = relationship(
         back_populates="user", uselist=False, cascade="all, delete-orphan"
@@ -556,6 +568,29 @@ class Note(Base):
     active: Mapped[bool] = mapped_column(sa.Boolean, nullable=False, default=True)
 
 
+class UserSecret(Base):
+    """An optional third-party key the user pasted into the chat, Fernet-encrypted at rest.
+
+    One row per user and service. The plaintext leaves the chat immediately (the message is
+    deleted), is never logged, and only the last four characters are kept for the "ends in …"
+    line. ``privacy.delete_everything`` drops these with the rest.
+    """
+
+    __tablename__ = "user_secrets"
+    __table_args__ = (
+        sa.UniqueConstraint("user_id", "service", name="uq_user_secrets_user_service"),
+    )
+
+    id: Mapped[int] = mapped_column(BigIntPK, primary_key=True, autoincrement=True)
+    user_id: Mapped[int] = mapped_column(sa.BigInteger, user_fk(), nullable=False)
+    service: Mapped[SecretService] = mapped_column(
+        enum_col(SecretService, "secret_service"), nullable=False
+    )
+    key_enc: Mapped[str] = mapped_column(sa.Text, nullable=False)
+    last4: Mapped[str] = mapped_column(sa.String(4), nullable=False)
+    set_at: Mapped[datetime] = mapped_column(TZDateTime, nullable=False)
+
+
 class Reminder(Base):
     __tablename__ = "reminders"
     __table_args__ = (sa.Index("ix_reminders_user_status_due", "user_id", "status", "due_at"),)
@@ -724,5 +759,6 @@ USER_OWNED_TABLES: tuple[type[Base], ...] = (
     ProactiveSend,
     TokenUsage,
     OAuthState,
+    UserSecret,
 )
 """Every model with a ``user_id`` column (used by privacy.delete_everything and tests)."""

@@ -46,8 +46,9 @@ from strikt.agent.tools.registry import ToolContext
 from strikt.core.clock import ensure_utc, local_date
 from strikt.core.types import Attachment, Button, Incoming
 from strikt.db import repo
-from strikt.db.models import User, UserStatus
+from strikt.db.models import SecretService, User, UserStatus
 from strikt.events import DayStateChanged
+from strikt.keycheck import check_secret
 from strikt.privacy import delete_everything
 from strikt.telegram.copy import detect_lang, resolve_lang, t
 from strikt.telegram.keyboards import (
@@ -56,7 +57,12 @@ from strikt.telegram.keyboards import (
     language_picker,
     parse_callback,
 )
-from strikt.telegram.keys import extract_key, mentions_key
+from strikt.telegram.keys import (
+    extract_key,
+    extract_openai_key,
+    looks_like_usda_key,
+    mentions_key,
+)
 from strikt.telegram.media import MediaError, MediaTooLargeError, prepare_document, prepare_image
 from strikt.telegram.voice import TranscriptionError
 
@@ -76,7 +82,7 @@ if TYPE_CHECKING:
     from strikt.telegram.media import AlbumCollector, Downloader
     from strikt.telegram.messenger import Messenger
     from strikt.telegram.queue import PerChatQueue
-    from strikt.telegram.voice import Transcriber
+    from strikt.telegram.voice import Transcriber, TranscriberResolver
 
 log = structlog.get_logger(__name__)
 
@@ -341,10 +347,16 @@ class AppDeps:
     key_validator: KeyValidator | None = None
     #: Encrypts the stored key (``TOKEN_ENCRYPTION_KEY``); required to accept a key at all.
     cipher: TokenCipher | None = None
+    #: Picks the transcriber for a user (their own OpenAI key first). Without one every
+    #: voice note goes through ``transcriber``.
+    transcribers: TranscriberResolver | None = None
 
     def tool_services(self) -> dict[str, Any]:
         """The service bag handed to tool handlers (``llm``/``bus`` are added by the loop)."""
         services: dict[str, Any] = {"messenger": self.messenger}
+        if self.cipher is not None:
+            # the food tools decrypt the user's own USDA key with it
+            services["cipher"] = self.cipher
         if self.integrations is not None:
             services["integrations"] = self.integrations
         if self.card is not None:
@@ -629,7 +641,12 @@ async def handle_invite(deps: AppDeps, user: User, inbound: InboundMessage) -> N
 # -------------------------------------------------------------------------------- the turn
 
 
-async def build_incoming(deps: AppDeps, user: User, inbound: InboundMessage) -> Incoming | None:
+async def build_incoming(
+    deps: AppDeps,
+    user: User,
+    inbound: InboundMessage,
+    transcriber: Transcriber | None = None,
+) -> Incoming | None:
     """Download and prepare every attachment. ``None`` when the user was told what went wrong."""
     lang = resolve_lang(user.language)
     attachments: list[Attachment] = []
@@ -643,7 +660,7 @@ async def build_incoming(deps: AppDeps, user: User, inbound: InboundMessage) -> 
             elif ref.kind == "document":
                 attachments.append(await prepare_document(data, ref.mime, ref.filename))
             else:
-                transcript = await deps.transcriber.transcribe(
+                transcript = await (transcriber or deps.transcriber).transcribe(
                     data, mime=ref.mime, language_hint=user.language
                 )
                 if not transcript.strip():
@@ -693,10 +710,27 @@ async def handle_user_message(deps: AppDeps, user_id: int, inbound: InboundMessa
         if key is not None:
             await handle_key_message(deps, session, user, inbound, key)
             return
+        optional = extract_openai_key(inbound.text)
+        if optional is not None:
+            await handle_secret_message(deps, session, user, inbound, "openai", optional)
+            return
+        if user.awaiting_secret:
+            pending = user.awaiting_secret
+            candidate = (inbound.text or "").strip()
+            if _looks_like_secret(pending, candidate):
+                await handle_secret_message(deps, session, user, inbound, pending, candidate)
+                return
+            # they changed their mind, or answered something else: stop waiting and let the
+            # message be an ordinary turn
+            await repo.set_awaiting_secret(session, user.id, None)
+            await session.commit()
         llm = await resolve_llm(deps, session, user, inbound.text)
         if llm is None:
             return
-        incoming = await build_incoming(deps, user, inbound)
+        speech = None
+        if deps.transcribers is not None:
+            speech = await deps.transcribers.for_user(session, user)
+        incoming = await build_incoming(deps, user, inbound, speech)
         if incoming is None:
             return
         await run_agent_turn(deps, session, user, incoming, llm)
@@ -962,6 +996,66 @@ async def handle_key_message(
         incoming = await build_incoming(deps, user, synthetic)
         if incoming is not None:
             await run_agent_turn(deps, session, user, incoming, llm)
+
+
+def _looks_like_secret(service: str, text: str) -> bool:
+    """Is this message the key the coach asked for, or the user changing their mind?"""
+    if not text or text.startswith("/"):
+        return False
+    if service == SecretService.usda:
+        return looks_like_usda_key(text)
+    if service == SecretService.openai:
+        return extract_openai_key(text) is not None
+    return False
+
+
+async def handle_secret_message(
+    deps: AppDeps,
+    session: AsyncSession,
+    user: User,
+    inbound: InboundMessage,
+    service: str,
+    key: str,
+) -> None:
+    """An optional third-party key pasted into the chat (OpenAI for voice, USDA for food).
+
+    Same handling as the Anthropic key and for the same reasons: the message is deleted first,
+    one cheap request tells a typo from a working key, the value is Fernet-encrypted into
+    ``user_secrets``, and only the last four characters are ever shown or logged. A key the
+    service rejects is not stored and the coach keeps waiting for another one.
+    """
+    lang = resolve_lang(user.language)
+    deleted = await _delete_quietly(deps, inbound.chat_id, inbound.message_id)
+    try:
+        check = await check_secret(service, key)
+    except Exception as exc:  # a check that crashes must not cost the user their key
+        log.warning("secret_check_crashed", service=service, error=type(exc).__name__)
+        check = "unknown"
+    if check == "invalid":
+        log.info("user_secret_invalid", user_id=user.id, service=service, message_deleted=deleted)
+        await _send(deps, inbound.chat_id, t(lang, "secret.invalid"))
+        return
+    if deps.cipher is None:
+        log.error("user_secret_no_cipher", user_id=user.id, service=service)
+        await _send(deps, inbound.chat_id, t(lang, "err.unknown"))
+        return
+    last4 = await repo.set_user_secret(
+        session, user.id, service, key, deps.cipher, now=ensure_utc(inbound.received_at)
+    )
+    await session.commit()
+    log.info(
+        "user_secret_saved",
+        user_id=user.id,
+        service=service,
+        last4=last4,
+        checked=check == "valid",
+        message_deleted=deleted,
+    )
+    await _send(
+        deps,
+        inbound.chat_id,
+        t(lang, "secret.saved" if deleted else "secret.saved_keep", last4=last4),
+    )
 
 
 # ------------------------------------------------------------------------------- /forget_me

@@ -49,6 +49,7 @@ TOOL_NAMES: tuple[str, ...] = (
     "web_research",
     "render_day_card",
     "connect_integration",
+    "request_key",
     "set_coaching_intensity",
     "finish_onboarding",
     "import_history",
@@ -513,6 +514,18 @@ class ConnectIntegrationInput(ToolInput):
     provider: Literal["whoop", "withings", "apple_health"] = Field(description="Provider.")
 
 
+class RequestKeyInput(ToolInput):
+    """Ask the user for an optional third-party key and read their next message as that key.
+
+    Two are worth having and both are optional: `openai` transcribes voice notes, `usda` makes
+    the food database answer faster and more often. Call this only after the user has said yes,
+    then tell them in your own words where to get it. Their next message is captured, deleted
+    from the chat and stored encrypted without ever reaching you. If they change their mind and
+    write something else, the wait is dropped and the message is an ordinary turn."""
+
+    service: Literal["openai", "usda"] = Field(description="Which optional key to ask for.")
+
+
 class SetCoachingIntensityInput(ToolInput):
     """Change how hard the coach pushes, optionally until a date ('ease off this week'). The
     previous level is restored automatically afterwards."""
@@ -560,6 +573,7 @@ SCHEMAS: dict[str, type[ToolInput]] = {
     "web_research": WebResearchInput,
     "render_day_card": RenderDayCardInput,
     "connect_integration": ConnectIntegrationInput,
+    "request_key": RequestKeyInput,
     "set_coaching_intensity": SetCoachingIntensityInput,
     "finish_onboarding": FinishOnboardingInput,
     "import_history": ImportHistoryInput,

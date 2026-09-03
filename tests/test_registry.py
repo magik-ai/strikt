@@ -45,15 +45,15 @@ def _walk(node: Any) -> list[dict[str, Any]]:
 def test_every_plan_tool_is_registered(registry: Registry) -> None:
     assert registry.names() == sorted(TOOL_NAMES)
     assert set(SCHEMAS) == set(TOOL_NAMES)
-    assert len(registry) == 27
+    assert len(registry) == 28
 
 
 def test_definitions_are_sorted_strict_and_closed(registry: Registry) -> None:
     defs = registry.definitions()
     assert [d["name"] for d in defs] == sorted(d["name"] for d in defs)
     for definition in defs:
-        # strict is rationed (MAX_STRICT_TOOLS); the closed schema below is not
-        assert definition.get("strict", True) is True
+        # strict tool use is off (see registry.py); the closed schema below is not
+        assert "strict" not in definition
         assert definition["description"].strip()
         schema = definition["input_schema"]
         assert schema["type"] == "object"

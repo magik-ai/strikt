@@ -29,6 +29,7 @@ from strikt.db.models import (
     Summary,
     TokenUsage,
     User,
+    UserSecret,
     Workout,
 )
 
@@ -36,6 +37,7 @@ log = structlog.get_logger(__name__)
 
 # Children first, parents last. ``foods`` is a shared cache and is never touched.
 _DELETE_ORDER: tuple[type[Any], ...] = (
+    UserSecret,
     ProactiveSend,
     TokenUsage,
     OAuthState,

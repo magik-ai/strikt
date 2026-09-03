@@ -17,7 +17,7 @@ from datetime import date, datetime, timedelta
 from typing import Any, cast
 
 import sqlalchemy as sa
-from sqlalchemy import Select, func, select, update
+from sqlalchemy import Select, delete, func, select, update
 from sqlalchemy.engine import CursorResult
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
@@ -52,6 +52,7 @@ from strikt.db.models import (
     Recovery,
     Reminder,
     ReminderStatus,
+    SecretService,
     Sleep,
     Summary,
     SummaryKind,
@@ -59,6 +60,7 @@ from strikt.db.models import (
     TurnRole,
     UsagePurpose,
     User,
+    UserSecret,
     UserStatus,
     Workout,
 )
@@ -187,6 +189,81 @@ async def set_llm_key(
     user.llm_key_set_at = now
     await session.flush()
     return user.llm_key_last4
+
+
+async def set_user_secret(
+    session: AsyncSession,
+    user_id: int,
+    service: SecretService | str,
+    key: str,
+    cipher: TokenCipher,
+    *,
+    now: datetime,
+) -> str:
+    """Encrypt and store an optional third-party key for the user; returns last4.
+
+    One row per service: a new key replaces the old one. ``awaiting_secret`` is cleared, because
+    whatever the coach was waiting for has now arrived.
+    """
+    key = key.strip()
+    if not key:
+        raise ValueError("empty API key")
+    kind = SecretService(service)
+    user = await session.get(User, user_id)
+    if user is None:
+        raise ValueError(f"user {user_id} does not exist")
+    row = await session.scalar(
+        select(UserSecret).where(UserSecret.user_id == user_id, UserSecret.service == kind)
+    )
+    if row is None:
+        row = UserSecret(user_id=user_id, service=kind, key_enc="", last4="", set_at=now)
+        session.add(row)
+    row.key_enc = cipher.encrypt(key)
+    row.last4 = key[-4:]
+    row.set_at = now
+    user.awaiting_secret = None
+    await session.flush()
+    return row.last4
+
+
+async def get_user_secret(
+    session: AsyncSession, user_id: int, service: SecretService | str, cipher: TokenCipher
+) -> str | None:
+    """The decrypted key, or None when there is none (or the cipher no longer matches it)."""
+    row = await session.scalar(
+        select(UserSecret).where(
+            UserSecret.user_id == user_id, UserSecret.service == SecretService(service)
+        )
+    )
+    if row is None:
+        return None
+    try:
+        return cipher.decrypt(row.key_enc)
+    except ValueError:
+        # TOKEN_ENCRYPTION_KEY was rotated: the row is dead weight, the user pastes a new key
+        return None
+
+
+async def clear_user_secret(
+    session: AsyncSession, user_id: int, service: SecretService | str
+) -> bool:
+    result = await session.execute(
+        delete(UserSecret).where(
+            UserSecret.user_id == user_id, UserSecret.service == SecretService(service)
+        )
+    )
+    return _rowcount(result) > 0
+
+
+async def set_awaiting_secret(
+    session: AsyncSession, user_id: int, service: SecretService | str | None
+) -> None:
+    """Read the next message as this service's key. ``None`` stops waiting."""
+    user = await session.get(User, user_id)
+    if user is None:
+        return
+    user.awaiting_secret = None if service is None else str(SecretService(service))
+    await session.flush()
 
 
 async def clear_llm_key(session: AsyncSession, user_id: int) -> bool:

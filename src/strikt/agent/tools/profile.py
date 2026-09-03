@@ -157,6 +157,23 @@ async def update_protocol(ctx: ToolContext, args: schemas.UpdateProtocolInput) -
     return ok(result)
 
 
+async def request_key(ctx: ToolContext, args: schemas.RequestKeyInput) -> ToolResult:
+    """Put the chat into "the next message is this key" mode. The key itself never reaches the
+    model: ``telegram/handlers.py`` takes it out of the chat, checks it and stores it encrypted."""
+    await repo.set_awaiting_secret(ctx.session, ctx.user_id, args.service)
+    log.info("key_requested", user_id=ctx.user_id, service=args.service)
+    return ok(
+        {
+            "service": args.service,
+            "waiting": True,
+            "next": (
+                "Tell the user where to get it and ask them to paste it in the next message. "
+                "You will not see the key: it is deleted from the chat and stored encrypted."
+            ),
+        }
+    )
+
+
 async def set_coaching_intensity(
     ctx: ToolContext, args: schemas.SetCoachingIntensityInput
 ) -> ToolResult:

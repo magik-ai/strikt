@@ -136,8 +136,8 @@ Strikt bills every model call to the key of the person it works for. The operato
 | `TELEGRAM_BOT_TOKEN` | operator | `.env` | @BotFather, `/newbot` | the bot itself |
 | `TOKEN_ENCRYPTION_KEY` | operator | `.env` | `make keygen` | encrypting users' Anthropic keys and WHOOP/Withings tokens at rest |
 | `ANTHROPIC_API_KEY` | operator, optional | `.env` | console.anthropic.com → Settings → API keys | `server` mode: everyone; `user` mode: only the ids in `ADMIN_TELEGRAM_IDS` |
-| `OPENAI_API_KEY` | operator, optional | `.env` | platform.openai.com → API keys | voice-note transcription; without it voice notes get "send text" |
-| `USDA_API_KEY` | operator, optional | `.env` | api.data.gov/signup (`DEMO_KEY` works with low limits) | generic-food lookups after the cache and Open Food Facts |
+| `OPENAI_API_KEY` | operator, optional | `.env` | platform.openai.com → API keys | voice-note transcription, and only a fallback: a user can paste their own into the chat. Without either, voice notes get "send text" |
+| `USDA_API_KEY` | operator, optional | `.env` | api.data.gov/signup (`DEMO_KEY` works with low limits) | generic-food lookups after the cache and Open Food Facts; a user who pastes their own gets their own rate limit |
 | `WHOOP_CLIENT_ID` / `WHOOP_CLIENT_SECRET` | operator, optional | `.env` | developer.whoop.com | the WHOOP integration |
 | `WITHINGS_CLIENT_ID` / `WITHINGS_CLIENT_SECRET` | operator, optional | `.env` | developer.withings.com | the Withings integration |
 | `TELEGRAM_WEBHOOK_SECRET` | operator, webhook mode | `.env` | any random string | authenticating Telegram's webhook calls |
@@ -223,7 +223,7 @@ The list from `.env.example`. Compose sets `DATABASE_URL` from `POSTGRES_PASSWOR
 | `CONTEXT_MAX_TURNS` | no | `30` | turns of history sent each turn |
 | `CONTEXT_MAX_TOKENS` | no | `40000` | history token cap, whichever comes first |
 | `LLM_TIMEOUT_S` | no | `120` | HTTP timeout per model call |
-| `OPENAI_API_KEY` | no | — | voice transcription only; without it voice notes get "send text" |
+| `OPENAI_API_KEY` | no | — | voice transcription; a fallback for users who did not paste their own |
 | `OPENAI_TRANSCRIPTION_MODEL` | no | `gpt-transcribe` | primary transcription model |
 | `OPENAI_TRANSCRIPTION_FALLBACK_MODEL` | no | `whisper-1` | fallback when the primary errors |
 | `DATABASE_URL` | no | bundled Postgres | async SQLAlchemy URL; Compose overrides it |
@@ -235,7 +235,7 @@ The list from `.env.example`. Compose sets `DATABASE_URL` from `POSTGRES_PASSWOR
 | `CADDY_DOMAIN` | with `--profile tls` | — | domain for the Caddy TLS profile |
 | `WHOOP_CLIENT_ID` / `WHOOP_CLIENT_SECRET` | for WHOOP | — | WHOOP developer app |
 | `WITHINGS_CLIENT_ID` / `WITHINGS_CLIENT_SECRET` | for Withings | — | Withings developer app |
-| `USDA_API_KEY` | no | — | USDA FoodData Central key (`DEMO_KEY` works with low limits) |
+| `USDA_API_KEY` | no | — | USDA FoodData Central key (`DEMO_KEY` works with low limits); a fallback for users who did not paste their own |
 | `OFF_USER_AGENT` | no | `Strikt/0.1 (...)` | User-Agent Open Food Facts asks for |
 | `LOG_LEVEL` | no | `INFO` | `DEBUG | INFO | WARNING | ERROR | CRITICAL` |
 | `LOG_FORMAT` | no | `pretty` | `json` in production (Compose forces it) |

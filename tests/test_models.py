@@ -41,6 +41,7 @@ EXPECTED_TABLES = {
     "token_usage",
     "invites",
     "oauth_states",
+    "user_secrets",
 }
 
 

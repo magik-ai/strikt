@@ -27,7 +27,7 @@ from strikt.agent.tools.common import (
 )
 from strikt.core.types import FoodHit, FoodItemIn, Macros
 from strikt.db import repo
-from strikt.db.models import ItemSource, Meal, MealItem, MealSlot, MealSource
+from strikt.db.models import ItemSource, Meal, MealItem, MealSlot, MealSource, SecretService
 from strikt.nutrition import store
 from strikt.nutrition.math import kcal_from_macros, round_macros, scale_per_100g
 from strikt.nutrition.resolve import resolve_food
@@ -121,6 +121,14 @@ def _raw_ref(ctx: ToolContext) -> dict[str, Any] | None:
     return ref
 
 
+async def _usda_key(ctx: ToolContext) -> str | None:
+    """The user's own USDA key when they gave one: their rate limit, not the server's."""
+    cipher = ctx.services.get("cipher")
+    if cipher is None:
+        return None
+    return await repo.get_user_secret(ctx.session, ctx.user_id, SecretService.usda, cipher)
+
+
 async def _resolve_missing(ctx: ToolContext, item: FoodItemIn) -> FoodItemIn:
     """A name without numbers: look it up (cache → OFF → USDA) and scale to the portion."""
     hit = await resolve_food(
@@ -130,6 +138,7 @@ async def _resolve_missing(ctx: ToolContext, item: FoodItemIn) -> FoodItemIn:
         restaurant=item.restaurant,
         http=ctx.services.get("http"),
         settings=ctx.settings,
+        usda_key=await _usda_key(ctx),
         now=ctx.clock.now(),
     )
     if hit is None:
@@ -165,6 +174,7 @@ async def search_food(ctx: ToolContext, args: schemas.SearchFoodInput) -> ToolRe
         barcode=args.barcode,
         http=ctx.services.get("http"),
         settings=ctx.settings,
+        usda_key=await _usda_key(ctx),
         now=ctx.clock.now(),
     )
     hits: list[dict[str, Any]] = []

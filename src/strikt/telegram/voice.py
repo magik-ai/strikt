@@ -11,16 +11,26 @@ among the language candidates and the prompt seeds food vocabulary.
 
 from __future__ import annotations
 
+from collections import OrderedDict
 from typing import TYPE_CHECKING, Any, Protocol, cast
 
 import structlog
 
+from strikt.db import repo
+from strikt.db.models import SecretService
+
 if TYPE_CHECKING:
+    from sqlalchemy.ext.asyncio import AsyncSession
+
     from strikt.config import Settings
+    from strikt.db.crypto import TokenCipher
+    from strikt.db.models import User
 
 log = structlog.get_logger(__name__)
 
 MAX_AUDIO_BYTES = 25 * 1024 * 1024  # OpenAI transcription upload cap
+#: Transcription clients kept alive, one per distinct OpenAI key.
+MAX_TRANSCRIBERS = 32
 DEFAULT_LANGUAGE = "en"
 
 FOOD_PROMPT = (
@@ -122,16 +132,23 @@ def _text_of(result: Any) -> str:
 class OpenAITranscriber:
     """``gpt-transcribe`` with a ``whisper-1`` fallback; the client is built on first use."""
 
-    def __init__(self, settings: Settings, client: TranscriptionClient | None = None) -> None:
+    def __init__(
+        self,
+        settings: Settings,
+        client: TranscriptionClient | None = None,
+        *,
+        api_key: str | None = None,
+    ) -> None:
         self._settings = settings
         self._client = client
+        self._api_key = api_key
         self._model = settings.openai_transcription_model
         self._fallback_model = settings.openai_transcription_fallback_model
 
     def _get_client(self) -> TranscriptionClient:
         if self._client is None:
             key = self._settings.openai_api_key
-            api_key = key.get_secret_value() if key is not None else ""
+            api_key = self._api_key or (key.get_secret_value() if key is not None else "")
             if not api_key:
                 raise TranscriptionError("OPENAI_API_KEY is not configured")
             from openai import AsyncOpenAI
@@ -195,3 +212,50 @@ def build_transcriber(settings: Settings) -> Transcriber:
         return OpenAITranscriber(settings)
     log.info("transcriber_null", reason="no OPENAI_API_KEY")
     return NullTranscriber()
+
+
+class TranscriberResolver(Protocol):
+    async def for_user(self, session: AsyncSession, user: User) -> Transcriber: ...
+
+
+class TranscriberFactory:
+    """The transcriber a given user's voice notes go through.
+
+    The user's own OpenAI key first (they pasted it into the chat, it is billed to them), the
+    server key second when there is one, and ``NullTranscriber`` when there is neither - then
+    the handler asks for text instead. One client per distinct key, oldest evicted, because
+    building an ``AsyncOpenAI`` per voice note leaks connections.
+    """
+
+    def __init__(self, settings: Settings, cipher: TokenCipher | None = None) -> None:
+        self._settings = settings
+        self._cipher = cipher
+        self._server = build_transcriber(settings)
+        self._by_key: OrderedDict[str, Transcriber] = OrderedDict()
+
+    async def for_user(self, session: AsyncSession, user: User) -> Transcriber:
+        key = None
+        if self._cipher is not None:
+            key = await repo.get_user_secret(session, user.id, SecretService.openai, self._cipher)
+        if not key:
+            return self._server
+        cached = self._by_key.get(key)
+        if cached is not None:
+            self._by_key.move_to_end(key)
+            return cached
+        made: Transcriber = OpenAITranscriber(self._settings, api_key=key)
+        self._by_key[key] = made
+        self._by_key.move_to_end(key)
+        while len(self._by_key) > MAX_TRANSCRIBERS:
+            self._by_key.popitem(last=False)
+        return made
+
+
+class FakeTranscriberFactory:
+    """Tests hand one transcriber to everybody."""
+
+    def __init__(self, transcriber: Transcriber) -> None:
+        self._transcriber = transcriber
+
+    async def for_user(self, session: AsyncSession, user: User) -> Transcriber:
+        return self._transcriber

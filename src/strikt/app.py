@@ -62,7 +62,7 @@ from strikt.telegram.handlers import AppDeps, InboundMessage
 from strikt.telegram.media import AiogramDownloader, AlbumCollector
 from strikt.telegram.messenger import AiogramMessenger
 from strikt.telegram.queue import PerChatQueue
-from strikt.telegram.voice import build_transcriber
+from strikt.telegram.voice import TranscriberFactory, build_transcriber
 from strikt.web.server import TelegramHandler, make_app, run_server
 
 if TYPE_CHECKING:
@@ -314,6 +314,7 @@ def build_runtime(
         bus=bus,
         state_provider=state_provider,
         transcriber=transcriber or build_transcriber(settings),
+        transcribers=TranscriberFactory(settings, cipher) if transcriber is None else None,
         downloader=downloader or AiogramDownloader(bot),
         albums=albums,
         queue=PerChatQueue(),

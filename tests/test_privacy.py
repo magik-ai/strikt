@@ -89,6 +89,7 @@ async def _seed(session: AsyncSession, user_id: int, clock: FakeClock, cipher: T
         cost_usd=0,
     )
     await repo.create_oauth_state(session, user_id, "whoop", now=now)
+    await repo.set_user_secret(session, user_id, "openai", "sk-proj-" + "x" * 30, cipher, now=now)
     await repo.create_invite(session, now=now, created_by=user_id, code=f"inv{user_id}")
 
 

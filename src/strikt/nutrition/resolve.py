@@ -37,12 +37,14 @@ async def _lookup_network(
     brand: str | None,
     barcode: str | None,
     settings: Settings,
+    usda_key: str | None = None,
 ) -> FoodHit | None:
     user_agent = getattr(
         settings, "off_user_agent", "Strikt/0.1 (https://github.com/magik-ai/bomiso)"
     )
+    # the user's own USDA key first: they pasted it into the chat and it is their rate limit
     key_secret = getattr(settings, "usda_api_key", None)
-    api_key = key_secret.get_secret_value() if key_secret is not None else None
+    api_key = usda_key or (key_secret.get_secret_value() if key_secret is not None else None)
     if barcode:
         hit = await off.fetch_product(client, barcode, user_agent=user_agent)
         if hit is not None:
@@ -64,6 +66,7 @@ async def resolve_food(
     barcode: str | None = None,
     http: httpx.AsyncClient | None = None,
     settings: Settings | None = None,
+    usda_key: str | None = None,
     now: datetime | None = None,
 ) -> FoodHit | None:
     """Resolve ``query`` (and/or ``barcode``) to per-100 g macros, caching every network hit.
@@ -85,11 +88,21 @@ async def resolve_food(
         if http is None:
             async with _client() as client:
                 hit = await _lookup_network(
-                    client, query, brand=brand, barcode=barcode, settings=settings
+                    client,
+                    query,
+                    brand=brand,
+                    barcode=barcode,
+                    settings=settings,
+                    usda_key=usda_key,
                 )
         else:
             hit = await _lookup_network(
-                http, query, brand=brand, barcode=barcode, settings=settings
+                http,
+                query,
+                brand=brand,
+                barcode=barcode,
+                settings=settings,
+                usda_key=usda_key,
             )
         if hit is not None:
             if restaurant:
