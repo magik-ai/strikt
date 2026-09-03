@@ -382,11 +382,16 @@ async def serve(settings: Settings) -> None:
     if runtime.polling_task is not None:
         tasks.add(runtime.polling_task)
     done, _ = await asyncio.wait(tasks, return_when=asyncio.FIRST_COMPLETED)
-    if runtime.polling_task in done and not stop.is_set():
+    polling_died = runtime.polling_task in done and not stop.is_set()
+    if polling_died and runtime.polling_task is not None:
         exc = runtime.polling_task.exception() if not runtime.polling_task.cancelled() else None
         log.error("polling_exited", error=repr(exc) if exc else "finished")
     waiter.cancel()
     await runtime.stop()
+    if polling_died:
+        # a bot that stopped reading updates is dead, not finished: exit non-zero so the platform
+        # restart policy (Railway's ON_FAILURE, compose's restart: unless-stopped) picks it up
+        raise SystemExit(1)
 
 
 def run_loop(coro: Coroutine[Any, Any, None]) -> None:

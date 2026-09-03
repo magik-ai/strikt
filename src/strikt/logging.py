@@ -27,6 +27,15 @@ def _is_secret_key(key: object) -> bool:
     return any(marker in lowered for marker in _SECRET_MARKERS)
 
 
+def _is_secret(key: object, value: Any) -> bool:
+    """A credential is text. A number under a matching name is a counter, not a secret: without
+    this, ``input_tokens`` and ``output_tokens`` match the ``token`` marker and every usage line
+    reads ``***``, which is exactly what an operator watching a live run needs to see."""
+    if isinstance(value, bool | int | float):
+        return False
+    return bool(value) and _is_secret_key(key)
+
+
 def mask_key_like(text: str) -> str:
     """``"key sk-ant-api03-abc…"`` → ``"key sk-ant-***"``; other text passes through."""
     return _KEY_LIKE.sub(_KEY_MASK, text)
@@ -39,10 +48,7 @@ def _redact(value: Any, depth: int = 0) -> Any:
     if isinstance(value, str):
         return mask_key_like(value)
     if isinstance(value, dict):
-        return {
-            k: ("***" if _is_secret_key(k) and v else _redact(v, depth + 1))
-            for k, v in value.items()
-        }
+        return {k: ("***" if _is_secret(k, v) else _redact(v, depth + 1)) for k, v in value.items()}
     if isinstance(value, list | tuple):
         return type(value)(_redact(v, depth + 1) for v in value)
     if isinstance(value, BaseException):
@@ -56,7 +62,7 @@ def redact_secrets(
     """Mask any key that looks like a credential, at any depth. Never logs a token, whatever the
     caller did."""
     for key in list(event_dict):
-        if _is_secret_key(key) and event_dict[key]:
+        if _is_secret(key, event_dict[key]):
             event_dict[key] = "***"
         else:
             event_dict[key] = _redact(event_dict[key])

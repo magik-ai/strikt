@@ -439,3 +439,36 @@ def test_compose_pins_the_container_port_and_binds_loopback() -> None:
     dockerfile = (ROOT / "Dockerfile").read_text(encoding="utf-8")
     assert "127.0.0.1:8080/health" in dockerfile
     assert "reverse_proxy bot:8080" in (ROOT / "Caddyfile").read_text(encoding="utf-8")
+
+
+class _DeadPollingRuntime:
+    """The three attributes ``serve`` touches, with a polling task that ends on its own."""
+
+    def __init__(self) -> None:
+        self.polling_task: asyncio.Task[None] | None = None
+        self.stopped = False
+
+    async def start(self) -> None:
+        async def dies() -> None:
+            raise RuntimeError("telegram gave up")
+
+        self.polling_task = asyncio.create_task(dies())
+
+    async def stop(self) -> None:
+        self.stopped = True
+
+
+async def test_serve_exits_non_zero_when_polling_dies(
+    settings: Settings, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Railway restarts ON_FAILURE. A bot whose polling task ended has stopped reading updates,
+    so returning 0 leaves a dead container sitting there until somebody notices."""
+    settings.run_migrations = False
+    runtime = _DeadPollingRuntime()
+    monkeypatch.setattr(app_mod, "build_runtime", lambda *a, **kw: runtime)
+
+    with pytest.raises(SystemExit) as exited:
+        await app_mod.serve(settings)
+
+    assert exited.value.code == 1
+    assert runtime.stopped  # it still shuts down cleanly on the way out

@@ -33,3 +33,26 @@ def test_nested_credentials_are_masked() -> None:
     assert out["body"][0] == {"api_key": "***", "name": "n"}
     assert out["body"][1] == {"nested": {"client_secret": "***"}}
     assert out["note"] == "keep"
+
+
+def test_token_counters_survive_redaction() -> None:
+    """``input_tokens`` matches the ``token`` marker, and every turn logs it. Numbers are never
+    credentials, so the usage and cost line stays readable while the keys beside it do not."""
+    out = redact_secrets(
+        None,
+        "info",
+        {
+            "event": "turn_done",
+            "input_tokens": 4211,
+            "output_tokens": 318,
+            "cache_read_tokens": 12_000,
+            "max_tokens": 8192,
+            "cost_usd": 0.021,
+            "api_key": "sk-ant-api03-abcdefgh",
+            "telegram_bot_token": "8949408198:AAH",
+        },
+    )
+    assert out["input_tokens"] == 4211 and out["output_tokens"] == 318
+    assert out["cache_read_tokens"] == 12_000 and out["max_tokens"] == 8192
+    assert out["cost_usd"] == 0.021
+    assert out["api_key"] == "***" and out["telegram_bot_token"] == "***"
