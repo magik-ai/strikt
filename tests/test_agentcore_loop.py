@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import json
-from datetime import UTC, date, datetime, timedelta
+from datetime import UTC, date, datetime, time, timedelta
 from typing import Any
 
 import pytest
@@ -420,6 +420,41 @@ async def test_empty_anthropic_balance_names_the_balance_not_the_model(
     assert result.outgoings[0].text == t("ru", "err.llm_no_credit")
     assert result.outgoings[0].text != t("ru", "err.llm_down")
     assert result.assistant_turn_id is None
+
+
+async def test_after_midnight_the_turn_stays_on_the_evening_day(
+    session: AsyncSession,
+    user: User,
+    fake_llm: FakeLLM,
+    test_registry: Registry,
+    clock: FakeClock,
+    settings: Settings,
+) -> None:
+    """The day ends at the rollover, not at midnight (brief §3.3). ``log_meal`` always knew that;
+    the card, the context and the events used the calendar date, so a 01:10 dinner was written to
+    the 3rd and displayed on an empty 4th."""
+    await repo.upsert_profile(
+        session, user.id, {"bed_time": time(0, 30), "wake_time": time(8, 0)}, now=clock.now()
+    )
+    await session.commit()
+    clock.set(datetime(2026, 9, 3, 21, 10, tzinfo=UTC))  # 01:10 on the 4th in Dubai
+    bus = EventBus()
+    recorder = Recorder(bus)
+    fake_llm.queue(
+        FakeLLM.tool_use("log_meal", {"name": "шаверма", "kcal": 620, "slot": "dinner"}),
+        FakeLLM.text("Записал."),
+    )
+
+    await run_turn(
+        make_deps(session, user, fake_llm, test_registry, clock, settings, bus),
+        incoming(user, "шаверма"),
+    )
+
+    evening = date(2026, 9, 3)
+    meals = await repo.list_meals_for_date(session, user.id, evening)
+    assert len(meals) == 1, "log_meal dates by the coaching day"
+    changed = [e for e in recorder.events if isinstance(e, DayStateChanged)]
+    assert [e.date for e in changed] == [evening], "and everything else has to agree"
 
 
 async def test_evening_reply_without_a_meal_carries_no_buttons(

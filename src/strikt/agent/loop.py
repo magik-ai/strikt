@@ -49,7 +49,7 @@ from strikt.agent.context import ContextBundle, build_context, user_blocks
 from strikt.agent.tools.registry import ToolContext
 from strikt.agent.usage import LLMUsage
 from strikt.agent.verify import STATE_CHANGING_TOOLS, VERIFY_TOOLS, should_verify, verify_reply
-from strikt.core.clock import ensure_utc, to_local
+from strikt.core.clock import coaching_today, ensure_utc
 from strikt.core.types import Button, Outgoing
 from strikt.db import repo
 from strikt.db.models import TurnRole
@@ -421,10 +421,16 @@ async def run_turn(deps: TurnDeps, incoming: Incoming) -> TurnResult:
     user = deps.user
     now = ensure_utc(deps.clock.now())
     tz = user.timezone or "UTC"
-    today = to_local(now, tz).date()
     lang = user.language
 
     profile: Profile | None = await repo.get_profile(session, user.id)
+    # the coaching day, not the calendar date (core/clock.day_rollover)
+    today = coaching_today(
+        deps.clock,
+        tz,
+        profile.bed_time if profile else None,
+        profile.wake_time if profile else None,
+    )
     protocol: ProtocolRow | None = await repo.get_active_protocol(session, user.id)
 
     own_blocks = user_blocks(incoming)

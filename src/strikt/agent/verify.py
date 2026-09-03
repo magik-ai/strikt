@@ -18,7 +18,8 @@ import structlog
 
 from strikt.agent.context import load_prompt
 from strikt.agent.numbers import ClaimedTotals, extract_numbers
-from strikt.core.clock import local_date
+from strikt.core.clock import coaching_today
+from strikt.db import repo
 from strikt.memory.daystate import DayStateBuilder, render_context
 from strikt.telegram.copy import resolve_lang
 
@@ -145,9 +146,14 @@ async def verify_reply(
 
     if state is None:
         provider = deps.state_provider or DayStateBuilder(deps.clock, deps.settings)
-        state = await provider.day_state(
-            deps.session, user, local_date(deps.clock, user.timezone or "UTC")
+        profile = await repo.get_profile(deps.session, user.id)
+        day = coaching_today(
+            deps.clock,
+            user.timezone or "UTC",
+            profile.bed_time if profile is not None else None,
+            profile.wake_time if profile is not None else None,
         )
+        state = await provider.day_state(deps.session, user, day)
     mismatches = compare_totals(claimed, state)
     if not mismatches:
         log.debug("verify_ok", user_id=user.id, claimed=claimed.items())

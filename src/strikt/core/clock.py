@@ -100,6 +100,18 @@ def coaching_day(local_dt: datetime, bed_time: time | None, wake_time: time | No
     return local_dt.date()
 
 
+def coaching_today(
+    clock: Clock, tz: str, bed_time: time | None = None, wake_time: time | None = None
+) -> date:
+    """The coaching day the user is in right now.
+
+    Everything that asks "what day is it" must ask this and not ``local_date``: ``log_meal``
+    dates a meal by the coaching day, so between midnight and the rollover a calendar date puts
+    the card, the context and the proactive triggers on a day the food did not land on.
+    """
+    return coaching_day(local_now(clock, tz), bed_time, wake_time)
+
+
 def local_datetime(day: date, at: time, tz: str) -> datetime:
     """A local wall-clock instant expressed in UTC."""
     return datetime.combine(day, at, tzinfo=zone(tz)).astimezone(UTC)

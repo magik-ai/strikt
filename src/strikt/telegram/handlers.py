@@ -36,14 +36,14 @@ import html
 import re
 from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass, field
-from datetime import UTC, datetime, timedelta
+from datetime import UTC, date, datetime, timedelta
 from typing import TYPE_CHECKING, Any, Literal, Protocol
 
 import structlog
 
 from strikt.agent.loop import TurnDeps, TurnResult, run_turn
 from strikt.agent.tools.registry import ToolContext
-from strikt.core.clock import ensure_utc, local_date
+from strikt.core.clock import coaching_today, ensure_utc
 from strikt.core.types import Attachment, Button, Incoming
 from strikt.db import repo
 from strikt.db.models import SecretService, User, UserStatus
@@ -604,7 +604,7 @@ async def handle_today(deps: AppDeps, user_id: int) -> None:
         if user is None:
             return
         state = await deps.state_provider.day_state(
-            session, user, local_date(deps.clock, user.timezone)
+            session, user, await _today(deps, session, user)
         )
         if deps.card is not None:
             await deps.card.repost(session, user, state)
@@ -875,12 +875,24 @@ def _tool_ctx(
     )
 
 
+async def _today(deps: AppDeps, session: AsyncSession, user: User) -> date:
+    """The coaching day this user is in right now. ``log_meal`` dates food this way, so the card
+    and the events have to agree with it or a 01:00 dinner lands on a day nothing shows."""
+    profile = await repo.get_profile(session, user.id)
+    return coaching_today(
+        deps.clock,
+        user.timezone or "UTC",
+        profile.bed_time if profile is not None else None,
+        profile.wake_time if profile is not None else None,
+    )
+
+
 async def _refresh_card(deps: AppDeps, session: AsyncSession, user: User) -> None:
     if deps.card is None:
         return
     try:
         state = await deps.state_provider.day_state(
-            session, user, local_date(deps.clock, user.timezone)
+            session, user, await _today(deps, session, user)
         )
         await deps.card.refresh(session, user, state)
     except Exception as exc:
@@ -914,7 +926,7 @@ async def _callback_undo(
         DayStateChanged(
             user_id=user.id,
             occurred_at=now,
-            date=local_date(deps.clock, user.timezone),
+            date=await _today(deps, session, user),
             reason="undo",
         )
     )
@@ -1066,7 +1078,7 @@ async def forget_user(deps: AppDeps, session: AsyncSession, user: User) -> dict[
     lang = resolve_lang(user.language)
     chat_id = user.chat_id
     user_id = user.id
-    today = local_date(deps.clock, user.timezone)
+    today = await _today(deps, session, user)
     for offset in (0, 1):  # today's card, or yesterday's when today has none yet
         day = await repo.get_day(session, user_id, today - timedelta(days=offset))
         if day is not None and day.card_message_id is not None:

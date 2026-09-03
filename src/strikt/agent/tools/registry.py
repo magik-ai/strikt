@@ -66,9 +66,13 @@ class ToolContext:
 
     @property
     def local_date(self) -> date:
-        from strikt.core.clock import local_date
+        """The coaching day, not the calendar date: until the rollover (03:00, or an hour after
+        a late bedtime) the user is still in yesterday and their food is dated there."""
+        from strikt.core.clock import coaching_today
 
-        return local_date(self.clock, self.tz)
+        bed = getattr(self.profile, "bed_time", None)
+        wake = getattr(self.profile, "wake_time", None)
+        return coaching_today(self.clock, self.tz, bed, wake)
 
     def service(self, name: str) -> Any:
         try:

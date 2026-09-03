@@ -76,7 +76,9 @@ server: health, OAuth callbacks, webhooks, optional Telegram webhook), `app.py` 
 - Complete type hints, `from __future__ import annotations`, pydantic models for all tool IO.
 - `structlog.get_logger()`; never `print`. Never log a secret.
 - Time: store UTC, compute local with `zoneinfo` via `core/clock.py`; SQLite returns naive
-  datetimes — normalise with `ensure_utc`.
+  datetimes — normalise with `ensure_utc`. "What day is it" is `coaching_today`, never
+  `local_date`: `log_meal` dates food by the coaching day, so anything that disagrees puts the
+  card and the triggers on a day the food did not land on.
 - Copy: model-written replies come out in the user's language on their own; code-rendered strings
   live in `telegram/locales/<code>.json`, one file per language, English as the fallback. The
   language is asked once on `/start` (button or free text) and stored on the user.

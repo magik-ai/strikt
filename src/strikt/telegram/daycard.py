@@ -19,7 +19,7 @@ from typing import TYPE_CHECKING
 
 import structlog
 
-from strikt.core.clock import Clock, local_date
+from strikt.core.clock import Clock, coaching_today
 from strikt.db import repo
 from strikt.telegram.render import render_day_card
 
@@ -68,7 +68,7 @@ class DayCard:
                 return message_id
             log.info("daycard_gone", user_id=user.id, message_id=message_id, day=str(state.date))
             self._last_text.pop(key, None)
-        elif state.date != local_date(self._clock, user.timezone):
+        elif state.date < coaching_today(self._clock, user.timezone or "UTC"):
             log.debug("daycard_skip_past_day", user_id=user.id, day=str(state.date))
             return None
 

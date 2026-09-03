@@ -39,7 +39,7 @@ from typing import TYPE_CHECKING, Any
 
 import structlog
 
-from strikt.core.clock import ensure_utc, local_day_bounds, to_local
+from strikt.core.clock import coaching_today, ensure_utc, local_day_bounds, to_local
 from strikt.db import repo
 from strikt.db.models import (
     MeasurementType,
@@ -487,9 +487,12 @@ async def build_context(
     """
     tz = user.timezone or "UTC"
     now = ensure_utc(clock.now())
-    today = to_local(now, tz).date()
     if profile is None:
         profile = await repo.get_profile(session, user.id)
+    # the coaching day, not the calendar date: before the rollover the food went to yesterday
+    today = coaching_today(
+        clock, tz, profile.bed_time if profile else None, profile.wake_time if profile else None
+    )
     if protocol is None:
         protocol = await repo.get_active_protocol(session, user.id)
     if state is None:

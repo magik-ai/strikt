@@ -32,7 +32,7 @@ from typing import TYPE_CHECKING, Any, Literal, Protocol
 import structlog
 
 from strikt.config import Settings
-from strikt.core.clock import Clock, ensure_utc, local_day_bounds, to_local
+from strikt.core.clock import Clock, coaching_day, ensure_utc, local_day_bounds, to_local
 from strikt.core.types import DayState
 from strikt.db import repo
 from strikt.db.models import Profile, Protocol as ProtocolRow, User, UserStatus
@@ -247,13 +247,16 @@ class ProactiveEngine:
                 return FireOutcome(name=name, status="skipped", reason="llm_key_missing")
             protocol = await repo.get_active_protocol(session, user_id)
             local_now = to_local(now, user.timezone)
-            state = await self._day_state(session, user, local_now.date())
+            # the coaching day: between midnight and the rollover the user is still in yesterday,
+            # which is also where log_meal put their food
+            today = coaching_day(local_now, profile.bed_time, profile.wake_time)
+            state = await self._day_state(session, user, today)
             ctx = await self._context(session, user, profile, protocol, local_now, now, payload)
 
             fire = PRECONDITIONS[name](state, ctx)
             if fire is None:
                 return FireOutcome(name=name, status="skipped", reason="precondition_false")
-            if fire.day != local_now.date():
+            if fire.day != today:
                 # A night-keyed trigger after midnight (bed 00:30 → bedtime_minus_30 at 00:00)
                 # belongs to the evening's day: decide on *that* day's state, not the empty new one.
                 state = await self._day_state(session, user, fire.day)
@@ -375,10 +378,11 @@ class ProactiveEngine:
             session, user, profile, protocol, local_now=local_now, now=now, payload=payload
         )
         summaries = await repo.list_recent_summaries(session, user.id, "day", limit=3)
-        notes = await store.event_notes_for(
-            session, user.id, day=local_now.date(), tz=user.timezone, now=now
+        day = coaching_day(
+            local_now, profile.bed_time if profile else None, profile.wake_time if profile else None
         )
-        day_start, _ = local_day_bounds(local_now.date(), user.timezone)
+        notes = await store.event_notes_for(session, user.id, day=day, tz=user.timezone, now=now)
+        day_start, _ = local_day_bounds(day, user.timezone)
         sends = await repo.list_sends_since(session, user.id, since=day_start)
         return TriggerContext(
             local_now=local_now,
