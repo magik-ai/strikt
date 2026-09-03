@@ -53,11 +53,13 @@ migrations/       alembic (async env); 0001_initial matches Base.metadata (teste
 tests/            conftest: sqlite engine, session, FakeClock, FakeLLM, FakeMessenger, seeded user
 ```
 
-Modules still owned by later build stages (they raise `NotImplementedError("implemented by build
-stage")`): `app.py` and every handler in `agent/tools/{food,training,body,state,profile,research,
-memory}.py`. Not yet created: `nutrition/`, `memory/`, `agent/{loop,context,verify,
-proactive_decide}.py`, `telegram/{bot,handlers,media,voice,daycard}.py`, `proactive/`,
-`integrations/`, `web/`, `onboarding/`.
+Every package is built: `nutrition/` (math, units, sanity rules, food resolution: cache → Open Food
+Facts → USDA), `memory/` (day state, summaries, notes, retrieval, period parsing), `agent/` (context
+assembly, turn loop, Reflexion verify, proactive decider, tools), `onboarding/` (checklist, importer),
+`telegram/` (bot, handlers, commands, media, voice, day card), `proactive/` (scheduler, triggers,
+ladder, engine), `integrations/` (WHOOP, Withings, Apple Health, OAuth links), `web/` (aiohttp
+server: health, OAuth callbacks, webhooks, optional Telegram webhook), `app.py` (wiring).
+`scripts/setup_telegram.py` sets the bot's name, descriptions, commands and avatar through the Bot API.
 
 ## Conventions (PLAN §14)
 

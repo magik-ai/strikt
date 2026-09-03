@@ -15,7 +15,7 @@ Instinct (Spear Street Technology, Inc., San Francisco; entity registered April 
 | Pattern | Verdict | Why, and where in Strikt |
 |---|---|---|
 | Reflexion loop with a deterministic evaluator | Adopt, bounded | `agent/verify.py` re-derives the day state from the DB after meal writes or "recalculate"; a mismatch with the draft reply gets one rewrite at effort `low`. LLM judge only on samples, for tone. |
-| Bounded reflection memory (Ω = 1–3) | Adopt | At most three `feedback` notes in the profile block. |
+| Bounded reflection memory (Ω = 1–3) | Adopt, as curation | One verify pass per turn, one rewrite at most; a coach note supersedes its predecessor instead of accumulating, and the profile block carries active notes only. |
 | Self-critique after every tool call | Reject | Reflexion reflects at trial boundaries; per-step critique doubles latency and cost. |
 | Vector-database memory at launch | Reject, defer | Typed rows plus Postgres full-text search suffice (section 7). |
 | "No new interface" | Adopt | No web app, no settings; only `/start`, `/today`, `/forget_me`. |
@@ -24,7 +24,7 @@ Instinct (Spear Street Technology, Inc., San Francisco; entity registered April 
 | Dispatcher plus recurring loops | Adopt as a scheduler | APScheduler jobs and an event bus enqueue model decisions; trigger in code, text model-written. |
 | Proactive outreach | Adopt, gated | Quiet hours 00:00–07:30, at most 5 sends a day, ladder 1→4, reset on reply. |
 | Continue without confirming | Reject | Own-database writes are autonomous; anything leaving the system needs a button confirm (none in v1). |
-| Disconnect without delete | Reject | `/forget_me` hard-deletes every row in one transaction; disconnecting an integration deletes its tokens. |
+| Disconnect without delete | Reject | `/forget_me` hard-deletes every row in one transaction, integration tokens included. A per-provider disconnect that also revokes access at WHOOP (`DELETE /v2/user/access`) is a follow-up, not in this build. |
 | Training licence on user content; broad device capture | Reject | No training on user data; no screen, keystroke, audio or location capture. |
 | Invite-only rollout | Adopt as a trust ramp | `invites` table plus `ALLOWED_TELEGRAM_IDS`; a small cohort tunes the guardrails. |
 | Goals plus hard guardrails in code | Adopt | Sanity floors, quiet hours, send cap and escalation ceiling are code, not prompt. |
@@ -68,7 +68,7 @@ v2 only: base `https://api.prod.whoop.com/developer`, paths under `/v2/`; v1 is 
 
 ### What we decided
 
-`integrations/whoop.py`: server-side code flow with a signed, single-use 8-character `state`; Fernet-encrypted tokens; refresh serialized per user behind a lock and run by the 30-minute `integration_sync` job, not on 401; `limit=25` pagination; webhook verification by constant-time compare over the raw body, 2XX within a second, asynchronous processing, deduplication on `trace_id` and `unique (user_id, source, external_id)`; `recovery.updated` resolves sleep UUID → `cycle_id` → `/v2/cycle/{id}/recovery`; a reconciliation poll covers missed deliveries; kJ→kcal and ms→minutes at ingest; `score_state` checked first; disconnecting calls `DELETE /v2/user/access` and deletes the tokens. Why: webhooks are the only way to send the post-workout analysis "within minutes" the brief requires, but WHOOP says deliveries can be missed, so polling stays. The 10-member cap is accepted; approval is filed early.
+`integrations/whoop.py`: server-side code flow with a signed, single-use 8-character `state`; Fernet-encrypted tokens; refresh serialized per user behind a lock and run by the 30-minute `integration_sync` job, not on 401; `limit=25` pagination; webhook verification by constant-time compare over the raw body, 2XX within a second, asynchronous processing, deduplication on `trace_id` and `unique (user_id, source, external_id)`; `recovery.updated` resolves sleep UUID → `cycle_id` → `/v2/cycle/{id}/recovery`; a reconciliation poll covers missed deliveries; kJ→kcal and ms→minutes at ingest; `score_state` checked first; tokens are deleted with everything else by `/forget_me` (a per-provider disconnect that calls `DELETE /v2/user/access` is a follow-up). Why: webhooks are the only way to send the post-workout analysis "within minutes" the brief requires, but WHOOP says deliveries can be missed, so polling stays. The 10-member cap is accepted; approval is filed early.
 
 ## 5. Smart scales and Apple Health
 
