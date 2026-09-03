@@ -5,6 +5,7 @@ from __future__ import annotations
 
 import asyncio
 import json
+import logging
 import re
 import sqlite3
 from collections.abc import AsyncIterator
@@ -30,6 +31,7 @@ from strikt.db.crypto import TokenCipher
 from strikt.db.models import ProactiveSend, SummaryKind, User, Workout
 from strikt.events import WorkoutEvent
 from strikt.integrations import whoop
+from strikt.logging import configure_logging
 from strikt.telegram import commands
 from strikt.telegram.copy import t
 from strikt.telegram.messenger import FakeMessenger
@@ -396,6 +398,23 @@ async def test_migrations_upgrade_head_in_a_thread(tmp_path: Path) -> None:
     assert version is not None and version[0]
     # idempotent: a second run on a migrated database is a no-op
     await asyncio.to_thread(app_mod.upgrade_head, f"sqlite+aiosqlite:///{db}")
+
+
+async def test_migrations_do_not_silence_the_app_loggers(tmp_path: Path) -> None:
+    """``run_migrations`` happens after the bot is wired, so alembic.ini's logging config must not
+    apply: its ``disable_existing_loggers`` would mute every logger the app already made and its
+    root level (WARN) would drop the rest — the deployed bot would go silent after startup."""
+    root = logging.getLogger()
+    handlers, level = root.handlers[:], root.level
+    configure_logging("INFO", "json")
+    app_log = logging.getLogger("strikt.app")
+    try:
+        await asyncio.to_thread(app_mod.upgrade_head, f"sqlite+aiosqlite:///{tmp_path / 'x.db'}")
+        assert app_log.disabled is False
+        assert root.level == logging.INFO
+    finally:
+        root.handlers[:] = handlers
+        root.setLevel(level)
 
 
 def test_run_loop_prefers_uvloop() -> None:

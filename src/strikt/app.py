@@ -99,6 +99,9 @@ def _alembic_config(database_url: str) -> Any:
     config.set_main_option("script_location", str(root / MIGRATIONS_DIR))
     # configparser interpolation: a literal % in the URL must be doubled
     config.set_main_option("sqlalchemy.url", database_url.replace("%", "%%"))
+    # In-process run: migrations/env.py must not apply alembic.ini's logging config, which would
+    # drop the root level to WARN and disable every logger the app already made.
+    config.attributes["configure_logger"] = False
     return config
 
 
