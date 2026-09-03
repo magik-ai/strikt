@@ -101,7 +101,7 @@ def meal_view(meal: Meal) -> MealView:
     ]
     return MealView(
         id=meal.id,
-        slot=meal.slot.value,  # type: ignore[arg-type]
+        slot=meal.slot.value,
         logged_at=ensure_utc(meal.logged_at),
         eaten_at=ensure_utc(meal.eaten_at) if meal.eaten_at else None,
         items=items,
@@ -127,7 +127,7 @@ def workout_view(row: Workout) -> WorkoutView:
         avg_hr=row.avg_hr,
         max_hr=row.max_hr,
         zones_min=zones,
-        source=row.source.value,  # type: ignore[arg-type]
+        source=row.source.value,
     )
 
 
@@ -318,7 +318,7 @@ def _workout_line(w: WorkoutView, tz: str) -> str:
 
 
 def _hm(minutes: float) -> str:
-    hours, mins = divmod(int(round(minutes)), 60)
+    hours, mins = divmod(round(minutes), 60)
     return f"{hours}h{mins:02d}"
 
 
@@ -335,9 +335,11 @@ def render_context(state: DayState, lang: str | None, *, tz: str = "UTC") -> str
         f"day {state.date.isoformat()} ({weekday_name(lang, state.date.weekday())}) {status}",
         f"totals: {_macro_row(state.totals.macros)} | {state.totals.meals} meals, {state.totals.items} items",
         f"targets: {_macro_row(state.targets)}",
-        "remaining: "
-        f"{_n(state.remaining.kcal)} kcal | P {_n(state.remaining.protein_g)} | C {_n(state.remaining.carbs_g)} | F {_n(state.remaining.fat_g)} | fiber {_n(state.remaining.fiber_g)}"
-        " (negative = over)",
+        (
+            f"remaining: {_n(state.remaining.kcal)} kcal | P {_n(state.remaining.protein_g)}"
+            f" | C {_n(state.remaining.carbs_g)} | F {_n(state.remaining.fat_g)}"
+            f" | fiber {_n(state.remaining.fiber_g)} (negative = over)"
+        ),
     ]
     tail: list[str] = []
     if state.workouts:

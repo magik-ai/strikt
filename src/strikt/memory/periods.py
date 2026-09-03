@@ -238,7 +238,7 @@ def _last_month_h(m: re.Match[str], today: date) -> Range | None:
 
 
 def _month_name_only_en(m: re.Match[str], today: date) -> Range | None:
-    """"in August" → the whole most recent August that has started."""
+    """ "in August" → the whole most recent August that has started."""
     month = _MONTHS_EN[m.group(1).lower()]
     year = _year(m.group(2), today) or (today.year if month <= today.month else today.year - 1)
     last = calendar.monthrange(year, month)[1]
@@ -282,12 +282,16 @@ PATTERNS: tuple[tuple[str, re.Pattern[str], Handler], ...] = (
     ("dotted", re.compile(r"(?<![\d.,])(\d{2})\.(\d{2})(?![\d.,%])()", _F), _dotted),
     (
         "day_month",
-        re.compile(rf"\b(\d{{1,2}})(?:st|nd|rd|th)?\s+(?:of\s+)?({_MONTH_EN_RE})\b\.?(?:\s+(\d{{4}}))?", _F),
+        re.compile(
+            rf"\b(\d{{1,2}})(?:st|nd|rd|th)?\s+(?:of\s+)?({_MONTH_EN_RE})\b\.?(?:\s+(\d{{4}}))?", _F
+        ),
         _day_month_en,
     ),
     (
         "month_day",
-        re.compile(rf"\b({_MONTH_EN_RE})\b\.?\s+(\d{{1,2}})(?:st|nd|rd|th)?\b(?:,?\s+(\d{{4}}))?", _F),
+        re.compile(
+            rf"\b({_MONTH_EN_RE})\b\.?\s+(\d{{1,2}})(?:st|nd|rd|th)?\b(?:,?\s+(\d{{4}}))?", _F
+        ),
         _month_day_en,
     ),
     (
@@ -313,7 +317,11 @@ PATTERNS: tuple[tuple[str, re.Pattern[str], Handler], ...] = (
     ),
     ("last_n_days", re.compile(r"\bза\s+(\d+)\s+дн(?:я|ей)\b", _F), _last_n_days),
     ("last_n_days", re.compile(r"\b(?:last|past)\s+(?:two|2)\s+weeks\b", _F), _last_two_weeks),
-    ("last_n_days", re.compile(r"\b(?:за\s+)?(?:последние|прошлые)\s+(?:две|2)\s+недели\b", _F), _last_two_weeks),
+    (
+        "last_n_days",
+        re.compile(r"\b(?:за\s+)?(?:последние|прошлые)\s+(?:две|2)\s+недели\b", _F),
+        _last_two_weeks,
+    ),
     ("n_days_ago", re.compile(r"\b(\d+)\s+days?\s+ago\b", _F), _n_days_ago),
     ("n_days_ago", re.compile(r"\b(\d+)\s+дн(?:я|ей)\s+назад\b", _F), _n_days_ago),
     ("n_days_ago", re.compile(r"\b(?:a\s+)?week\s+ago\b", _F), _days_back(7)),
