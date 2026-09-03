@@ -285,17 +285,17 @@ async def test_album_collector_resolves_once_in_order() -> None:
 
 
 async def test_album_collector_debounce_resets_on_each_part() -> None:
-    collector: AlbumCollector[int] = AlbumCollector(debounce_s=0.05)
+    collector: AlbumCollector[int] = AlbumCollector(debounce_s=0.3)
     started = asyncio.get_running_loop().time()
 
     async def late(n: int, delay: float) -> list[int] | None:
         await asyncio.sleep(delay)
         return await collector.collect("g", n)
 
-    results = await asyncio.gather(late(1, 0), late(2, 0.03), late(3, 0.06))
+    results = await asyncio.gather(late(1, 0), late(2, 0.1), late(3, 0.2))
     elapsed = asyncio.get_running_loop().time() - started
     assert results[0] == [1, 2, 3]
-    assert elapsed >= 0.11  # 0.06 arrival + a full 0.05 debounce after the last part
+    assert elapsed >= 0.45  # 0.2 arrival + a full 0.3 debounce after the last part
 
 
 async def test_album_collector_caps_parts_without_waiting() -> None:

@@ -24,9 +24,12 @@ Rules:
   never draw it.
 - Four verticals, always. Three or fewer without a strike is the *open day* (see the state rule);
   a strike over fewer than four bars does not exist.
-- Two cuts. **Full** (`brand/logo/mark.svg`) at 64 px and above: stroke 9, gap 10, strike 9 at 28°,
-  overshoot 4.5. **Small** (`mark-small.svg`) at 48 px and below, the avatar and favicons: stroke 8.5,
-  gap 11, overshoot 6. Same angle.
+- Three cuts, same angle. **Full** (`brand/logo/mark.svg`) at 64 px and above: stroke 9, gap 10,
+  strike 9 at 28°, overshoot 4.5. **Small** (`mark-small.svg`, `favicon.svg`) at 48 px and below, the
+  avatar: stroke 8.5, gap 11, overshoot 6. **Tiny**, for a 32 px raster and below (`favicon-32.png`):
+  drawn in device pixels — 3 px strokes on whole-pixel edges, 2 px gaps, box 81 % of the side. It is
+  the one place the gap drops under 1.1 × stroke: at 32 px two clean background pixels keep the four
+  verticals apart, and a wider gap would force 2 px strokes that vanish when the tab shows 16 px.
 - Colourways: ink + red (`mark.svg`), all ink (`mark-ink.svg`, for the favicon and single-colour
   print), night (`mark-night.svg`: text-dark strokes, strike-dark strike, strike width equal to the
   verticals because red drops visually on dark).
@@ -85,9 +88,16 @@ Three roles, all OFL and bundled in `brand/fonts/`:
   Headlines, pull quotes, the wordmark. 36 px and up. Never for body copy inside Telegram images.
 - **UI and body — DM Sans** 400/500/600. Body 16/1.55, UI 14/1.4. The alternate wordmark
   (DM Sans 500, −0.02em) is shipped on the brand sheet; Newsreader is primary.
-- **Numbers — JetBrains Mono** 400 (500 for a total line). Tabular figures, thin-space thousands
-  (`1 940`), labels uppercase at 0.08em. Every number the bot writes is mono; the number is the
-  product.
+- **Numbers — JetBrains Mono** 400 (500 for a total line). Tabular figures, labels uppercase at
+  0.08em. **Tables and totals are mono**: the day card's five macro rows, a reply's per-item block,
+  its meal / today / left rows. **Numbers inside a sentence follow the sentence** — the Left line,
+  the verdict, a ladder push and a chat-list preview are DM Sans (Golos Text in Russian), because
+  they are prose. This is what `telegram/render.py` writes and what the images show.
+- Thousands are separated, and by two different characters for one reason: inside a `<code>` block a
+  thin space is 0.31 of a cell in JetBrains Mono, so a value past 999 would drag its bar a third of a
+  character left of the others. Mono columns therefore use a **figure space** U+2007, which is
+  digit-width by definition (`render._cells`); prose keeps the **thin space** U+2009
+  (`render.fmt_num`). Both read as `1 940`.
 - Cyrillic: DM Sans and Newsreader have none. Russian UI text is set in **Golos Text** 400/500
   (Paratype, OFL), including the Latin food names inside a Russian sentence. JetBrains Mono covers
   Cyrillic itself.
@@ -119,14 +129,20 @@ Do: ink on paper, one red, the strike rising left to right; the mark in the asce
 wordmark; mono numbers; captions in mute; cards flat on paper.
 
 Don't: strike the other way; add a second accent; use emoji or praise in copy; put the chat in a
-device frame; set body copy in the serif; use mute for body text; put red anywhere but the mark
-inside one composition; stretch, outline or recolour the mark; use the full cut under 48 px.
+device frame; set body copy in the serif; use mute for body text or below 14 px; put red anywhere but
+the mark inside one composition; stretch, outline or recolour the mark; use the full cut under 48 px.
+
+The lock-up is the one exception to that last rule: its mark is the full cut thinned to stroke 8
+(section 8), and that thinned geometry is used at every lock-up size, including the 34 px footer
+lock-up on the images. The mark alone still follows the three cuts of section 2.
 
 ## 8. Lock-up
 
 The mark sits in the ascender box of the wordmark: top level with the top of the k, bottom on the
 baseline. Inside the lock-up the strokes are thinned to 8 (89 % of the full cut) so they sit near the
-wordmark's stems; the gap from the strike tip to the s is half a cap height. Files:
+wordmark's stems; the gap from the strike tip to the s is half a cap height. That thinned full-cut
+geometry is the lock-up's own, used at any lock-up size — the 48 px floor in section 7 governs the
+mark on its own, not the lock-up. Files:
 `brand/logo/lockup-light.svg`, `lockup-night.svg` (self-contained: the Newsreader file is embedded,
 the mark is paths). In HTML use `StriktMark.lockupHTML({size, night, sans})`.
 
@@ -135,7 +151,8 @@ the mark is paths). In HTML use `StriktMark.lockupHTML({size, night, sans})`.
 Bot name: **Strikt**. Username as registered (not part of the brand).
 
 Avatar: upload `brand/avatar/avatar-512.jpg` (512 × 512, JPG, paper baked in; the mark occupies 67 % of
-the side and stays inside Telegram's circle crop with the farthest ink at 66 % of the diameter).
+the side and stays inside Telegram's circle crop — the farthest ink is 168 px from the centre, 66 % of
+the radius, i.e. 33 % of the diameter, inside the 74 % safe circle with 21 px to spare).
 
 1. BotFather → `/setuserpic` → choose the bot → send `avatar-512.jpg` **as a photo**, not as a file.
 2. Or from code (Bot API 9.4+): `setMyProfilePhoto` with `InputProfilePhotoStatic` and the JPG as a new
@@ -175,14 +192,20 @@ forget_me - Удалить всё о тебе
 ```
 
 The chat itself stays in Telegram's own theme; the brand lives in the avatar, the card format and
-the voice.
+the voice. That is why the contact avatars in `telegram-profile-1920x1080.png` carry Telegram's own
+initial colours: they are the client's chrome, not a second brand accent, and the point of the image
+is that the 40 px mark holds up beside them. The same image shows the one paper JPG on both a light
+and a dark client, because that is what Telegram does with it; the night mark
+(`avatar-night-512.png`, `mark-night.svg`) is for the brand sheet only.
 
 ## 10. Landing page
 
 The page sits on a black-and-white site, so the brand appears only inside images. Ship
-`brand/images/og-1200x630.png` as the Open Graph card, the 1920 × 1080 images as content, and
-`brand/logo/favicon.svg` / `favicon-32.png` / `favicon-180.png` (ink; the red version only inside
-raster images). No page CSS carries the palette.
+`brand/images/og-1200x630.png` as the Open Graph card (lock-up plus one ink line — the same sentence
+as the BotFather About text, because a feed renders the card at roughly half size and mute grey drops
+out there), and the 1920 × 1080 images as content. Icons: `favicon.svg` and `favicon-32.png` are all
+ink — the SVG is the small cut, the PNG the tiny cut of section 2; `favicon-180.png` (apple touch) is
+the small cut with the red strike on a paper ground. No page CSS carries the palette.
 
 ## 11. Regenerating the assets
 
@@ -194,7 +217,10 @@ PLAYWRIGHT_BROWSERS_PATH=/opt/pw-browsers /opt/node22/bin/node brand/render.mjs 
 
 `render.mjs` writes the logo SVGs from `brand/src/mark.js`, opens each `brand/src/*.html` (and
 `brand/sheet.html`) in headless Chromium with the bundled fonts, screenshots it at the listed size, and
-fails if any text node fell back to a system font. No network is needed. Set `PLAYWRIGHT_MODULE` if
+fails if any text fell back to a system font. The font check is glyph-level: over a CDP session it
+asks Chromium which platform fonts it actually rasterised each text element with
+(`CSS.getPlatformFontsForNode`), so one character outside a subset's `unicode-range` — an arrow, a ≥,
+a ✓ — fails the build instead of shipping as DejaVu. No network is needed. Set `PLAYWRIGHT_MODULE` if
 playwright is not at `/opt/node22/lib/node_modules/playwright`. To change copy or numbers in several
 images at once, edit `brand/src/gen-sources.py`, run it, then render.
 

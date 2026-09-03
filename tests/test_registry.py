@@ -107,10 +107,21 @@ async def test_dispatch_validates_input_and_reports_stubs(
     assert bad.is_error and "invalid input for log_meal" in str(bad.content)
     unknown = await registry.dispatch(tool_ctx, "nope", {})
     assert unknown.is_error and "unknown tool" in str(unknown.content)
-    stub = await registry.dispatch(tool_ctx, "undo_last", {})
-    assert stub.is_error and "not available yet" in str(stub.content)
     extra = await registry.dispatch(tool_ctx, "undo_last", {"surprise": 1})
     assert extra.is_error and "extra" in str(extra.content).lower()
+
+    class StubInput(BaseModel):
+        """A tool whose handler is still a build-stage stub."""
+
+        model_config = ConfigDict(extra="forbid")
+
+    async def stub_handler(ctx: ToolContext, args: StubInput) -> ToolResult:
+        raise NotImplementedError("implemented by build stage")
+
+    stubs = Registry()
+    stubs.register(Tool.from_model("later", StubInput, stub_handler))
+    stub = await stubs.dispatch(tool_ctx, "later", {})
+    assert stub.is_error and "not available yet" in str(stub.content)
 
 
 async def test_dispatch_runs_registered_handler(tool_ctx: ToolContext) -> None:

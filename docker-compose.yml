@@ -40,7 +40,8 @@ services:
     profiles: ["tls"]
     restart: unless-stopped
     environment:
-      CADDY_DOMAIN: ${CADDY_DOMAIN:?set CADDY_DOMAIN in .env for the tls profile}
+      # required only when the tls profile is started; compose interpolates inactive profiles too
+      CADDY_DOMAIN: ${CADDY_DOMAIN:-localhost}
     ports:
       - "80:80"
       - "443:443"

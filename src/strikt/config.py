@@ -95,7 +95,11 @@ class Settings(BaseSettings):
 
     # --- Web (OAuth callbacks, webhooks, optional Telegram webhook) ---------------------------
     public_base_url: str = "http://localhost:8080"
+    web_host: str = "0.0.0.0"  # the container binds every interface
     web_port: int = 8080
+
+    # --- Startup ------------------------------------------------------------------------------
+    run_migrations: bool = True
 
     # --- Integrations -------------------------------------------------------------------------
     whoop_client_id: str | None = None

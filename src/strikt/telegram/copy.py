@@ -69,6 +69,15 @@ STRINGS: dict[str, dict[str, str]] = {
         "invite.created": "Invite code: {code}",
         # misc
         "queue.busy": "Still on your previous message — answering in order.",
+        # synthetic user messages behind the inline buttons (persisted as the user's turn)
+        "synthetic.recalc": "Recalculate the day.",
+        "synthetic.close": "Close the day.",
+        # bot profile (setMyCommands / setMyDescription / setMyShortDescription)
+        "cmd.start": "start or continue",
+        "cmd.today": "re-post today's card",
+        "cmd.forget_me": "delete everything about me",
+        "bot.short": "A coach in one chat. Send a photo of your food, get the number. It owns your day and messages first.",
+        "bot.description": "Strikt is a personal health coach that lives in this chat. No settings, no menus. Send photos of food, screenshots of delivery apps, labels, WHOOP screens or voice notes; it logs them, answers with kcal and macros, keeps the day's budget and tells you what is left. It connects to WHOOP and scales, remembers everything from day one, and when you go quiet it messages first. Direct, no flattery. Start with /start.",
     },
     "ru": {
         "card.title": "Сегодня · {date}",
@@ -95,7 +104,8 @@ STRINGS: dict[str, dict[str, str]] = {
         "btn.lunch": "Обед",
         "btn.dinner": "Ужин",
         "btn.snack": "Перекус",
-        "btn.undo": "Отменить",
+        # «Отменить» is "cancel"; the button takes back a logged meal, so «Убрать».
+        "btn.undo": "Убрать",
         "btn.recalc": "Пересчитать",
         "btn.close": "Закрыть день",
         "btn.yes": "Да",
@@ -120,6 +130,13 @@ STRINGS: dict[str, dict[str, str]] = {
         "forget.cancelled": "Оставил всё как есть.",
         "invite.created": "Код приглашения: {code}",
         "queue.busy": "Ещё обрабатываю предыдущее сообщение — отвечу по порядку.",
+        "synthetic.recalc": "Пересчитай день.",
+        "synthetic.close": "Закрой день.",
+        "cmd.start": "начать или продолжить",
+        "cmd.today": "показать карточку дня",
+        "cmd.forget_me": "удалить всё обо мне",
+        "bot.short": "Тренер в одном чате. Пришли фото еды, получи цифру. Он ведёт твой день и пишет первым.",
+        "bot.description": "Strikt — персональный тренер по здоровью, который живёт в этом чате. Без настроек и меню. Присылай фото еды, скриншоты доставки, этикетки, экраны WHOOP или голосовые: он всё запишет, ответит калориями и макросами, посчитает бюджет дня и скажет, сколько осталось. Подключает WHOOP и весы, помнит всё с первого дня, а если ты замолчал, напишет первым. Прямо, без лести. Начни с /start.",
     },
 }
 

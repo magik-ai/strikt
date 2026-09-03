@@ -14,15 +14,23 @@
   var ANGLE = 28;
   var TAN = Math.tan(ANGLE * Math.PI / 180);
 
-  // Two cuts. "full" for >= 64 px, "small" for <= 48 px (favicons, the 512 px avatar which is seen at 40 px).
+  // Three cuts. "full" for >= 64 px, "small" for <= 48 px (favicons, the 512 px avatar which is seen
+  // at 40 px), "tiny" for a 32 px raster and below (favicon-32.png).
   //   w      vertical stroke width
   //   gap    clear space between two verticals (>= 1.1 w in the full cut)
   //   over   overshoot of the strike cap centre beyond the outer edge of the outer verticals
   //   sw     strike width (night variants set sw = w)
   //   y0,y1  cap centres of the verticals
+  //
+  // The tiny cut is drawn in device pixels first and converted (1 px = 3.125 units on a 32 px
+  // canvas): stroke 3 px on whole-pixel edges (centres 8.5 · 13.5 · 18.5 · 23.5 px), gap 2 px,
+  // ink from y 4 to y 28, strike overshoot 2.5 px. It is the one place the gap drops below 1.1 w:
+  // at 32 px a 2 px hole between 3 px strokes is two clean background pixels, which is what keeps
+  // the four verticals separate; a wider gap would force 2 px strokes that vanish at 16 px.
   var CUTS = {
-    full:  { w: 9,   gap: 10, over: 4.5, sw: 9,   y0: 19.5, y1: 80.5 },
-    small: { w: 8.5, gap: 11, over: 6,   sw: 8.5, y0: 19.5, y1: 80.5 }
+    full:  { w: 9,      gap: 10,   over: 4.5,    sw: 9,      y0: 19.5,    y1: 80.5 },
+    small: { w: 8.5,    gap: 11,   over: 6,      sw: 8.5,    y0: 19.5,    y1: 80.5 },
+    tiny:  { w: 9.375,  gap: 6.25, over: 7.8125, sw: 9.375,  y0: 17.1875, y1: 82.8125 }
   };
 
   function geometry(cutName, opts) {

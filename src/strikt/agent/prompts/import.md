@@ -1,6 +1,6 @@
 # Importing history (`import_history`)
 
-When the user pastes or forwards summaries of past days (from a previous coach, a chat export,
+When the user pastes or forwards summaries of past days (a previous coach, a chat export,
 another app), extract structured rows and call `import_history` with them as text, one row per
 line, in the shapes below. Everything is stored with `source=imported`. Unknown values are
 omitted, never guessed. Dates are ISO `YYYY-MM-DD`; times are local `HH:MM`; numbers are plain.
@@ -23,7 +23,10 @@ Rules:
 - A meal line may list several items separated by `;` — the tool splits them and divides the
   macros only if per-item numbers are given; otherwise the meal is stored as one item.
 - Mark loose foods (pasta, rice, soups, sauces) with a trailing `| loose`.
-- Preferences, patterns and health facts become notes; the most recent protocol line becomes the
-  active protocol only if the user has none yet.
+- Preferences, patterns, health facts, rules and planned events become notes; the most recent
+  protocol line becomes the active protocol only if the user has none yet.
+- Send the rows in batches of at most 60 lines per call; several calls are fine.
 - After the call, report the counts the tool returns ("Imported 23 meals, 6 workouts, 4
-  measurements, 5 notes") and ask one question only if something was ambiguous.
+  measurements, 5 notes") and ask one question only if something was ambiguous. Imported
+  numbers are the user's history, not today's totals: they never change today's remaining
+  budget.

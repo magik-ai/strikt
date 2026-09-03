@@ -11,7 +11,10 @@
        pure paths; the lock-ups embed the bundled Newsreader woff2 as a base64 @font-face;
     2. opens every src/*.html in headless Chromium with the fonts in fonts/ (no network) and
        screenshots it at the size and scale listed in JOBS below;
-    3. checks that no text fell back to a system font (fails loudly if it did).
+    3. checks that no text fell back to a system font (fails loudly if it did). The check asks
+       Chromium which platform fonts it actually rasterised each text element with
+       (CSS.getPlatformFontsForNode over a CDP session), so a single glyph outside a subset's
+       unicode-range — an arrow, a ≥, a ✓ — is caught, not just a wrong font-family.
 
   Requirements: node >= 18, playwright (module path below) and its Chromium build. Nothing else.
 */
@@ -26,6 +29,8 @@ const PW = process.env.PLAYWRIGHT_MODULE || '/opt/node22/lib/node_modules/playwr
 const { chromium } = require(PW);
 const M = require(path.join(HERE, 'src', 'mark.js'));
 const C = M.C;
+// the only families any glyph in any image may be rasterised from
+const BUNDLED = ['DM Sans', 'Newsreader', 'JetBrains Mono', 'Golos Text'];
 
 // ---------- 1. logo SVGs ----------
 function writeLogos() {
@@ -100,21 +105,50 @@ async function render(names) {
     await page.goto('file://' + path.join(HERE, 'src', src), { waitUntil: 'load' });
     await page.evaluate(() => document.fonts.ready);
     await page.waitForTimeout(250);
-    // font check: every loaded face must be one of ours, and every rendered text node must resolve to a bundled family
+    // font check, two layers:
+    //   a. the declared family of every text node must be one of ours (catches a wrong font-family);
+    //   b. the *platform* fonts Chromium actually rasterised each text element with must all be
+    //      ours (catches a single glyph — an arrow, a ≥, a ✓ — falling out of a subset's
+    //      unicode-range into DejaVu, which layer a cannot see).
     const report = await page.evaluate(() => {
       const faces = [...document.fonts].map(f => `${f.family} ${f.weight} ${f.status}`);
       const bad = new Set();
       const ok = new Set(['DM Sans', 'Newsreader', 'JetBrains Mono', 'Golos Text']);
       const walker = document.createTreeWalker(document.body, NodeFilter.SHOW_TEXT);
-      let n;
+      let n, i = 0;
+      const tagged = [];
       while ((n = walker.nextNode())) {
         if (!n.textContent.trim()) continue;
-        const fam = getComputedStyle(n.parentElement).fontFamily.split(',')[0].replace(/["']/g, '').trim();
+        const el = n.parentElement;
+        const fam = getComputedStyle(el).fontFamily.split(',')[0].replace(/["']/g, '').trim();
         if (!ok.has(fam)) bad.add(fam + ' <- ' + n.textContent.trim().slice(0, 30));
+        if (!el.hasAttribute('data-fontcheck')) {
+          el.setAttribute('data-fontcheck', String(i++));
+          tagged.push(n.textContent.trim().slice(0, 48));
+        }
       }
-      return { faces, bad: [...bad], failed: faces.filter(f => /error/.test(f)) };
+      return { faces, bad: [...bad], failed: faces.filter(f => /error/.test(f)), tagged };
     });
-    if (report.bad.length || report.failed.length) { failed++; console.log(`  [${name}] FONT PROBLEM`, report.bad, report.failed); }
+    const client = await page.context().newCDPSession(page);
+    await client.send('DOM.enable');
+    await client.send('CSS.enable');
+    const { root } = await client.send('DOM.getDocument', { depth: -1, pierce: true });
+    const glyphBad = [];
+    for (let i = 0; i < report.tagged.length; i++) {
+      const { nodeId } = await client.send('DOM.querySelector', { nodeId: root.nodeId, selector: `[data-fontcheck="${i}"]` });
+      if (!nodeId) continue;
+      const { fonts } = await client.send('CSS.getPlatformFontsForNode', { nodeId });
+      for (const f of fonts) {
+        if (!BUNDLED.some(b => f.familyName.startsWith(b))) {
+          glyphBad.push(`${f.familyName} (${f.glyphCount} glyph${f.glyphCount === 1 ? '' : 's'}) <- ${JSON.stringify(report.tagged[i])}`);
+        }
+      }
+    }
+    await client.detach();
+    if (report.bad.length || report.failed.length || glyphBad.length) {
+      failed++;
+      console.log(`  [${name}] FONT PROBLEM`, [...report.bad, ...glyphBad, ...report.failed].join('\n    '));
+    }
     const outPath = path.join(HERE, out);
     fs.mkdirSync(path.dirname(outPath), { recursive: true });
     await page.screenshot({

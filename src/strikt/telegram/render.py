@@ -13,6 +13,10 @@ if TYPE_CHECKING:
     from strikt.core.types import DayState, MealView
 
 THIN_SPACE = " "
+# Inside a <code> block the thin space is not one cell (0.31 of one in JetBrains Mono), so any
+# value past 999 would pull its bar left of the others. FIGURE_SPACE is digit-width by
+# definition: the card's table uses it, prose keeps the thin space.
+FIGURE_SPACE = " "
 TELEGRAM_LIMIT = 4096
 BAR_WIDTH = 8
 FILLED = "▓"
@@ -90,8 +94,15 @@ def _short(name: str, limit: int = MAX_ITEM_NAME) -> str:
     return name if len(name) <= limit else name[: limit - 1].rstrip() + "…"
 
 
+def _cells(value: float) -> str:
+    """``fmt_num`` for a monospaced column: thousands separated by a digit-width space."""
+    return fmt_num(value).replace(THIN_SPACE, FIGURE_SPACE)
+
+
 def _macro_line(label: str, value: float, target: float, unit: str = "") -> str:
-    left = f"{label:<5}{fmt_num(value):>6} /{fmt_num(target):>6}{unit}"
+    # every column is fixed width: the figure-space thousands separator is one cell and the
+    # unit column is one character on every row (blank for kcal), so all five bars align
+    left = f"{label:<5}{_cells(value):>6} /{_cells(target):>6}{unit or ' '}"
     return f"<code>{left}  {bar(value, target)}</code>"
 
 
@@ -127,7 +138,8 @@ def render_day_card(state: DayState, lang: str | None, tz: str = "UTC") -> str:
     lines.append(_macro_line("fiber", totals.fiber_g, targets.fiber_g, "g"))
 
     rem = state.remaining
-    if targets.kcal > 0:
+    # a closed day has no "left": the day is over and the verdict carries the shortfall
+    if targets.kcal > 0 and not state.closed:
         key = "card.remaining" if rem.kcal >= 0 else "card.over"
         lines.append(
             escape(

@@ -5,25 +5,30 @@
 .night .bar i{background:var(--rule-dark)} .night .bar i.f{background:var(--text-dark)}
 
 .stage{display:flex;align-items:center;justify-content:center}
-.chat{width:960px}
-.bubble{max-width:960px}
-.bubble.photo{padding:10px;background:var(--rule)}
+.chat{width:980px}
+/* the bot bubble takes the whole chat column minus the avatar and its gap, so both bubbles
+   end on the same right edge (980 − 40 − 14 = 926) */
+.bubble{max-width:926px}
+.row .bubble:not(.user){width:926px}
+.bubble.photo{padding:10px;background:var(--rule);max-width:none}
 .bubble.photo .img{background:var(--card);border:0;width:400px;height:300px}
 .bubble .code{font-size:21px}
 .top{position:absolute;left:112px;top:80px}
 </style></head><body><div class="stage"><div class="top cap">a food photo · answered with the number</div><div class="chat"><div class="row user"><div class="bubble user photo"><div class="img"><svg viewBox="0 0 400 300" width="400" height="300" fill="none" stroke="#1A1814" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round">
 <ellipse cx="200" cy="152" rx="168" ry="118"/>
 <ellipse cx="200" cy="152" rx="138" ry="92"/>
-<path d="M92 156c-4-28 18-52 52-54c30-2 56 14 60 40c3 24-14 42-44 46c-34 4-64-6-68-32z"/>
-<path d="M120 132l8-3M136 122l9-2M156 118l9 2M176 128l6 6M112 156l10-1M132 166l10 2M158 168l10-2M180 156l8 4M146 144l10 0M164 144l8 4M124 148l8 2"/>
-<path d="M214 100c14-16 40-20 62-12c24 9 36 30 30 52c-5 18-22 30-44 30c-8 0-15-2-21-5l-16 22c-4 6-13 7-18 2c-5-5-4-13 2-18l18-14c-20-14-27-38-13-57z"/>
-<path d="M240 118c10-6 24-6 34 2M232 138c12 10 28 12 42 4M256 160c8 2 16 0 22-4"/>
-<circle cx="238" cy="206" r="19"/><circle cx="238" cy="206" r="11"/><path d="M238 187v8M238 217v8M219 206h8M249 206h8"/>
-<circle cx="278" cy="196" r="19"/><circle cx="278" cy="196" r="11"/><path d="M278 177v8M278 207v8M259 196h8M289 196h8"/>
-<circle cx="204" cy="224" r="19"/><circle cx="204" cy="224" r="11"/><path d="M204 205v8M204 235v8M185 224h8M215 224h8"/>
-</svg></div><div class="time">13:20</div></div></div><div class="row"><div class="av" style="width:40px;height:40px"><div data-mark="small" data-size="27"></div></div><div class="bubble"><p>Chicken thigh, rice, cucumber salad. About 450 g.</p><span class="code">chicken thigh 180 g      325 kcal · 41 P ·  0 C · 17 F
-rice 150 g               195 kcal ·  4 P · 42 C ·  1 F
-cucumber salad 120 g      70 kcal ·  1 P ·  4 C ·  5 F
-<b>meal                     590 kcal · 46 P · 46 C · 23 F · 3 fiber</b>
-today                  1 070 / 2 100 kcal · 84 P
-left                   1 030 kcal · 96 P · 92 C · 38 F · 19 fiber</span><p style="margin-top:10px">Fiber 11 of 30. Dinner gets a vegetable.</p><div class="time">13:21</div></div></div><div class="kb"><span>Undo</span><span>Recalculate</span></div></div><div class="foot"><div data-lockup="34"></div><div class="cap">per item, the meal, the day, what is left · one line of advice at most</div></div></div><script src="mark.js"></script><script>StriktMark.mount()</script></body></html>
+<path d="M96 150c-4-24 15-43 42-45c25-2 46 12 50 33c3 19-12 35-37 39c-29 4-53-6-55-27z"/>
+<path d="M116 132l8-3M132 124l9-2M150 120l9 2M168 128l6 6M110 152l10-1M128 164l10 2M150 166l10-2M170 154l8 4M140 142l10 0M158 144l8 4M120 146l8 2"/>
+<path d="M236 176c-17-17-13-46 10-61c23-15 55-13 70 4c15 17 11 44-11 59c-23 15-52 15-69-2z"/>
+<path d="M258 128l14 26M282 120l14 26M304 126l12 24"/>
+<path d="M246 147h-32"/>
+<circle cx="205" cy="147" r="10"/>
+<circle cx="196" cy="214" r="17"/><circle cx="196" cy="214" r="10"/><path d="M196 197v7M196 224v7M179 214h7M206 214h7"/>
+<circle cx="232" cy="222" r="17"/><circle cx="232" cy="222" r="10"/><path d="M232 205v7M232 232v7M215 222h7M242 222h7"/>
+<circle cx="268" cy="212" r="17"/><circle cx="268" cy="212" r="10"/><path d="M268 195v7M268 222v7M251 212h7M278 212h7"/>
+</svg></div><div class="time">13:20<svg class="tick" width="17" height="11" viewBox="0 0 17 11" fill="none" stroke="#8A857A" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M1 6.2 4.3 9.5 10.4 1.6"/><path d="M8.2 8.1 9.6 9.5 15.7 1.6"/></svg></div></div></div><div class="row"><div class="av" style="width:40px;height:40px"><div data-mark="small" data-size="27"></div></div><div class="bubble haskb"><p>Chicken thigh, rice, cucumber salad. About 450 g.</p><span class="code">chicken thigh 180 g      325 kcal · 41 P ·   0 C · 17 F
+rice 150 g               195 kcal ·  4 P ·  42 C ·  1 F
+cucumber salad 120 g      70 kcal ·  1 P ·   4 C ·  5 F
+<b>meal                     590 kcal · 46 P ·  46 C · 23 F ·  3 fiber</b>
+today                  1 070 kcal · 84 P · 108 C · 32 F · 11 fiber
+left                   1 030 kcal · 96 P ·  92 C · 38 F · 19 fiber</span><p style="margin-top:10px">Fiber 11 of 30. Dinner gets a vegetable.</p><div class="time">13:21</div><div class="kb"><span>Undo</span><span>Recalculate</span></div></div></div></div><div class="foot"><div data-lockup="34"></div><div class="cap">per item, the meal, the day, what is left · one line of advice at most</div></div></div><script src="mark.js"></script><script>StriktMark.mount()</script></body></html>

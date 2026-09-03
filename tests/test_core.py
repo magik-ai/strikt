@@ -13,6 +13,7 @@ from strikt.config import ModelPrice, Settings
 from strikt.core.clock import FakeClock, in_quiet_hours, local_date, local_day_bounds, week_start
 from strikt.db.crypto import TokenCipher, generate_key
 from strikt.events import DayStateChanged, Event, EventBus, WorkoutEvent
+from strikt.telegram.copy import t
 from strikt.telegram.keyboards import forget_confirm, meal_actions, parse_callback, yes_no
 from strikt.telegram.messenger import FakeMessenger
 from strikt.telegram.queue import PerChatQueue
@@ -67,6 +68,7 @@ async def test_event_bus_dispatches_to_bases_and_survives_errors() -> None:
 
 
 def test_settings_parse_lists_and_prices(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.delenv("TELEGRAM_BOT_TOKEN", raising=False)  # the CI/dev shell may export one
     monkeypatch.setenv("ALLOWED_TELEGRAM_IDS", "1, 2,3")
     monkeypatch.setenv("ADMIN_TELEGRAM_IDS", "3")
     monkeypatch.setenv(
@@ -163,7 +165,7 @@ def test_keyboards_and_callbacks() -> None:
     assert (
         len(rows) == 3
         and rows[0][0].callback_data == "s:7:breakfast"
-        and rows[2][0].text == "Отменить"
+        and rows[2][0].text == t("ru", "btn.undo")
     )
     assert forget_confirm("en")[0][0].callback_data == "forget:yes"
     assert yes_no("close_day", "en")[0][1].callback_data == "yn:close_day:no"

@@ -25,7 +25,8 @@ html,body{background:var(--paper);color:var(--ink);font-family:var(--sans);font-
 .row{display:flex;align-items:flex-end;gap:14px}
 .row.user{justify-content:flex-end}
 .av{width:40px;height:40px;border-radius:50%;background:var(--paper);box-shadow:inset 0 0 0 1px var(--rule);display:flex;align-items:center;justify-content:center;overflow:hidden;flex:none}
-.night .av{background:var(--night);box-shadow:none}
+/* Telegram shows the one uploaded JPG in light and dark clients: the disc stays paper on night. */
+.night .av{background:var(--paper);box-shadow:none}
 .bubble{background:var(--card);border:1px solid var(--rule);border-radius:16px;border-bottom-left-radius:4px;padding:18px 24px 12px;font-size:24px;line-height:1.4;max-width:760px}
 .bubble.user{background:var(--rule);border-color:var(--rule);border-bottom-left-radius:16px;border-bottom-right-radius:4px}
 .night .bubble{background:var(--night-card);border-color:var(--rule-dark)}
@@ -36,7 +37,11 @@ html,body{background:var(--paper);color:var(--ink);font-family:var(--sans);font-
 .night .bubble .time{color:var(--mute-dark)}
 .bubble p{margin:0}
 .bubble p + p{margin-top:12px}
-.kb{display:flex;gap:8px;margin-top:8px;margin-left:54px}
-.kb span{border:1px solid var(--rule);background:var(--card);border-radius:8px;padding:9px 18px;font-size:19px;font-weight:500;line-height:1}
-.night .kb span{background:var(--night-card);border-color:var(--rule-dark)}
+.kb{display:flex;margin:14px -24px 0;border-top:1px solid var(--rule)}
+.kb span{flex:1;text-align:center;padding:13px 8px;font-size:19px;font-weight:500;line-height:1}
+.kb span + span{border-left:1px solid var(--rule)}
+.night .kb{border-color:var(--rule-dark)}
+.night .kb span + span{border-left-color:var(--rule-dark)}
+.bubble.haskb{padding-bottom:0;overflow:hidden}
+.tick{display:inline-block;vertical-align:-1px;margin-left:6px}
 .img{border-radius:12px;overflow:hidden;background:var(--card);border:1px solid var(--rule)}
