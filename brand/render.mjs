@@ -90,6 +90,7 @@ const JOBS = {
   avatar1024:['avatar.html', 'avatar/avatar-1024.png', 1024, 1024, 1],
   avatar512: ['avatar.html', 'avatar/avatar-512.jpg', 512, 512, 1, { jpeg: 92 }],
   avatarNight:['avatar-night.html', 'avatar/avatar-night-512.png', 512, 512, 1],
+  favicon16: ['favicon-16.html', 'logo/favicon-16.png', 16, 16, 1, { transparent: true }],
   favicon32: ['favicon.html', 'logo/favicon-32.png', 32, 32, 1, { transparent: true }],
   favicon180:['favicon-180.html', 'logo/favicon-180.png', 180, 180, 1],
 };

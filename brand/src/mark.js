@@ -26,11 +26,18 @@
   // canvas): stroke 3 px on whole-pixel edges (centres 8.5 · 13.5 · 18.5 · 23.5 px), gap 2 px,
   // ink from y 4 to y 28, strike overshoot 2.5 px. It is the one place the gap drops below 1.1 w:
   // at 32 px a 2 px hole between 3 px strokes is two clean background pixels, which is what keeps
-  // the four verticals separate; a wider gap would force 2 px strokes that vanish at 16 px.
+  // the four verticals separate; a wider gap would force strokes that vanish at 16 px. Its strike
+  // is 2 px, not 3: a 3 px strike bridged the 2 px holes and fused the bars into one ink block
+  // across the crossing (alpha rows 12–19), which is the one thing the small gap has to survive.
+  //
+  // The micro cut is the same drawing on a 16 px canvas (1 px = 6.25 units): 2 px strokes on
+  // whole-pixel edges (centres 2 · 6 · 10 · 14 px), 2 px gaps, ink y 2 → 14, a 2 px strike with no
+  // overshoot (at 16 px an overshoot would put the caps half off the canvas).
   var CUTS = {
     full:  { w: 9,      gap: 10,   over: 4.5,    sw: 9,      y0: 19.5,    y1: 80.5 },
     small: { w: 8.5,    gap: 11,   over: 6,      sw: 8.5,    y0: 19.5,    y1: 80.5 },
-    tiny:  { w: 9.375,  gap: 6.25, over: 7.8125, sw: 9.375,  y0: 17.1875, y1: 82.8125 }
+    tiny:  { w: 9.375,  gap: 6.25, over: 7.8125, sw: 6.25,   y0: 17.1875, y1: 82.8125 },
+    micro: { w: 12.5,   gap: 12.5, over: 0,      sw: 12.5,   y0: 18.75,   y1: 81.25 }
   };
 
   function geometry(cutName, opts) {

@@ -6,9 +6,11 @@ Run once after creating the bot in BotFather (and again whenever the copy or the
     uv run python scripts/setup_telegram.py --avatar brand/avatar/avatar-512.jpg
     uv run python scripts/setup_telegram.py --skip-photo      # texts and commands only
 
-The texts follow BRAND.md (brand voice: fact first, no flattery, no emoji). Telegram limits: name
-64 characters, short description 120, description 512. English is the default profile; Russian is
-set for clients whose language is ru.
+The texts are not written here: they come from ``strikt.telegram.copy`` through
+``strikt.telegram.commands``, the same strings the running bot registers at startup and the same
+strings BRAND.md section 9 quotes (tests/test_brand_copy.py keeps the three in step). Telegram
+limits: name 64 characters, short description 120, description 512. English is the default profile;
+Russian is set for clients whose language is ru.
 """
 
 from __future__ import annotations
@@ -20,46 +22,26 @@ import sys
 from pathlib import Path
 
 from aiogram import Bot
-from aiogram.types import BotCommand, FSInputFile, InputProfilePhotoStatic
+from aiogram.types import FSInputFile, InputProfilePhotoStatic
+
+sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
+
+from strikt.telegram.commands import (
+    LANGUAGES,
+    MAX_DESCRIPTION,
+    MAX_SHORT_DESCRIPTION,
+    bot_commands,
+    description,
+    short_description,
+)
 
 NAME = "Strikt"
 
-SHORT = {
-    "en": "A coach in one chat. Send a photo of your food, get the number. It owns your day and messages first.",
-    "ru": "Тренер в одном чате. Пришли фото еды, получи цифру. Он ведёт твой день и пишет первым.",
-}
+SHORT = {lang: short_description(lang) for lang in LANGUAGES}
+DESCRIPTION = {lang: description(lang) for lang in LANGUAGES}
+COMMANDS = {lang: bot_commands(lang) for lang in LANGUAGES}
 
-DESCRIPTION = {
-    "en": (
-        "Strikt is a personal health coach that lives in this chat. No settings, no menus. "
-        "Send photos of food, screenshots of delivery apps, labels, WHOOP screens or voice "
-        "notes; it logs them, answers with kcal and macros, keeps the day's budget and tells "
-        "you what is left. It connects to WHOOP and scales, remembers everything from day one, "
-        "and when you go quiet it messages first. Direct, no flattery. Start with /start."
-    ),
-    "ru": (
-        "Strikt — персональный тренер по здоровью, который живёт в этом чате. Без настроек и "
-        "меню. Присылай фото еды, скриншоты доставки, этикетки, экраны WHOOP или голосовые: он "
-        "всё запишет, ответит калориями и макросами, посчитает бюджет дня и скажет, сколько "
-        "осталось. Подключает WHOOP и весы, помнит всё с первого дня, а если ты замолчал, "
-        "напишет первым. Прямо, без лести. Начни с /start."
-    ),
-}
-
-COMMANDS = {
-    "en": [
-        BotCommand(command="start", description="start or continue"),
-        BotCommand(command="today", description="re-post today's card"),
-        BotCommand(command="forget_me", description="delete everything about me"),
-    ],
-    "ru": [
-        BotCommand(command="start", description="начать или продолжить"),
-        BotCommand(command="today", description="показать карточку дня"),
-        BotCommand(command="forget_me", description="удалить всё обо мне"),
-    ],
-}
-
-LIMITS = {"name": 64, "short": 120, "description": 512}
+LIMITS = {"name": 64, "short": MAX_SHORT_DESCRIPTION, "description": MAX_DESCRIPTION}
 
 
 def _check_limits() -> None:
@@ -67,10 +49,14 @@ def _check_limits() -> None:
         raise SystemExit(f"name is {len(NAME)} characters, the limit is {LIMITS['name']}")
     for lang, text in SHORT.items():
         if len(text) > LIMITS["short"]:
-            raise SystemExit(f"short description ({lang}) is {len(text)} characters, limit 120")
+            raise SystemExit(
+                f"short description ({lang}) is {len(text)} characters, limit {LIMITS['short']}"
+            )
     for lang, text in DESCRIPTION.items():
         if len(text) > LIMITS["description"]:
-            raise SystemExit(f"description ({lang}) is {len(text)} characters, limit 512")
+            raise SystemExit(
+                f"description ({lang}) is {len(text)} characters, limit {LIMITS['description']}"
+            )
 
 
 async def apply(token: str, avatar: Path | None) -> None:

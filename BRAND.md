@@ -24,12 +24,16 @@ Rules:
   never draw it.
 - Four verticals, always. Three or fewer without a strike is the *open day* (see the state rule);
   a strike over fewer than four bars does not exist.
-- Three cuts, same angle. **Full** (`brand/logo/mark.svg`) at 64 px and above: stroke 9, gap 10,
+- Four cuts, same angle. **Full** (`brand/logo/mark.svg`) at 64 px and above: stroke 9, gap 10,
   strike 9 at 28°, overshoot 4.5. **Small** (`mark-small.svg`, `favicon.svg`) at 48 px and below, the
-  avatar: stroke 8.5, gap 11, overshoot 6. **Tiny**, for a 32 px raster and below (`favicon-32.png`):
-  drawn in device pixels — 3 px strokes on whole-pixel edges, 2 px gaps, box 81 % of the side. It is
-  the one place the gap drops under 1.1 × stroke: at 32 px two clean background pixels keep the four
-  verticals apart, and a wider gap would force 2 px strokes that vanish when the tab shows 16 px.
+  avatar: stroke 8.5, gap 11, overshoot 6. **Tiny**, for a 32 px raster (`favicon-32.png`): drawn in
+  device pixels — 3 px strokes on whole-pixel edges, 2 px gaps, a **2 px** strike, box 81 % of the
+  side. **Micro**, for the 16 px raster a browser tab actually paints (`favicon-16.png`): 2 px
+  strokes on whole-pixel edges, 2 px gaps, 2 px strike, no overshoot. The two pixel cuts are the one
+  place the gap drops under 1.1 × stroke: at these sizes what matters is two clean background pixels
+  between strokes, and a wider gap would force strokes that vanish. Their strike is thinner than the
+  verticals for the same reason — a 3 px pen at 32 px bridged two bars over four rows and made the
+  centre a block; at 2 px it joins one pair of bars over two rows and the other two gaps stay open.
 - Colourways: ink + red (`mark.svg`), all ink (`mark-ink.svg`, for the favicon and single-colour
   print), night (`mark-night.svg`: text-dark strokes, strike-dark strike, strike width equal to the
   verticals because red drops visually on dark).
@@ -48,6 +52,10 @@ day is closed: it is the verdict. So an image of an open day shows one to four b
 (`card-closed-1920x1080.png`). If the mark ever animates, the only motion is the strike being drawn
 along its length (200 ms, `cubic-bezier(0.2, 0, 0, 1)`) after the fourth bar; nothing pulses, nothing
 loops. In code: `StriktMark.svg({bars: n, strike: closed})` from `brand/src/mark.js`.
+
+The avatar is the exception: it is always the full mark. Telegram holds one uploaded picture per bot
+and cannot repaint it through the day, so the state lives in the card, not in the profile photo —
+which is why `hero-1920x1080.png` shows a three-bar mark beside a struck 40 px avatar and says so.
 
 ## 3. Colour
 
@@ -89,7 +97,7 @@ Three roles, all OFL and bundled in `brand/fonts/`:
 - **UI and body — DM Sans** 400/500/600. Body 16/1.55, UI 14/1.4. The alternate wordmark
   (DM Sans 500, −0.02em) is shipped on the brand sheet; Newsreader is primary.
 - **Numbers — JetBrains Mono** 400 (500 for a total line). Tabular figures, labels uppercase at
-  0.08em. **Tables and totals are mono**: the day card's five macro rows, a reply's per-item block,
+  0.08em. **Tables and totals are mono**: the Today card's five macro rows, a reply's per-item block,
   its meal / today / left rows. **Numbers inside a sentence follow the sentence** — the Left line,
   the verdict, a ladder push and a chat-list preview are DM Sans (Golos Text in Russian), because
   they are prose. This is what `telegram/render.py` writes and what the images show.
@@ -97,7 +105,10 @@ Three roles, all OFL and bundled in `brand/fonts/`:
   thin space is 0.31 of a cell in JetBrains Mono, so a value past 999 would drag its bar a third of a
   character left of the others. Mono columns therefore use a **figure space** U+2007, which is
   digit-width by definition (`render._cells`); prose keeps the **thin space** U+2009
-  (`render.fmt_num`). Both read as `1 940`.
+  (`render.fmt_num`). Both read as `1 880`.
+- Russian macro columns are **Б · Ж · У** (protein · fat · carbs), the order a Russian reader says
+  and reads; Б · У · Ж would be a transliteration of P · C · F. English keeps P · C · F. Both live in
+  `telegram/copy.py` (`card.remaining`, `card.over`) and in `russian-1920x1080.png`.
 - Cyrillic: DM Sans and Newsreader have none. Russian UI text is set in **Golos Text** 400/500
   (Paratype, OFL), including the Latin food names inside a Russian sentence. JetBrains Mono covers
   Cyrillic itself.
@@ -160,7 +171,10 @@ the radius, i.e. 33 % of the diameter, inside the 74 % safe circle with 21 px to
    variant is for the brand sheet only, the one JPG serves light and dark clients.
 
 Texts (BotFather `/setabouttext`, `/setdescription`; or `setMyShortDescription` /
-`setMyDescription` with `language_code="ru"` for the Russian pair):
+`setMyDescription` with `language_code="ru"` for the Russian pair). These four strings and the
+command list below are the same bytes the bot registers at startup: they live in
+`src/strikt/telegram/copy.py` as `bot.short`, `bot.description` and `cmd.*`, and
+`tests/test_brand_copy.py` fails if this section and that table drift apart.
 
 About, en (76 chars, limit 120):
 
@@ -170,9 +184,9 @@ About, ru (80 chars):
 
 > Тренер в одном чате. Присылай еду — получай цифру. День заканчивается вердиктом.
 
-Description, en (462 chars, limit 512):
+Description, en (466 chars, limit 512):
 
-> Strikt logs food, training, sleep and measurements from one Telegram chat. Send a photo, a screenshot, a voice note or text; the reply is kcal, protein, carbs, fat and fiber per item, the day so far and what is left. A day card stays pinned and is edited in place. When you go quiet it writes first: the fact, then the pattern from your own data, then an instruction with a deadline. The day closes with a verdict. No greetings, no emoji, no praise. Invite-only.
+> Strikt logs food, training, sleep and measurements from one Telegram chat. Send a photo, a screenshot, a voice note or text; the reply is kcal, protein, carbs, fat and fiber per item, the day so far and what is left. The Today card stays pinned and is edited in place. When you go quiet it writes first: the fact, then the pattern from your own data, then an instruction with a deadline. The day closes with a verdict. No greetings, no emoji, no praise. Invite-only.
 
 Description, ru (448 chars):
 
@@ -182,7 +196,7 @@ Commands (`/setcommands` or `setMyCommands`, en and ru):
 
 ```
 start - Begin, or resume where you left off
-today - Re-post the day card
+today - Re-post the Today card
 forget_me - Delete everything about you
 ```
 ```
@@ -192,20 +206,25 @@ forget_me - Удалить всё о тебе
 ```
 
 The chat itself stays in Telegram's own theme; the brand lives in the avatar, the card format and
-the voice. That is why the contact avatars in `telegram-profile-1920x1080.png` carry Telegram's own
-initial colours: they are the client's chrome, not a second brand accent, and the point of the image
-is that the 40 px mark holds up beside them. The same image shows the one paper JPG on both a light
+the voice. `telegram-profile-1920x1080.png` is painted in that theme and not in the palette above —
+white rows on `#F1F1F1`, `#212121` rows on `#181818`, secondary text `#707579` / `#AAAAAA` — and the
+contact avatars carry Telegram's own initial colours: client chrome, not a second brand accent. The
+point of the image is that the 40 px paper mark holds up inside someone else's window, so the cool
+tints sit next to it and the two warm ones sit at the bottom of the list. The same image shows the one paper JPG on both a light
 and a dark client, because that is what Telegram does with it; the night mark
 (`avatar-night-512.png`, `mark-night.svg`) is for the brand sheet only.
 
 ## 10. Landing page
 
 The page sits on a black-and-white site, so the brand appears only inside images. Ship
-`brand/images/og-1200x630.png` as the Open Graph card (lock-up plus one ink line — the same sentence
-as the BotFather About text, because a feed renders the card at roughly half size and mute grey drops
-out there), and the 1920 × 1080 images as content. Icons: `favicon.svg` and `favicon-32.png` are all
-ink — the SVG is the small cut, the PNG the tiny cut of section 2; `favicon-180.png` (apple touch) is
-the small cut with the red strike on a paper ground. No page CSS carries the palette.
+`brand/images/og-1200x630.png` as the Open Graph card (lock-up plus one ink line — the middle
+sentence of the BotFather About text, "Send food, get the number.", set in ink because a feed renders
+the card at roughly half size and mute grey drops out there), and the 1920 × 1080 images as content.
+Icons: `favicon.svg`, `favicon-32.png` and `favicon-16.png` are all ink — the SVG is the small cut,
+the two PNGs the tiny and micro cuts of section 2; link the rasters with explicit sizes
+(`<link rel="icon" sizes="16x16" href="favicon-16.png">`) so a tab paints the hand-fitted 16 px file
+instead of downsampling the 32. `favicon-180.png` (apple touch) is the small cut with the red strike
+on a paper ground. No page CSS carries the palette.
 
 ## 11. Regenerating the assets
 

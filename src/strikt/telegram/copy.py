@@ -73,17 +73,28 @@ STRINGS: dict[str, dict[str, str]] = {
         "synthetic.recalc": "Recalculate the day.",
         "synthetic.close": "Close the day.",
         # bot profile (setMyCommands / setMyDescription / setMyShortDescription)
-        "cmd.start": "start or continue",
-        "cmd.today": "re-post today's card",
-        "cmd.forget_me": "delete everything about me",
-        "bot.short": "A coach in one chat. Send a photo of your food, get the number. It owns your day and messages first.",
-        "bot.description": "Strikt is a personal health coach that lives in this chat. No settings, no menus. Send photos of food, screenshots of delivery apps, labels, WHOOP screens or voice notes; it logs them, answers with kcal and macros, keeps the day's budget and tells you what is left. It connects to WHOOP and scales, remembers everything from day one, and when you go quiet it messages first. Direct, no flattery. Start with /start.",
+        # The four strings below are BRAND.md section 9 verbatim; tests/test_brand_copy.py fails if
+        # the document and the code drift apart. Limits: command 256, short 120, description 512.
+        "cmd.start": "Begin, or resume where you left off",
+        "cmd.today": "Re-post the Today card",
+        "cmd.forget_me": "Delete everything about you",
+        "bot.short": "A coach in one chat. Send food, get the number. The day ends with a verdict.",
+        "bot.description": (
+            "Strikt logs food, training, sleep and measurements from one Telegram chat. "
+            "Send a photo, a screenshot, a voice note or text; the reply is kcal, protein, "
+            "carbs, fat and fiber per item, the day so far and what is left. The Today card "
+            "stays pinned and is edited in place. When you go quiet it writes first: the fact, "
+            "then the pattern from your own data, then an instruction with a deadline. The day "
+            "closes with a verdict. No greetings, no emoji, no praise. Invite-only."
+        ),
     },
     "ru": {
         "card.title": "Сегодня · {date}",
         "card.closed": "закрыт",
-        "card.remaining": "Осталось: {kcal} ккал · {p} Б · {c} У · {f} Ж",
-        "card.over": "Перебор: {kcal} ккал · Б {p} · У {c} · Ж {f}",
+        # БЖУ — protein · fat · carbs — is the order a Russian reader says and reads; Б·У·Ж would be
+        # a transliteration of P·C·F. brand/images/russian-1920x1080.png shows the same order.
+        "card.remaining": "Осталось: {kcal} ккал · {p} Б · {f} Ж · {c} У",
+        "card.over": "Перебор: {kcal} ккал · Б {p} · Ж {f} · У {c}",
         "card.meals": "Еда",
         "card.no_meals": "пока ничего не записано",
         "card.more_meals": "+{n} ещё",
@@ -132,11 +143,18 @@ STRINGS: dict[str, dict[str, str]] = {
         "queue.busy": "Ещё обрабатываю предыдущее сообщение — отвечу по порядку.",
         "synthetic.recalc": "Пересчитай день.",
         "synthetic.close": "Закрой день.",
-        "cmd.start": "начать или продолжить",
-        "cmd.today": "показать карточку дня",
-        "cmd.forget_me": "удалить всё обо мне",
-        "bot.short": "Тренер в одном чате. Пришли фото еды, получи цифру. Он ведёт твой день и пишет первым.",
-        "bot.description": "Strikt — персональный тренер по здоровью, который живёт в этом чате. Без настроек и меню. Присылай фото еды, скриншоты доставки, этикетки, экраны WHOOP или голосовые: он всё запишет, ответит калориями и макросами, посчитает бюджет дня и скажет, сколько осталось. Подключает WHOOP и весы, помнит всё с первого дня, а если ты замолчал, напишет первым. Прямо, без лести. Начни с /start.",
+        "cmd.start": "Начать или продолжить с того же места",
+        "cmd.today": "Заново отправить карточку дня",
+        "cmd.forget_me": "Удалить всё о тебе",
+        "bot.short": "Тренер в одном чате. Присылай еду — получай цифру. День заканчивается вердиктом.",
+        "bot.description": (
+            "Strikt записывает еду, тренировки, сон и замеры из одного чата в Telegram. "
+            "Пришли фото, скриншот, голосовое или текст — в ответ ккал, белки, углеводы, жиры "
+            "и клетчатка по каждому пункту, итог дня и остаток. Карточка дня закреплена и "
+            "правится на месте. Если ты замолчал, пишет первым: факт, затем закономерность из "
+            "твоих же данных, затем указание со сроком. День закрывается вердиктом. Без "
+            "приветствий, без эмодзи, без похвал. Доступ по приглашению."
+        ),
     },
 }
 
