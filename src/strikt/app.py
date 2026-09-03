@@ -199,6 +199,7 @@ class Runtime:
     web_app: web.Application
     runner: web.AppRunner | None = None
     polling_task: asyncio.Task[None] | None = None
+    profile_task: asyncio.Task[None] | None = None
     started: bool = field(default=False)
 
     @property
@@ -211,10 +212,9 @@ class Runtime:
         log.info("proactive_jobs_scheduled", users=users)
         host = str(getattr(self.settings, "web_host", "0.0.0.0"))
         self.runner = await run_server(self.web_app, host, self.settings.web_port)
-        try:
-            await apply_bot_profile(self.bot)
-        except Exception as exc:
-            log.warning("bot_profile_failed", error=repr(exc))
+        # Sixty Bot API calls (three per language) took forty seconds of startup before the bot
+        # read its first update. Nothing waits on the result, so it runs alongside polling.
+        self.profile_task = asyncio.create_task(self._apply_profile(), name="bot-profile")
         if self.webhook_mode:
             secret = self.settings.telegram_webhook_secret
             await set_webhook(self.bot, self.settings, secret.get_secret_value() if secret else "")
@@ -225,8 +225,20 @@ class Runtime:
         self.started = True
         log.info("strikt_started", mode=self.settings.telegram_mode, port=self.settings.web_port)
 
+    async def _apply_profile(self) -> None:
+        try:
+            await apply_bot_profile(self.bot)
+        except asyncio.CancelledError:
+            raise
+        except Exception as exc:
+            log.warning("bot_profile_failed", error=repr(exc))
+
     async def stop(self) -> None:
         log.info("strikt_stopping")
+        if self.profile_task is not None and not self.profile_task.done():
+            self.profile_task.cancel()
+            with contextlib.suppress(BaseException):
+                await self.profile_task
         if self.polling_task is not None and not self.polling_task.done():
             with contextlib.suppress(RuntimeError):
                 await self.dispatcher.stop_polling()
