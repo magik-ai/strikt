@@ -13,15 +13,16 @@ change, change PLAN.md in the same commit and say why.
 - Keep `Registry.definitions()` byte-stable: add tools only through `agent/tools/schemas.py`
   + `agent/tools/__init__.py`; the test suite asserts the exact PLAN §6.4 set.
 - Every DB query filters by `user_id`. Every timestamp is UTC. Every local date is computed in the
-  user's timezone via `core/clock.py`.
+  user's timezone via `core/clock.py`; a meal's date is its coaching day (`coaching_day`: rollover
+  at max(03:00, bed + 1 h), never past 06:00), not the calendar date.
 - The brief's voice rules are as important as the code. Prompts live in `agent/prompts/*.md`;
   regenerate `PROMPTS.md` with `make prompts`.
 - Never say the bot "lacks context": if the DB has it, look it up.
 - No real network in tests. Use `FakeLLM`, `FakeMessenger`, `FakeClock`.
 
-## Ownership of the remaining stubs
+## Module ownership
 
-| Stub | Owner |
+| Module | Owner |
 |---|---|
 | `app.py` main wiring | integration agent |
 | `agent/tools/food.py` | nutrition agent (`nutrition/math.py`, `sanity.py`, `units.py`, `resolve.py`, `off.py`, `usda.py`) |
@@ -43,4 +44,4 @@ change, change PLAN.md in the same commit and say why.
 ## Reporting
 
 Finish with: what you built, the commands you ran and their status, deviations from PLAN.md or
-the brief (and why), and any stub you left behind.
+the brief (and why), and anything you left unfinished.

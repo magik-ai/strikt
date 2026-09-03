@@ -110,7 +110,8 @@ def local_day(dt: datetime, tz: str) -> date:
 
 def meal_day(ctx: ToolContext, eaten_at: datetime) -> date:
     """The coaching date a meal belongs to: the calendar date, except that a meal eaten after
-    midnight but before the profile's bedtime + 1 h (never past 06:00) is the evening's day."""
+    midnight but before the rollover (03:00, or the bedtime + 1 h for a bedtime past 02:00, never
+    past 06:00; see ``core.clock.day_rollover``) is the evening's day."""
     profile = ctx.profile
     bed = profile.bed_time if profile is not None else None
     wake = profile.wake_time if profile is not None else None

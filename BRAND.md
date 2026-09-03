@@ -112,17 +112,18 @@ Three roles, all OFL and bundled in `brand/fonts/`:
   the verdict, a ladder push and a chat-list preview are DM Sans (Golos Text in Russian), because
   they are prose. This is what `telegram/render.py` writes and what the images show.
 - Thousands are separated, and by two different characters for one reason: inside a `<code>` block a
-  thin space is a third of a cell in JetBrains Mono, so a value past 999 would drag its bar a third
-  of a character left of the others. Mono columns therefore use a **figure space** U+2007, which is
-  digit-width by definition (`render._cells`); prose keeps the **thin space** U+2009
-  (`render.fmt_num`). The two gaps are not the same width and are not meant to be: measured in the
-  render at 100 px, the thin space is 20 px in all four bundled faces (the 1/5 em it is defined to
-  be) and the figure space is one full 60 px cell in JetBrains Mono. So the closed card writes
-  `1 880` twice — 4.8 px of gap in the 24 px DM Sans verdict, 14.4 px in the 24 px mono row above it.
-  Prose is the tighter of the two, and at chat-preview sizes (13–16 px) the gap is 3 px and close to
-  invisible; if that ever has to change, the fix is one character in `render.fmt_num` — U+00A0
-  (0.27 em in DM Sans), **not** U+202F, which is *narrower* in these faces (0.14 em in DM Sans, 0.12
-  in Newsreader) and would make it worse.
+  proportional space is not one cell in JetBrains Mono, so a value past 999 would drag its bar out
+  of line with the others. Mono columns therefore use a **figure space** U+2007, which is
+  digit-width by definition (`render._cells`); prose uses the **no-break space** U+00A0
+  (`render.fmt_num`; Telegram clients render the thin space U+2009 inconsistently, so it is not
+  used). The two gaps are not the same width and are not meant to be: measured in the render at
+  100 px, the no-break space is 27 px in DM Sans, 25 in Golos Text and 23 in Newsreader (a word
+  space's width, unbreakable), and the figure space is one full 60 px cell in JetBrains Mono. So the
+  closed card writes `1 880` twice — 6.5 px of gap in the 24 px DM Sans verdict, 14.4 px in the
+  24 px mono row above it. Prose is the tighter of the two. The shipped images are rendered with
+  the same no-break space (`TS` in `brand/src/gen-sources.py`), so their prose gaps match what the
+  bot sends. Never U+202F,
+  which is *narrower* than the thin space in these faces (0.14 em in DM Sans, 0.12 in Newsreader).
 - Russian macro columns are **Б · Ж · У** (protein · fat · carbs), the order a Russian reader says
   and reads; Б · У · Ж would be a transliteration of P · C · F. English keeps P · C · F. Both live in
   `telegram/copy.py` (`card.remaining`, `card.over`) and in `russian-1920x1080.png`.

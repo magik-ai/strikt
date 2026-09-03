@@ -80,9 +80,10 @@ DAY_ROLLOVER_GRACE = timedelta(hours=1)
 
 def day_rollover(bed_time: time | None, wake_time: time | None = None) -> time:
     """Local time at which the coaching day rolls over (brief §3.3: the day is the user's day,
-    not the calendar's). Midnight plus the bedtime's grace: a 00:30 bedtime makes 01:30 the
-    rollover, so a dinner logged at 00:10 lands on the evening's date. A wake time at or before
-    the rollover (a shift worker) disables the shift: the day then rolls over at midnight."""
+    not the calendar's). The later of 03:00 and the bedtime + 1 h, capped at 06:00: with a 00:30
+    bedtime the day rolls over at 03:00, so a dinner logged at 00:10 lands on the evening's date.
+    A wake time at or before the rollover (a shift worker) disables the shift: the day then rolls
+    over at midnight."""
     rollover = DAY_ROLLOVER_EARLIEST
     if bed_time is not None and bed_time < time(12, 0):
         after_bed = (datetime.combine(date(2000, 1, 1), bed_time) + DAY_ROLLOVER_GRACE).time()

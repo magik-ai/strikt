@@ -20,7 +20,7 @@ as source; `<code>` rows render monospaced):
 <code>C        51 /    75g  ▓▓▓▓▓░░░</code>
 <code>F        51 /   105g  ▓▓▓▓░░░░</code>
 <code>fiber    10 /    30g  ▓▓▓░░░░░</code>
-Left: 1 061 kcal · 140 P · 24 C · 54 F
+Left: 1 061 kcal · 140 P · 24 C · 54 F
 
 <b>Meals</b>
 • 09:10 breakfast — яйца ×3, авокадо ½ · 327
@@ -38,7 +38,7 @@ The same day in Russian (the user's language decides; food names stay as logged)
 <code>C        51 /    75g  ▓▓▓▓▓░░░</code>
 <code>F        51 /   105g  ▓▓▓▓░░░░</code>
 <code>fiber    10 /    30g  ▓▓▓░░░░░</code>
-Осталось: 1 061 ккал · 140 Б · 24 У · 54 Ж
+Осталось: 1 061 ккал · 140 Б · 54 Ж · 24 У
 
 <b>Еда</b>
 • 09:10 завтрак — яйца ×3, авокадо ½ · 327
@@ -56,7 +56,7 @@ Before the first meal (sleep already synced from WHOOP overnight):
 <code>C         0 /    75g  ░░░░░░░░</code>
 <code>F         0 /   105g  ░░░░░░░░</code>
 <code>fiber     0 /    30g  ░░░░░░░░</code>
-Left: 2 000 kcal · 210 P · 75 C · 105 F
+Left: 2 000 kcal · 210 P · 75 C · 105 F
 
 <b>Meals</b>
 nothing logged yet
@@ -86,7 +86,7 @@ And after `close_day`:
 
 | Row | Source | Reading |
 |---|---|---|
-| `Today · Thu 3 Sep` | local date in the user's timezone | `· closed` is appended once the day is closed |
+| `Today · Thu 3 Sep` | the coaching day in the user's timezone: it rolls over at 03:00, or an hour after a bedtime later than 02:00 (never past 06:00), so a dinner logged at 00:10 lands on the evening's card | `· closed` is appended once the day is closed |
 | `kcal`, `P`, `C`, `F`, `fiber` | day totals vs the active protocol | five fixed-width rows; the bar is 8 cells, full at or over target, empty when there is no protocol |
 | `Left: …` / `Over by …` | protocol minus totals | `Left` while under; over target it becomes `Over by 115 kcal · P +28 · C -26 · F -6` — signed remaining per macro, `+` still under, `-` over; the line disappears when the day is closed (the verdict carries the shortfall) |
 | `Meals` | logged meals, oldest first | `• time slot — up to 3 item names, +N · kcal`; at most 8 meals, then `+N more`; names cut at 20 characters |
@@ -97,7 +97,9 @@ And after `close_day`:
 | `Verdict` | `close_day` | the model's one-line verdict, only on a closed day |
 
 While no protocol exists the card uses the server's fallback targets; with fallbacks disabled it
-shows `no protocol yet — finish onboarding` instead of the budget.
+shows `no protocol yet — finish onboarding` instead of the budget. On a day flagged `sick` the
+targets are zero: the bars are empty, there is no `Left` line and the card says
+`targets paused — sick day` (`цели на паузе — день болезни`) under the title.
 
 ### Rules
 
@@ -106,8 +108,9 @@ shows `no protocol yet — finish onboarding` instead of the budget.
   pinned at any time.
 - **Edited in place.** After every state-changing tool (`log_meal`, `update_meal`, `delete_meal`,
   `undo_last`, `log_workout`, `log_sleep`, `log_measurement`, `set_day_flag`, `set_day_plan`,
-  `close_day`, `update_protocol`, `import_history`) the loop re-renders and edits. An unchanged card is skipped
-  locally; a card Telegram reports gone is re-posted and re-pinned.
+  `close_day`, `update_protocol`, `import_history`) the loop re-renders and edits the card of every
+  day the tools touched (a meal logged at 00:10 edits the evening's card). An unchanged card is
+  skipped locally; a card Telegram reports gone is re-posted and re-pinned.
 - **Re-posted on a new day** (the first change of the day posts that day's card; a past day is
   edited only if it already has a card) **or on `/today`**, which always sends a fresh copy, pins it
   and unpins the old one.
@@ -123,8 +126,8 @@ Five monospaced rows in a fixed grid: the eye lands on the bars, not the digits.
 that matters most for the next decision — what is left — is prose directly under the bars, in the
 sentence font. Meals are one line each with the kcal at the end. Nothing else competes: no
 emoji, no headers beyond bold labels, no percentages except sleep. Thousands are separated by a
-digit-width space inside the mono rows (so `2 000` keeps the bar aligned) and by a thin space in
-prose (`1 061`), as `BRAND.md §4` specifies.
+digit-width space inside the mono rows (so `2 000` keeps the bar aligned) and by a no-break space
+in prose (`1 061`), as `BRAND.md §4` specifies.
 
 ## 2. Message templates
 
@@ -240,9 +243,9 @@ Inline buttons appear only where they remove typing. Callback data is at most 64
 
 | When shown | Buttons | Callback data | What happens | Model call |
 |---|---|---|---|---|
-| Reply after `log_meal` when the slot is unknown | `Breakfast` `Lunch` / `Dinner` `Snack` (2 rows) + the row below | `s:<meal_id>:<slot>` | `update_meal` sets the slot, card refreshed, toast with the slot name | no |
-| Reply after any meal tool (`log_meal`, `update_meal`, `delete_meal`, `undo_last`) | `Undo` `Recalculate` | `undo:<meal_id>`, `recalc` | Undo: `undo_last` if it is the latest meal, else `delete_meal`; card refreshed; toast `Undo`. Recalculate: see below | Undo no; Recalculate yes |
-| The pinned card while the day is open; replies after 20:00 local while open, when no meal tool ran | `Recalculate` `Close day` | `recalc`, `close` | A synthetic user message (`Recalculate the day.` / `Close the day.`) runs through the agent so the Reflexion check applies; `close` ends in `close_day` and the verdict on the card | yes |
+| Reply after a turn whose `log_meal` left the slot unknown | `Breakfast` `Lunch` / `Dinner` `Snack` (2 rows) + the row below | `s:<meal_id>:<slot>` | `update_meal` sets the slot, card refreshed, toast with the slot name | no |
+| Reply after a turn that logged a meal (`log_meal`) or, failing that, corrected one (`update_meal`); the buttons target that meal, not whatever meal is last. Nothing after `delete_meal` or `undo_last` alone | `Undo` `Recalculate` | `undo:<meal_id>`, `recalc` | Undo: `undo_last` if it is still the latest meal, else `delete_meal`; card refreshed; toast `Undo` (a second tap: `Already removed`). Recalculate: see below | Undo no; Recalculate yes |
+| The pinned card while the day is open; replies after 20:00 local while open, when the turn logged or corrected no meal | `Recalculate` `Close day` | `recalc`, `close` | A synthetic user message (`Recalculate the day.` / `Close the day.`) runs through the agent so the Reflexion check applies; `close` ends in `close_day` and the verdict on the card | yes |
 | `/forget_me` | `Yes, delete everything` / `Cancel` | `forget:yes`, `forget:no` | Yes: card unpinned, every row deleted in one transaction, jobs removed, one line back. No: `Kept everything.` | no |
 | Confirmations the agent asks for (defined, not wired to a flow yet) | `Yes` `No` | `yn:<action>:yes\|no` | The answer is handed to the agent as text `Yes (<action>)` | yes |
 
@@ -250,7 +253,10 @@ Russian labels: `Завтрак` `Обед` `Ужин` `Перекус` · `Уб
 meal back) · `Пересчитать` · `Закрыть день` · `Да, удалить всё` / `Отмена`.
 
 Nothing else has a button. Connect links (WHOOP, Withings) are sent as plain text in the reply.
-Malformed or foreign callback data is answered silently and ignored.
+Malformed or foreign callback data, and any tap outside a private chat, is answered silently and
+ignored. A tap while the chat is still busy with an earlier message is acknowledged at once
+(Telegram expires an unanswered tap in well under a minute) and the action runs in order
+afterwards; the card refresh confirms it.
 
 ## 4. Slash commands
 
@@ -263,7 +269,8 @@ Malformed or foreign callback data is answered silently and ignored.
 
 Unknown users get one line — `This coach is invite-only. Ask the owner for a code and send
 /start <code>.` — and nothing else. The bot profile registers `start`, `today`, `forget_me` in
-English and Russian.
+English and Russian. Updates from groups and channels are dropped before any of this: the coach
+works in a private chat only, so the pinned card, nudges and health data never land anywhere else.
 
 ## 5. Corrections by text
 
@@ -286,9 +293,10 @@ Code-rendered, one line, honest. From `telegram/copy.py` unless noted.
 
 | Key | English | Russian |
 |---|---|---|
-| `err.llm_down` | Claude is unavailable. I'll retry in a minute — your message is kept. | Claude недоступен. Повторю через минуту — сообщение сохранено. |
+| `err.llm_down` | Claude is unavailable right now. Your message is saved — send the next one and I will pick both up. | Claude недоступен. Сообщение сохранено — напиши ещё раз, отвечу на оба. |
 | `err.tool_failed` | Couldn't verify — estimating from ingredients. Correct me if you know better. | Не смог проверить — считаю по ингредиентам. Поправь, если знаешь точнее. |
 | `err.transcribe` | Voice transcription is off. Send text. | Распознавание голоса выключено. Напиши текстом. |
+| `err.transcribe_failed` | Couldn't transcribe that. Send text or try again. | Не смог распознать голос. Напиши текстом или пришли ещё раз. |
 | `err.media` | Couldn't read that file. Send a photo, PDF or text. | Не смог прочитать файл. Пришли фото, PDF или текст. |
 | `err.too_large` | File too large (limit {mb} MB). | Файл слишком большой (лимит {mb} МБ). |
 | `err.not_allowed` | This coach is invite-only. Ask the owner for a code and send /start <code>. | Доступ по приглашению. Возьми код у владельца и отправь /start <код>. |
@@ -297,7 +305,7 @@ Code-rendered, one line, honest. From `telegram/copy.py` unless noted.
 | `queue.busy` | Still on your previous message — answering in order. | Ещё обрабатываю предыдущее сообщение — отвечу по порядку. |
 | refusal (`agent/loop.py`) | I can't help with that one. Send the next meal or ask something else. | С этим не помогу. Пришли следующий приём еды или спроси о другом. |
 | round cap (`agent/loop.py`) | Too many steps for one message; what I logged so far stands. Send the rest again in smaller pieces. | Слишком много шагов на одно сообщение; записанное сохранено. Пришли остальное ещё раз, частями. |
-| WHOOP denied (`integrations/whoop.py`) | WHOOP access was not granted. Send "connect WHOOP" again when you want to retry. | Доступ к WHOOP не выдан. Напиши «подключи WHOOP», когда захочешь повторить. |
+| WHOOP denied (`integrations/whoop.py`) | WHOOP access was not granted. Send “connect WHOOP” again when you want to retry. | Доступ к WHOOP не выдан. Напиши «подключи WHOOP», когда захочешь повторить. |
 
 A failed tool inside a turn is returned to the model as an error; the model then writes the
 `err.tool_failed` shape itself and estimates. A message that arrives while the previous one is
@@ -307,7 +315,10 @@ still running is queued, never dropped.
 
 - **No settings screen, no menu, no `/help`.** Protein target, wake time, check-in times, coaching
   intensity, quiet hours, integrations — all of it is a sentence: "change protein to 180", "ease
-  off this week, I'm travelling", "connect WHOOP", "remind me at 8 about waist".
+  off this week, I'm travelling", "connect WHOOP", "remind me at 8 about waist". Check-in times move
+  the meal nudges (a time before 10:00 is the breakfast check, 10:00–16:59 lunch, 17:00–21:59
+  dinner, later the close); a reminder you set is delivered at its time regardless of quiet hours
+  or the daily cap.
 - **No reply keyboards.** They cover the input field, and the input field is the product.
 - **No confirmation before logging.** Food is logged first; the numbers and the `Undo` button are
   the confirmation.

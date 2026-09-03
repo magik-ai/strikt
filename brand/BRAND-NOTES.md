@@ -448,8 +448,10 @@ U+202F, which the table above shows is *narrower* than the thin space in DM Sans
 would tighten the gap rather than open it. Changing it is a `src/strikt/telegram/` edit, outside this
 folder, so it is recorded here rather than done here.
 
-So: `render.fmt_num` keeps the thin space for prose, `render._cells` swaps it for a figure space
-inside `<code>`, and `gen-sources.py` carries the same pair as `TS` and `FS`.
+That edit has since been made in `src/strikt/telegram/render.py`: `fmt_num` writes U+00A0 for prose
+(Telegram clients render U+2009 inconsistently) and `_cells` swaps it for a figure space inside
+`<code>`. `gen-sources.py` now carries the no-break space as `TS`, so the images' prose gaps are 20 px
+per 100 px where the bot's are 27; re-render when the images are next touched.
 `agent/numbers.py` accepts both (plus U+00A0, U+202F and a comma) when it parses a number back.
 
 The second half of the same defect: `_macro_line` wrote `{unit}`, empty on the kcal row, so that row

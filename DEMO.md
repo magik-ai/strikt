@@ -83,7 +83,7 @@ Chicken Shawarma Bowl (Krave) — 612 ккал / 50 Б / 44 У / 26 Ж / 5 кл�
 <code>C        51 /    75g  ▓▓▓▓▓░░░</code>
 <code>F        51 /   105g  ▓▓▓▓░░░░</code>
 <code>fiber    10 /    30g  ▓▓▓░░░░░</code>
-Осталось: 1 061 ккал · 140 Б · 24 У · 54 Ж
+Осталось: 1 061 ккал · 140 Б · 54 Ж · 24 У
 
 <b>Еда</b>
 • 09:10 завтрак — яйца ×3, авокадо ½ · 327
@@ -152,7 +152,8 @@ and stored (running, 18:10–18:55, strain 12.1, 1 699 kJ → 406 kcal, avg HR 1
 <b>Вердикт</b>: Закрыт на 1 885 / 162 Б / 17 клетчатки. Белок −48. Отбой к 00:30.
 ```
 
-**00:00 · Strikt** *(`bedtime_minus_30`, exempt from quiet hours)*: 00:00. Ноутбук из комнаты.
+**00:00 · Strikt** *(`bedtime_minus_30`, exempt from quiet hours; the window is Thursday's night even
+though the clock says Friday)*: 00:00. Ноутбук из комнаты.
 Что открыто такого, что не подождёт до утра?
 
 ## 5. Next morning — Friday 4 September

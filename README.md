@@ -27,11 +27,11 @@ Examples in the voice the prompts enforce (`PROMPTS.md`), not transcripts.
 > Your last three days without lunch ended at 2 400+ kcal (22, 26 and 30 Aug).
 > What are you eating in the next hour?
 
-The pinned card (`telegram/render.py`), edited in place after every change:
+The pinned card (`telegram/render.py`), edited in place after every change. The exact output of `render_day_card` for these numbers, Telegram HTML tags stripped (`UX.md` shows the source):
 
 ```
 Today · Thu 3 Sep
-kcal  1 070 / 1 900   ▓▓▓▓▓░░░
+kcal  1 070 / 1 900   ▓▓▓▓▓░░░
 P        90 /   180g  ▓▓▓▓░░░░
 C        62 /   120g  ▓▓▓▓░░░░
 F        50 /    80g  ▓▓▓▓▓░░░
@@ -39,7 +39,7 @@ fiber     6 /    30g  ▓▓░░░░░░
 Left: 830 kcal · 90 P · 58 C · 30 F
 
 Meals
-• 09:10 breakfast — omelette, 3 eggs, Greek yogurt 0%, 20… · 430
+• 09:10 breakfast — omelette, 3 eggs, Greek yogurt 0%, 200 g blueberries · 430
 • 13:40 lunch — chicken shawarma pl… · 640
 Training: strength · 62 min · strain 9.4 · 410 kcal · avg HR 118
 Due: waist
@@ -69,7 +69,7 @@ flowchart LR
   A --> B
 ```
 
-A message: album parts are gathered for 1.2 s and merged; HEIC becomes JPEG, PDFs go in as documents, voice is transcribed; the message waits in its chat's queue (never dropped); the loop stores the turn, builds the context, calls the model with tools for up to 12 rounds, verifies, stores the reply, refreshes the card, picks the buttons. A proactive trigger, from a timer or a webhook event, goes through one engine: precondition on real data, ladder step, quiet hours, daily cap, then the model writes the text or stays silent.
+A message: album parts are gathered for 1.2 s and merged; HEIC becomes JPEG, PDFs go in as documents, voice is transcribed; the message waits in its chat's queue (never dropped); the loop stores the turn, builds the context, calls the model with tools for up to 12 rounds (a response cut off inside a tool call is retried once with a doubled output cap), verifies, stores the reply, refreshes the card of every day the tools touched, picks the buttons for the meal this turn logged or corrected. A proactive trigger, from a timer or a webhook event, goes through one engine: precondition on real data, ladder step, quiet hours, daily cap, then the model writes the text or stays silent.
 
 ### Module map
 
@@ -96,13 +96,13 @@ A message: album parts are gathered for 1.2 s and merged; HEIC becomes JPEG, PDF
 - **aiogram 3.31.** Tracks Bot API 10.3 (the main alternative stopped at 10.0); one dispatcher serves polling and the webhook.
 - **Postgres 18.** The memory is typed rows, not a vector store: numbers live in tables, summaries cite them. Tests run the same models on SQLite. Migrations from day one.
 - **APScheduler 3.11.** Per-user cron jobs in the user's timezone, in-process, recomputed when the profile changes. 4.x is still alpha.
-- **Claude Sonnet 5 for everything.** Effort `medium` for turns, `low` for verify, proactive decisions and summaries. A cheaper second model was rejected: its 4,096-token cache minimum would silently skip caching the system block (`RESEARCH.md` §7).
+- **Claude Sonnet 5 for everything.** Effort `medium` for turns, `low` for verify, proactive decisions, summaries and `web_research`. A cheaper second model was rejected: its 4,096-token cache minimum would silently skip caching the system block (`RESEARCH.md` §7).
 - **OpenAI `gpt-transcribe` for voice.** Sonnet 5 takes text and images only. Telegram's OGG goes to OpenAI as is, no ffmpeg; `whisper-1` is the fallback. Optional.
-- **Server-side web search in a separate call.** `web_research` is its own model call carrying Anthropic's `web_search` and `web_fetch` tools, so the main tool list never changes and the cache holds. It costs money, so it is for restaurant dishes, not for eggs.
+- **Server-side web search in a separate call.** `web_research` is its own model call carrying Anthropic's `web_search` and `web_fetch` tools, so the main tool list never changes and the cache holds. It costs money, so it is for restaurant dishes, not for eggs. The tool type strings are settings (`WEB_SEARCH_TOOL_TYPE`, `WEB_FETCH_TOOL_TYPE`), so a renamed version is a config change, not a deploy; what comes back is marked untrusted and used as data, never as instructions.
 
 **Caching layout.** Stable to volatile: tool definitions (sorted, byte-stable) → the coach prompt as `system[0]`, cached one hour → the profile block (profile, protocol, active notes, onboarding checklist) as `system[1]`, cached five minutes → the last 30 turns or 40K tokens, with a breakpoint on the last history block → the current message, which opens with a `<context>` block (local time, today's state, yesterday's close, the week summary, retrieved history for questions about the past, pending reminders) and ends with your text. Nothing in `system` depends on the clock.
 
-**The Reflexion verify step.** Reflexion pays when the evaluator is cheap and objective and runs on failure only; here the evaluator is the database. After a meal tool, `get_day_state`, `import_history`, or a request to recalculate, the day state is rebuilt from Postgres and every total the draft claims is compared with it (2 %, or 5 kcal / 1 g, whichever is larger). Only on a mismatch is the model called once more, at effort `low`, with the draft and the true numbers; if the rewrite is still wrong, the database line is appended. No self-critique on success, no second retry.
+**The Reflexion verify step.** Reflexion pays when the evaluator is cheap and objective and runs on failure only; here the evaluator is the database. After a meal tool, `get_day_state`, `import_history`, or a request to recalculate, the state of the day those tools reported (a dinner logged at 00:10 belongs to the evening's day; a reply that mixes days is not checked) is rebuilt from Postgres and every total the draft claims is compared with it (2 %, or 5 kcal / 1 g, whichever is larger). Only on a mismatch is the model called once more, at effort `low`, with the draft and the true numbers; if the rewrite is still wrong, the database line is appended. No self-critique on success, no second retry.
 
 **Instinct and Reflexion, adopted and rejected.** The full table with sources is `RESEARCH.md` §1.
 
@@ -115,7 +115,7 @@ A message: album parts are gathered for 1.2 s and merged; HEIC becomes JPEG, PDF
 | "No new interface", one conversation | adopt | three commands, no web app, no settings |
 | Cloud machine with cached browser credentials | reject | typed API tools; browser automation was Instinct's attack surface |
 | Dispatcher plus recurring loops | adopt as a scheduler | APScheduler and an event bus enqueue model decisions |
-| Proactive outreach | adopt, gated | quiet hours, five sends a day, ladder 1→4, reset on reply |
+| Proactive outreach | adopt, gated | quiet hours, five sends a day, ladder 1→4, reset on reply; your own reminders bypass quiet hours and the cap; `sick` and `travel` days pause the meal, protein and fiber nudges |
 | Continue without confirming | reject | writes to its own database are autonomous; nothing leaves the system |
 | Disconnect without delete | reject | `/forget_me` hard-deletes every row in one transaction |
 | Training licence on user content | reject | no training on user data, no device capture |
@@ -179,16 +179,16 @@ The list from `.env.example`. Compose sets `DATABASE_URL` from `POSTGRES_PASSWOR
 | `TOKEN_ENCRYPTION_KEY` | yes | — | Fernet key for tokens at rest; `make keygen` |
 | `PUBLIC_BASE_URL` | for integrations | `http://localhost:8080` | public HTTPS base for OAuth callbacks and webhooks |
 | `WEB_HOST` | no | `0.0.0.0` | interface the aiohttp server binds |
-| `WEB_PORT` | no | `8080` | port of the aiohttp server |
+| `WEB_PORT` | no | `8080` | port the aiohttp server listens on; under Compose the host-side port only (the container always listens on 8080, published on 127.0.0.1) |
 | `CADDY_DOMAIN` | with `--profile tls` | — | domain for the Caddy TLS profile |
 | `WHOOP_CLIENT_ID` / `WHOOP_CLIENT_SECRET` | for WHOOP | — | WHOOP developer app |
 | `WITHINGS_CLIENT_ID` / `WITHINGS_CLIENT_SECRET` | for Withings | — | Withings developer app |
 | `USDA_API_KEY` | no | — | USDA FoodData Central key (`DEMO_KEY` works with low limits) |
 | `OFF_USER_AGENT` | no | `Strikt/0.1 (...)` | User-Agent Open Food Facts asks for |
-| `LOG_LEVEL` | no | `INFO` | `DEBUG | INFO | WARNING | ERROR` |
+| `LOG_LEVEL` | no | `INFO` | `DEBUG | INFO | WARNING | ERROR | CRITICAL` |
 | `LOG_FORMAT` | no | `pretty` | `json` in production (Compose forces it) |
-| `PRICE_TABLE` | no | Sonnet 5 prices | JSON map model → USD per 1M tokens |
-| `PROACTIVE_DAILY_CAP` | no | `5` | proactive messages per user per local day |
+| `PRICE_TABLE` | no | Sonnet 5 prices | JSON map model → USD per 1M tokens (`input`, `output`, `cache_read`, `cache_write`, optional `cache_write_1h`) and `web_search_per_1000` per 1,000 searches |
+| `PROACTIVE_DAILY_CAP` | no | `5` | proactive messages per user per local day (`gentle` mode is fixed at 2; user-set reminders do not count) |
 | `PROACTIVE_DAILY_CAP_DRILL_SERGEANT` | no | `8` | the cap in `drill_sergeant` mode |
 | `PROACTIVE_FOLLOWUP_MINUTES` | no | `45` | minutes before an unanswered nudge escalates |
 | `QUIET_START` / `QUIET_END` | no | `00:00` / `07:30` | default quiet hours; per-user values live in the profile |
@@ -204,7 +204,7 @@ WHOOP needs the domain and HTTPS from the deploy section.
 3. In the chat write "connect WHOOP" (the interview offers it at step 5). The coach sends a link signed for your user, valid 24 hours; the OAuth state behind it is single-use, valid 10 minutes.
 4. Log in to WHOOP and allow access. The callback page and a Telegram message confirm it and report what was pulled from the last 7 days.
 
-From then on a finished workout, sleep or recovery arrives by webhook within minutes and the coach comments on it against your last session of that sport and your 30-day average. Signatures are checked against the client secret; a poll every 30 minutes covers missed deliveries; tokens are Fernet-encrypted and refreshed in the background. Two WHOOP facts: an unapproved app is limited to 10 members, so file for approval early if you plan to invite people; and there is no sandbox, so the developer needs a WHOOP device.
+From then on a finished workout, sleep or recovery arrives by webhook within minutes and the coach comments on it against your last session of that sport and your 30-day average. Signatures are checked against the client secret and a timestamp within five minutes; a poll every 30 minutes covers missed deliveries; tokens are Fernet-encrypted and refreshed when they are about to expire (or after a 401), one refresh at a time per user. Two WHOOP facts: an unapproved app is limited to 10 members, so file for approval early if you plan to invite people; and there is no sandbox, so the developer needs a WHOOP device.
 
 ## Connecting Withings
 
@@ -212,7 +212,7 @@ From then on a finished workout, sleep or recovery arrives by webhook within min
 2. In the chat, "connect Withings". Open the link, allow `user.info,user.metrics,user.activity`.
 3. The coach imports the last 30 days of readings and subscribes to weight notifications at `<PUBLIC_BASE_URL>/webhooks/withings`. Withings requires HTTPS on port 443 and a `HEAD` reply there; the Caddy profile gives you both.
 
-Notifications are unsigned, so each one is a hint and the data is re-fetched with your own token. A weigh-in is compared with your 7-day average, never judged alone.
+Notifications are unsigned, so each one is only a hint: its dates are ignored, the readings are re-fetched with your own token from the stored sync cursor (at most once a minute per user), and the cursor moves only with the 30-minute sync, so a forged notification can neither skip a weigh-in nor burn your quota. A weigh-in is compared with your 7-day average, never judged alone.
 
 ## Connecting Apple Health
 
@@ -246,9 +246,9 @@ Rules: everything is stored with `source=imported`; unknown values are omitted, 
 
 ## Costs
 
-Every model call is priced from `PRICE_TABLE` and written to the `token_usage` table per user, day and purpose (`turn`, `verify`, `proactive`, `summary`, `research`); the `llm_call` and `turn_done` log lines carry `cost_usd`. The default table prices `claude-sonnet-5` at $2.00 per million input tokens, $10.00 output, $0.20 cache read, $2.50 cache write.
+Every model call is priced from `PRICE_TABLE` and written to the `token_usage` table per user, day and purpose (`turn`, `verify`, `proactive`, `summary`, `research`); the `llm_call` and `turn_done` log lines carry `cost_usd`. The default table prices `claude-sonnet-5` at $2.00 per million input tokens, $10.00 output, $0.20 cache read, $2.50 cache write ($4.00 for the one-hour cache the coach prompt uses) and $10 per 1,000 web searches.
 
-The coach prompt and the profile block come from cache on almost every turn, so most of a turn's roughly 12,500 input tokens (`RESEARCH.md` §7) bill at the cache-read rate. At these prices 500 output tokens are half a cent and a fully uncached 12,500-token turn is 2.5 cents; images add input tokens. A day is a handful of turns, up to five proactive decisions at effort `low`, one nightly summary, and a verify rewrite only when a total was wrong. `web_research` is extra ($10 per 1,000 searches, `RESEARCH.md` §2); voice bills at OpenAI's per-minute rate. The total depends on the day; `token_usage` has yours.
+The coach prompt and the profile block come from cache on almost every turn, so most of a turn's roughly 12,500 input tokens (`RESEARCH.md` §7) bill at the cache-read rate. At these prices 500 output tokens are half a cent and a fully uncached 12,500-token turn is 2.5 cents; images add input tokens. A day is a handful of turns, up to five proactive decisions at effort `low`, one nightly summary, and a verify rewrite only when a total was wrong. `web_research` adds $10 per 1,000 searches on top of its tokens (counted in the same rows, `RESEARCH.md` §2); voice bills at OpenAI's per-minute rate. The total depends on the day; `token_usage` has yours.
 
 ## Security and privacy
 
@@ -256,7 +256,7 @@ The coach prompt and the profile block come from cache on almost every turn, so 
 - **Tokens at rest.** WHOOP and Withings tokens are Fernet-encrypted with `TOKEN_ENCRYPTION_KEY`. OAuth start links are HMAC-signed per user and expire; the OAuth state is single-use. WHOOP webhooks are signature-checked; Apple Health pushes are keyed by a random per-user token.
 - **Per-user isolation.** Every database query filters by `user_id`. The food cache (`foods`) is shared and holds no personal data.
 - **No files kept.** Photos and PDFs go to the model and stay in the conversation log only as a hash stub (`[image: <sha256>]`). Voice audio is transcribed and dropped.
-- **`/forget_me`.** A confirmation button, then every row you own (profile, meals, training, sleep, measurements, labs, notes, reminders, summaries, chat history, tokens, usage and send logs, the user row) is deleted in one transaction; the count is reported and your scheduled jobs are removed.
+- **`/forget_me`.** A confirmation button, then the pinned card is unpinned and every row you own (profile, meals, training, sleep, measurements, labs, notes, reminders, summaries, chat history, tokens, usage and send logs, the user row) is deleted in one transaction; the count is reported and your scheduled jobs are removed.
 - **What is logged.** structlog, JSON in Docker: event names, user ids, tool names, token counts and costs, not the text of your messages or your photos. Any key whose name contains `token`, `secret`, `api_key`, `password`, `authorization` or `cookie` is masked.
 - **Where data goes.** Messages and images to the Anthropic API; voice to OpenAI if enabled; food names and barcodes to Open Food Facts and USDA; research queries to Anthropic's web search. Nothing is used for training; no screen, location or keystroke capture.
 - **Inbound content is data.** Forwarded messages, fetched pages and tool results are never treated as instructions.
@@ -268,7 +268,7 @@ The coach prompt and the profile block come from cache on almost every turn, so 
 | `uv sync` | dependencies from `uv.lock` |
 | `make fmt` / `make lint` | ruff fix and format / ruff check and format check |
 | `make type` | `mypy --strict src` |
-| `make test` | pytest: 668 tests, SQLite, no network |
+| `make test` | pytest: 717 tests, SQLite, no network |
 | `make check` | lint, type, test, and `PROMPTS.md` in sync |
 | `make prompts` | regenerate `PROMPTS.md` from `agent/prompts/*.md` |
 | `make run` | run the bot locally against `.env` |
@@ -287,7 +287,7 @@ To add a tool: input model in `agent/tools/schemas.py`, handler in the owning mo
 |---|---|
 | `src/strikt/` | the package (module map above) |
 | `migrations/` | alembic, async env; `0001_initial` |
-| `tests/` | 668 tests; fixtures in `conftest.py` |
+| `tests/` | 717 tests; fixtures in `conftest.py` |
 | `scripts/` | `setup_telegram.py`, `build_prompts_md.py` |
 | `brand/` | marks, avatar, images, fonts, render script (see `BRAND.md`) |
 | `docker-compose.yml` | bot + `postgres:18`, optional `caddy` profile |

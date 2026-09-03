@@ -57,7 +57,7 @@ def kb(*labels):
 #   FS  figure space U+2007 — inside a mono block, where it is digit-width, i.e. one full cell
 #       (60 px of a 60 px cell), so the padded columns and the bars stay on one vertical. The thin
 #       space is 1/3 of a cell there, which is why the two are not interchangeable.
-TS=' '
+TS='\u00a0'  # no-break space, the separator render.fmt_num writes
 FS=' '
 
 # ---------------- og ----------------

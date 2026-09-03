@@ -39,7 +39,8 @@ src/strikt/
   events.py       EventBus + Workout/Sleep/Recovery/Measurement/DayStateChanged/UserReplied
   privacy.py      delete_everything(session, user_id) → counts per table
   core/types.py   Macros, FoodItemIn, DayState, Incoming/Outgoing, Button, views, Flag
-  core/clock.py   Clock/SystemClock/FakeClock, local_date/local_now/local_day_bounds
+  core/clock.py   Clock/SystemClock/FakeClock, local_date/local_now/local_day_bounds,
+                  coaching_day/day_rollover (the day ends at max(03:00, bed + 1 h), never past 06:00)
   db/models.py    every table (PLAN §3), StrEnum columns as VARCHAR, JSON→JSONB variant
   db/repo.py      all reads/writes; every user-owned query filters by user_id
   db/engine.py    make_engine / make_session_factory / init_sqlite_for_tests
