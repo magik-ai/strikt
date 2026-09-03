@@ -12,7 +12,7 @@ from strikt.telegram.copy import month_name, resolve_lang, t, weekday_name
 if TYPE_CHECKING:
     from strikt.core.types import DayState, MealView
 
-THIN_SPACE = " "
+THIN_SPACE = " "  # no-break space: Telegram renders U+2009 inconsistently across clients
 # Inside a <code> block the thin space is not one cell (0.31 of one in JetBrains Mono), so any
 # value past 999 would pull its bar left of the others. FIGURE_SPACE is digit-width by
 # definition: the card's table uses it, prose keeps the thin space.
@@ -33,7 +33,7 @@ def escape(text: str) -> str:
 
 
 def fmt_num(value: float, decimals: int = 0) -> str:
-    """``1240`` → ``1 240`` (thin space thousands separator); negatives keep their sign."""
+    """``1240`` → ``1 240`` (no-break space thousands separator); negatives keep their sign."""
     rounded = round(value, decimals)
     if decimals == 0:
         rounded = round(rounded)
