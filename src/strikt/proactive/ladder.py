@@ -20,7 +20,14 @@ from datetime import datetime, time, timedelta
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from strikt.config import Settings
-from strikt.core.clock import Clock, ensure_utc, in_quiet_hours, local_day_bounds, to_local
+from strikt.core.clock import (
+    Clock,
+    coaching_day,
+    ensure_utc,
+    in_quiet_hours,
+    local_day_bounds,
+    to_local,
+)
 from strikt.db import repo
 from strikt.db.models import CoachingIntensity, ProactiveSend, Profile, User
 from strikt.proactive import stats
@@ -126,7 +133,14 @@ async def compute_ladder(
         profile = await repo.get_profile(session, user.id)
     if window is None:
         window = await inspect_window(session, user.id, fire.window_key, now=now)
-    day_start, _ = local_day_bounds(local_now.date(), tz)
+    # the coaching day: at 01:00 with a 00:30 bedtime the evening's sends still count against
+    # the cap, otherwise it resets at midnight and the whole allowance is spent twice
+    today = coaching_day(
+        local_now,
+        profile.bed_time if profile is not None else None,
+        profile.wake_time if profile is not None else None,
+    )
+    day_start, _ = local_day_bounds(today, tz)
     sends_today = await repo.count_sends_today(
         session, user.id, since=day_start, exclude_triggers=sorted(USER_REQUESTED)
     )
@@ -137,7 +151,7 @@ async def compute_ladder(
         streaks = await stats.compute_streaks(
             session,
             user.id,
-            today=local_now.date(),
+            today=today,
             tz=tz,
             kcal_target=protocol.kcal if protocol is not None else 0.0,
             bed_time=profile.bed_time if profile is not None else None,

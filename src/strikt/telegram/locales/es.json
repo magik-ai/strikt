@@ -86,6 +86,7 @@
     "key.rejected": "Anthropic rechazó tu clave, así que no envié nada.\n\nCrea otra en console.anthropic.com, comprueba que Billing tiene saldo y pégala aquí.",
     "secret.saved": "Guardada, termina en …{last4}. Tu mensaje con ella está borrado.",
     "secret.saved_keep": "Guardada, termina en …{last4}. No pude borrar tu mensaje con ella, bórralo tú.",
+    "secret.unchecked": "El servicio no respondió a la comprobación, la guardé tal cual.",
     "secret.invalid": "Esa clave no funcionó. Manda otra, o dime que la saltemos y seguimos.",
     "invite.created": "Código de invitación: {code}",
     "queue.busy": "Sigo con tu mensaje anterior, contesto por orden.",

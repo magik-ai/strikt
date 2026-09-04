@@ -14,11 +14,15 @@ from __future__ import annotations
 import re
 
 #: What an Anthropic API key looks like (``sk-ant-api03-…``): the prefix and at least twenty
-#: url-safe characters. Anywhere in the text - the user may paste it with a word before it.
-KEY_RE = re.compile(r"sk-ant-[A-Za-z0-9_\-]{20,}")
-#: An OpenAI key: the same ``sk-`` family without Anthropic's ``ant-`` marker (``sk-proj-…``,
-#: ``sk-svcacct-…``, or the plain old form). Checked after ``KEY_RE`` so it never steals one.
-OPENAI_KEY_RE = re.compile(r"sk-(?!ant-)[A-Za-z0-9_\-]{20,}")
+#: url-safe characters. Anywhere in the text - the user may paste it with a word before it. The
+#: dash after ``ant`` is optional so a key that lost it still reaches the Anthropic path, where
+#: Anthropic itself says what is wrong, instead of falling through as an ordinary message.
+KEY_RE = re.compile(r"sk-ant-?[A-Za-z0-9_\-]{20,}", re.IGNORECASE)
+#: An OpenAI key: the same ``sk-`` family without Anthropic's marker (``sk-proj-…``,
+#: ``sk-svcacct-…``, or the plain old form). The guard is loose and case-insensitive on purpose:
+#: a dropped dash (``sk-antapi03-…``) or a shouted prefix must not end up filed as an OpenAI key
+#: and silently rejected by OpenAI, it must reach the Anthropic path and be told what is wrong.
+OPENAI_KEY_RE = re.compile(r"sk-(?!ant)[A-Za-z0-9_\-]{20,}", re.IGNORECASE)
 #: A USDA key from api.data.gov: forty alphanumerics, nothing else. Far too plain to match on
 #: sight, so this is used only to sanity-check what arrives while the bot is waiting for one.
 USDA_KEY_RE = re.compile(r"^[A-Za-z0-9]{30,50}$")

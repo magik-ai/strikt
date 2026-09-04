@@ -86,6 +86,7 @@
     "key.rejected": "Anthropic anahtarını reddetti, bu yüzden hiçbir şey gitmedi.\n\nconsole.anthropic.com üzerinde yeni bir tane oluştur, Billing bakiyesine bak ve buraya yapıştır.",
     "secret.saved": "Kaydettim, sonu …{last4}. İçinde geçtiği mesajın silindi.",
     "secret.saved_keep": "Kaydettim, sonu …{last4}. Mesajını silemedim, sen sil.",
+    "secret.unchecked": "Servis kontrole cevap vermedi, olduğu gibi kaydettim.",
     "secret.invalid": "Bu anahtar çalışmadı. Başka bir tane gönder, ya da geçelim de.",
     "invite.created": "Davet kodu: {code}",
     "queue.busy": "Hâlâ önceki mesajındayım, sırayla cevaplıyorum.",

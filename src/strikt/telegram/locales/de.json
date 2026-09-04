@@ -86,6 +86,7 @@
     "key.rejected": "Anthropic hat deinen Schlüssel abgelehnt, also ging nichts raus.\n\nLeg auf console.anthropic.com einen neuen an, prüf das Guthaben unter Billing und füg ihn hier ein.",
     "secret.saved": "Gespeichert, endet auf …{last4}. Deine Nachricht damit ist gelöscht.",
     "secret.saved_keep": "Gespeichert, endet auf …{last4}. Deine Nachricht konnte ich nicht löschen, mach das bitte selbst.",
+    "secret.unchecked": "Der Dienst hat auf die Prüfung nicht geantwortet, gespeichert ist er trotzdem.",
     "secret.invalid": "Dieser Schlüssel hat nicht funktioniert. Schick einen anderen, oder sag, dass wir es überspringen.",
     "invite.created": "Einladungscode: {code}",
     "queue.busy": "Ich bin noch an deiner vorigen Nachricht, ich antworte der Reihe nach.",

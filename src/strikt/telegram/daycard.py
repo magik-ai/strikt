@@ -28,7 +28,7 @@ if TYPE_CHECKING:
 
     from sqlalchemy.ext.asyncio import AsyncSession
 
-    from strikt.core.types import Button, DayState
+    from strikt.core.types import DayState
     from strikt.db.models import User
     from strikt.telegram.messenger import Messenger
 
@@ -43,12 +43,24 @@ class DayCard:
         # "not modified" from "gone" (the Messenger protocol collapses both into False).
         self._last_text: dict[tuple[int, int], str] = {}
 
+    async def _today(self, session: AsyncSession, user: User) -> date:
+        """The user's current coaching day, computed the way every caller computes it. A card is
+        only skipped for a day that is really past: with a 03:30 bedtime the rollover is 04:30,
+        and asking without the profile would call 04:05 a new day and post nothing for the old
+        one."""
+        profile = await repo.get_profile(session, user.id)
+        return coaching_today(
+            self._clock,
+            user.timezone or "UTC",
+            profile.bed_time if profile is not None else None,
+            profile.wake_time if profile is not None else None,
+        )
+
     # ----------------------------------------------------------------------------- public
 
     async def refresh(self, session: AsyncSession, user: User, state: DayState) -> int | None:
         """Edit the day's card in place, or post one for today. Returns the card's message id."""
         text = self._render(user, state)
-        keyboard = None
         day = await repo.get_day(session, user.id, state.date)
         message_id = day.card_message_id if day is not None else None
         chat_id = user.chat_id
@@ -57,7 +69,7 @@ class DayCard:
             key = (chat_id, message_id)
             if self._last_text.get(key) == text:
                 return message_id
-            edited = await self._messenger.edit(chat_id, message_id, text, keyboard=keyboard)
+            edited = await self._messenger.edit(chat_id, message_id, text)
             if edited:
                 self._last_text[key] = text
                 return message_id
@@ -68,19 +80,18 @@ class DayCard:
                 return message_id
             log.info("daycard_gone", user_id=user.id, message_id=message_id, day=str(state.date))
             self._last_text.pop(key, None)
-        elif state.date < coaching_today(self._clock, user.timezone or "UTC"):
+        elif state.date < await self._today(session, user):
             log.debug("daycard_skip_past_day", user_id=user.id, day=str(state.date))
             return None
 
-        return await self._post(session, user, state.date, text, keyboard, unpin=message_id)
+        return await self._post(session, user, state.date, text, unpin=message_id)
 
     async def repost(self, session: AsyncSession, user: User, state: DayState) -> int:
         """``/today``: send a new card, pin it, unpin the old one, store the id."""
         text = self._render(user, state)
-        keyboard = None
         day = await repo.get_day(session, user.id, state.date)
         old_id = day.card_message_id if day is not None else None
-        return await self._post(session, user, state.date, text, keyboard, unpin=old_id)
+        return await self._post(session, user, state.date, text, unpin=old_id)
 
     async def close(
         self, session: AsyncSession, user: User, state: DayState, verdict: str | None = None
@@ -100,12 +111,11 @@ class DayCard:
         user: User,
         day: date,
         text: str,
-        keyboard: list[list[Button]] | None,
         *,
         unpin: int | None,
     ) -> int:
         chat_id = user.chat_id
-        message_id = await self._messenger.send(chat_id, text, keyboard=keyboard, silent=True)
+        message_id = await self._messenger.send(chat_id, text, silent=True)
         self._last_text[(chat_id, message_id)] = text
         if unpin is not None and unpin != message_id:
             await self._messenger.unpin(chat_id, unpin)

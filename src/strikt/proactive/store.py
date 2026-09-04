@@ -24,7 +24,7 @@ from typing import Any
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from strikt.core.clock import ensure_utc, local_day_bounds, to_local, week_start
+from strikt.core.clock import coaching_day, ensure_utc, local_day_bounds, to_local, week_start
 from strikt.core.types import Macros
 from strikt.db import repo
 from strikt.db.models import (
@@ -662,7 +662,8 @@ async def load_history(
 ) -> HistoryFacts:
     """Load the ``HistoryFacts`` bundle for one fire. ~12 small queries; nothing is cached."""
     tz = user.timezone
-    today = local_now.date()
+    # the coaching day, so "yesterday and before" never includes the evening still in progress
+    today = coaching_day(local_now, profile.bed_time, profile.wake_time)
     yesterday = today - timedelta(days=1)
     kcal_target = protocol.kcal if protocol is not None else 0.0
     payload = payload or {}

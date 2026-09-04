@@ -85,6 +85,7 @@
     "key.rejected": "Anthropic이 키를 거절해서 아무것도 보내지 않았어요.\n\nconsole.anthropic.com에서 새로 만들고 Billing 잔액을 확인한 뒤 여기 붙여 넣어 주세요.",
     "secret.saved": "저장했어요. 끝자리는 …{last4}. 그게 담긴 메시지는 지웠어요.",
     "secret.saved_keep": "저장했어요. 끝자리는 …{last4}. 당신 메시지는 지우지 못했으니 직접 지워 주세요.",
+    "secret.unchecked": "확인에 응답이 없어서 그대로 저장했어요.",
     "secret.invalid": "이 키는 안 됐어요. 다른 걸 보내거나, 건너뛰자고 말해 주세요.",
     "invite.created": "초대 코드: {code}",
     "queue.busy": "아직 이전 메시지를 하고 있어요. 순서대로 답할게요.",

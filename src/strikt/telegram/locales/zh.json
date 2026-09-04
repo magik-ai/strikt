@@ -89,6 +89,7 @@
     "key.rejected": "Anthropic 拒绝了你的密钥，所以什么都没发出去。\n\n在 console.anthropic.com 新建一个，确认 Billing 有余额，然后贴到这里。",
     "secret.saved": "已保存，结尾是 …{last4}。带它的那条消息已删除。",
     "secret.saved_keep": "已保存，结尾是 …{last4}。你那条消息我删不掉，请自己删。",
+    "secret.unchecked": "对方没有回应检查，我就先按原样存下了。",
     "secret.invalid": "这个密钥没通过。再发一个，或者说跳过，我们继续。",
     "invite.created": "邀请码：{code}",
     "queue.busy": "还在处理你上一条消息，按顺序回。",

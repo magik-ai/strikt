@@ -107,6 +107,13 @@ def test_the_language_question_is_short_in_every_locale() -> None:
 @pytest.mark.parametrize(
     ("answer", "expected"),
     [
+        # a two-letter code is an ordinary word elsewhere: these all used to pick the wrong
+        # language out of a sentence that names one plainly
+        ("let's do it in English", "en"),
+        ("quiero hablar en español", "es"),
+        ("Hi", "en"),
+        ("ja, bitte", "en"),
+        ("per favore", "en"),
         ("русский", "ru"),
         ("рус", "ru"),
         ("по-русски", "ru"),

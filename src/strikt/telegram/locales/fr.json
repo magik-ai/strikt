@@ -86,6 +86,7 @@
     "key.rejected": "Anthropic a refusé ta clé, donc je n'ai rien envoyé.\n\nCrées-en une sur console.anthropic.com, vérifie que Billing a du crédit, et colle-la ici.",
     "secret.saved": "Enregistrée, elle finit par …{last4}. Ton message avec est supprimé.",
     "secret.saved_keep": "Enregistrée, elle finit par …{last4}. Je n'ai pas pu supprimer ton message, fais-le toi-même.",
+    "secret.unchecked": "Le service n'a pas répondu à la vérification, je l'ai enregistrée telle quelle.",
     "secret.invalid": "Cette clé n'a pas marché. Envoies-en une autre, ou dis qu'on passe.",
     "invite.created": "Code d'invitation : {code}",
     "queue.busy": "Je suis encore sur ton message précédent, je réponds dans l'ordre.",

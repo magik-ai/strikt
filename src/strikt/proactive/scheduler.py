@@ -55,6 +55,9 @@ NIGHTLY_SUMMARY = "nightly_summary"
 GLOBAL_SYNC_ID = "global:integration_sync"
 GLOBAL_REMINDERS_ID = "global:reminder_due"
 INTEGRATION_SYNC_MINUTES = 30
+#: How long a reminder whose send failed keeps being retried, once a minute, before it is
+#: written off as missed. Long enough for an outage, short enough not to arrive at midnight.
+REMINDER_RETRY_WINDOW = timedelta(minutes=30)
 FOLLOWUP_GRACE_S = 600
 CRON_GRACE_S = 900
 
@@ -326,6 +329,17 @@ class ProactiveScheduler:
             )
             fired += 1
             if outcome.status == "sent":
+                continue
+            overdue = ensure_utc(now) - ensure_utc(reminder.due_at)
+            if outcome.status == "error" and overdue < REMINDER_RETRY_WINDOW:
+                # Telegram hiccuped or the decider threw: the user asked for this one, so try
+                # again next minute. Bounded, because a permanent error would loop forever.
+                log.info(
+                    "reminder_retry",
+                    user_id=reminder.user_id,
+                    reminder_id=reminder.id,
+                    reason=outcome.reason,
+                )
                 continue
             log.info(
                 "reminder_missed",

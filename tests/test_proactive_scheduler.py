@@ -15,7 +15,7 @@ from strikt.core.clock import FakeClock, zone
 from strikt.db import repo
 from strikt.db.engine import make_session_factory
 from strikt.db.models import Profile, ReminderStatus, User, UserStatus
-from strikt.proactive import scheduler as sched
+from strikt.proactive import engine as sched_engine, scheduler as sched
 from strikt.proactive.engine import ProactiveEngine
 from strikt.telegram.messenger import FakeMessenger
 from tests.test_proactive_helpers import (
@@ -271,6 +271,38 @@ async def test_a_reminder_that_cannot_be_sent_is_retired_not_retried(
     await session.refresh(due)
     assert due.status == ReminderStatus.missed
     assert await ps._run_reminder_checks() == 0
+
+
+async def test_a_reminder_whose_send_failed_is_retried_then_written_off(
+    proactive: tuple[ProactiveEngine, sched.ProactiveScheduler],
+    user: User,
+    clock: FakeClock,
+    session: AsyncSession,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A Telegram hiccup on the one send is not the user changing their mind. It is retried for
+    half an hour, and only then written off, because a permanent error would loop forever."""
+    eng, ps = proactive
+
+    async def failing(*args: object, **kwargs: object) -> sched_engine.FireOutcome:
+        return sched_engine.FireOutcome(name="reminder_due", status="error", reason="send_failed")
+
+    monkeypatch.setattr(eng, "fire", failing)
+    due = await repo.add_reminder(
+        session, user.id, due_at=clock.now() - timedelta(minutes=2), text="waist", now=clock.now()
+    )
+    await session.commit()
+
+    assert await ps._run_reminder_checks() == 1
+    session.expire_all()
+    await session.refresh(due)
+    assert due.status == ReminderStatus.pending, "still worth another minute"
+
+    clock.set(clock.now() + timedelta(minutes=40))
+    assert await ps._run_reminder_checks() == 1
+    session.expire_all()
+    await session.refresh(due)
+    assert due.status == ReminderStatus.missed, "and eventually it is not"
 
 
 async def test_reschedule_all_active_users(

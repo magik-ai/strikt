@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from datetime import date, timedelta
+from datetime import UTC, date, datetime, time, timedelta
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -182,3 +182,21 @@ async def test_without_actions_no_keyboard(
     card = DayCard(messenger, clock)
     await card.refresh(session, user, _state())
     assert messenger.sent[0].keyboard is None
+
+
+async def test_a_late_bedtime_still_gets_its_card_after_midnight(
+    session: AsyncSession, user: User, messenger: FakeMessenger, clock: FakeClock
+) -> None:
+    """With a 03:30 bedtime the day rolls over at 04:30, so 04:05 is still the evening before.
+    Asking without the profile calls it a new day and the card for the real one is never posted.
+    """
+    await repo.upsert_profile(
+        session, user.id, {"bed_time": time(3, 30), "wake_time": time(11, 0)}, now=clock.now()
+    )
+    await session.commit()
+    clock.set(datetime(2026, 9, 4, 0, 5, tzinfo=UTC))  # 04:05 on the 4th in Dubai
+
+    message_id = await DayCard(messenger, clock).refresh(session, user, _state(day=TODAY))
+
+    assert message_id is not None, "the evening's card, not a skipped past day"
+    assert await _card_id(session, user, TODAY) == message_id

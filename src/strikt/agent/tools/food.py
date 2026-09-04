@@ -121,12 +121,22 @@ def _raw_ref(ctx: ToolContext) -> dict[str, Any] | None:
     return ref
 
 
+#: Where the resolved key is parked for the rest of the turn. A plate of eight unpriced items
+#: would otherwise be eight selects and eight Fernet decrypts of a value that cannot change.
+_USDA_CACHE = "_usda_key"
+
+
 async def _usda_key(ctx: ToolContext) -> str | None:
     """The user's own USDA key when they gave one: their rate limit, not the server's."""
+    cached = ctx.services.get(_USDA_CACHE)
+    if cached is not None:
+        return str(cached) or None
     cipher = ctx.services.get("cipher")
     if cipher is None:
         return None
-    return await repo.get_user_secret(ctx.session, ctx.user_id, SecretService.usda, cipher)
+    key = await repo.get_user_secret(ctx.session, ctx.user_id, SecretService.usda, cipher)
+    ctx.services[_USDA_CACHE] = key or ""
+    return key
 
 
 async def _resolve_missing(ctx: ToolContext, item: FoodItemIn) -> FoodItemIn:

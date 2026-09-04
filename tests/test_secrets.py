@@ -22,7 +22,7 @@ from strikt.config import Settings
 from strikt.core.clock import FakeClock
 from strikt.db import repo
 from strikt.db.crypto import TokenCipher
-from strikt.db.models import ConversationTurn, SecretService, User, UserSecret
+from strikt.db.models import ConversationTurn, SecretService, User, UserSecret, UserStatus
 from strikt.telegram import handlers as handlers_mod
 from strikt.telegram.copy import t
 from strikt.telegram.handlers import handle_message
@@ -36,7 +36,7 @@ from strikt.telegram.voice import (
 from tests.conftest import CHAT_ID
 from tests.test_byok_core import KEY
 from tests.test_byok_handlers import Byok, byok  # noqa: F401 - fixture
-from tests.test_handlers_e2e import msg
+from tests.test_handlers_e2e import NEW_ID, msg
 
 OPENAI_KEY = "sk-proj-" + "o" * 40
 USDA_KEY = "U" * 40
@@ -62,6 +62,16 @@ def test_the_three_key_shapes_do_not_collide() -> None:
     # a USDA key is forty plain characters, which is why it is only read when asked for
     assert not looks_like_usda_key("no thanks")
     assert not looks_like_usda_key(OPENAI_KEY)
+
+
+def test_a_mistyped_anthropic_key_is_not_filed_as_an_openai_one() -> None:
+    """Filing it under OpenAI means the user is told their key does not work while the coach
+    keeps asking for one. The Anthropic path at least says what is actually wrong."""
+    for typo in ("sk-antapi03-" + "a" * 30, "sk-ANT-api03-" + "a" * 30):
+        assert extract_key(typo), typo
+        assert extract_openai_key(typo) is None, typo
+    for real in ("sk-proj-" + "o" * 40, "sk-svcacct-" + "o" * 40):
+        assert extract_openai_key(real) == real
 
 
 # ------------------------------------------------------------------------------ pasting a key
@@ -109,6 +119,7 @@ async def test_a_key_the_service_rejects_is_not_stored(
 
 async def test_a_key_the_service_cannot_answer_about_is_kept(
     byok: Byok,  # noqa: F811
+    messenger: FakeMessenger,
     user: User,
     session: AsyncSession,
     monkeypatch: pytest.MonkeyPatch,
@@ -119,6 +130,30 @@ async def test_a_key_the_service_cannot_answer_about_is_kept(
     await handle_message(byok.deps, msg(OPENAI_KEY, message_id=202))
 
     assert await repo.get_user_secret(session, user.id, "openai", byok.cipher) == OPENAI_KEY
+    assert t("ru", "secret.unchecked") in messenger.texts(CHAT_ID)[-1], "say it was not checked"
+
+
+async def test_a_key_pasted_before_the_language_answer_is_still_a_key(
+    byok: Byok,  # noqa: F811
+    messenger: FakeMessenger,
+    session: AsyncSession,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A new user sits in ``UserStatus.language`` until they answer. A key arriving there used to
+    be read as the language answer: never deleted, never checked, never stored, and the user
+    silently pinned to English."""
+    monkeypatch.setattr(handlers_mod, "check_secret", _verdict("valid"))
+    await handle_message(byok.deps, msg("/start", telegram_id=NEW_ID, language_code="en"))
+    new_user = await repo.get_user_by_telegram_id(session, NEW_ID)
+    assert new_user is not None and new_user.status == UserStatus.language
+
+    await handle_message(byok.deps, msg(OPENAI_KEY, telegram_id=NEW_ID, message_id=220))
+
+    assert messenger.deletes == [(NEW_ID, 220)]
+    stored = await repo.get_user_secret(session, new_user.id, "openai", byok.cipher)
+    assert stored == OPENAI_KEY
+    await session.refresh(new_user)
+    assert new_user.status == UserStatus.language, "and the language is still an open question"
 
 
 # --------------------------------------------------------------------------- asking for a key

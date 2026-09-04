@@ -96,16 +96,32 @@ WEEKDAYS: dict[Lang, tuple[str, ...]] = {
 MONTHS: dict[Lang, tuple[str, ...]] = {code: tuple(loc["months"]) for code, loc in LOCALES.items()}
 
 
+#: A two-letter code is also an ordinary word in some other language: "it" and "in" and "per"
+#: and "chi" all name a language here. Short aliases are therefore only accepted as the whole
+#: answer, never as one word inside a sentence, so "let's do it in English" is English and
+#: "quiero hablar en español" is Spanish.
+_SHORT_ALIAS = 3
+#: And one that loses even as a whole answer: "hi" is a greeting far more often than it is Hindi,
+#: which still answers to "hindi", "हिन्दी" and "хинди".
+_NOT_AN_ALIAS = frozenset({"hi"})
+
+
 @lru_cache(maxsize=1)
-def _alias_table() -> dict[str, Lang]:
-    """Every word that names a language, mapped to its code. Built from the locale files, so a new
-    language brings its own names with it."""
-    table: dict[str, Lang] = {}
+def _alias_tables() -> tuple[dict[str, Lang], dict[str, Lang]]:
+    """``(whole answer, single word)``: every name a language answers to, and the subset long
+    enough to be safe inside a sentence. Built from the locale files, so a new language brings
+    its own names with it."""
+    whole: dict[str, Lang] = {}
+    words: dict[str, Lang] = {}
     for code, loc in LOCALES.items():
-        words = [code, str(loc["name"]), *(str(alias) for alias in loc.get("aliases", []))]
-        for word in words:
-            table.setdefault(word.strip().lower(), code)
-    return table
+        for alias in [code, str(loc["name"]), *(str(a) for a in loc.get("aliases", []))]:
+            name = alias.strip().lower()
+            if not name or name in _NOT_AN_ALIAS:
+                continue
+            whole.setdefault(name, code)
+            if len(name) > _SHORT_ALIAS:
+                words.setdefault(name, code)
+    return whole, words
 
 
 #: Scripts that name one language on sight. Persian and Urdu come before Arabic: all three use the
@@ -148,16 +164,16 @@ def detect_lang(text: str | None) -> Lang | None:
     if not text:
         return None
     lowered = text.strip().lower()
-    aliases = _alias_table()
-    named = aliases.get(lowered)
+    whole, words = _alias_tables()
+    named = whole.get(lowered)
     if named is not None:
         return named
     # names of more than one word ("bahasa indonesia", "tiếng việt") never survive a word split
-    for alias, code in aliases.items():
+    for alias, code in words.items():
         if " " in alias and alias in lowered:
             return code
     for word in _WORDS.findall(lowered):
-        named = aliases.get(word)
+        named = words.get(word)
         if named is not None:
             return named
     for pattern, code in _SCRIPTS:

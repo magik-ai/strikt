@@ -458,7 +458,10 @@ async def _dispatch_message(deps: AppDeps, inbound: InboundMessage) -> None:
     if (
         user.status == UserStatus.language
         and inbound.command is None
+        # a pasted key is a key whichever question is on the table: taking it for the language
+        # answer would leave the secret sitting in the chat, unchecked and unstored
         and extract_key(inbound.text) is None
+        and extract_openai_key(inbound.text) is None
     ):
         await handle_language_message(deps, user, inbound)
         return
@@ -849,14 +852,12 @@ async def _dispatch_callback(
             )
         elif parsed.kind == "undo" and parsed.meal_id is not None:
             await _callback_undo(deps, session, user, cb, parsed.meal_id)
-        elif parsed.kind == "forget":
+        else:  # forget: the only kind left, and parse_callback guarantees the answer
             await deps.messenger.answer_callback(cb.callback_id)
             if parsed.answer:
                 await forget_user(deps, session, user)
             else:
                 await _send(deps, cb.chat_id, t(lang, "forget.cancelled"))
-        else:
-            await deps.messenger.answer_callback(cb.callback_id)
 
 
 def _tool_ctx(
@@ -1011,14 +1012,14 @@ async def handle_key_message(
 
 
 def _looks_like_secret(service: str, text: str) -> bool:
-    """Is this message the key the coach asked for, or the user changing their mind?"""
+    """Is this message the key the coach asked for, or the user changing their mind?
+
+    Only USDA gets this far: an OpenAI key has a shape and is taken wherever it lands, before
+    anything looks at ``awaiting_secret``.
+    """
     if not text or text.startswith("/"):
         return False
-    if service == SecretService.usda:
-        return looks_like_usda_key(text)
-    if service == SecretService.openai:
-        return extract_openai_key(text) is not None
-    return False
+    return service == SecretService.usda and looks_like_usda_key(text)
 
 
 async def handle_secret_message(
@@ -1063,11 +1064,11 @@ async def handle_secret_message(
         checked=check == "valid",
         message_deleted=deleted,
     )
-    await _send(
-        deps,
-        inbound.chat_id,
-        t(lang, "secret.saved" if deleted else "secret.saved_keep", last4=last4),
-    )
+    lines = [t(lang, "secret.saved" if deleted else "secret.saved_keep", last4=last4)]
+    if check == "unknown":
+        # stored, but nobody confirmed it works: say so, the way the Anthropic path does
+        lines.append(t(lang, "secret.unchecked"))
+    await _send(deps, inbound.chat_id, "\n\n".join(lines))
 
 
 # ------------------------------------------------------------------------------- /forget_me

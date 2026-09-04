@@ -86,6 +86,7 @@
     "key.rejected": "Anthropic menolak kuncimu, jadi tidak ada yang terkirim.\n\nBuat yang baru di console.anthropic.com, pastikan Billing ada saldo, lalu tempel di sini.",
     "secret.saved": "Tersimpan, berakhiran …{last4}. Pesanmu yang berisi kunci sudah dihapus.",
     "secret.saved_keep": "Tersimpan, berakhiran …{last4}. Pesanmu tidak bisa kuhapus, hapus sendiri ya.",
+    "secret.unchecked": "Layanannya tidak menjawab pemeriksaan, jadi kusimpan apa adanya.",
     "secret.invalid": "Kunci itu tidak jalan. Kirim yang lain, atau bilang lewati saja.",
     "invite.created": "Kode undangan: {code}",
     "queue.busy": "Masih di pesanmu yang sebelumnya, kujawab berurutan.",

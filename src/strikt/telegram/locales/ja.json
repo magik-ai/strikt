@@ -86,6 +86,7 @@
     "key.rejected": "Anthropic があなたのキーを拒否したので、何も送っていません。\n\nconsole.anthropic.com で作り直し、Billing に残高があるか確認して、ここに貼ってください。",
     "secret.saved": "保存しました。末尾は …{last4} です。それを含むメッセージは削除しました。",
     "secret.saved_keep": "保存しました。末尾は …{last4} です。あなたのメッセージは削除できなかったので、自分で消してください。",
+    "secret.unchecked": "確認に応答がなかったので、そのまま保存しました。",
     "secret.invalid": "このキーは通りませんでした。別のものを送るか、飛ばすと言ってください。",
     "invite.created": "招待コード：{code}",
     "queue.busy": "まだ前のメッセージを処理中です。順番に返します。",

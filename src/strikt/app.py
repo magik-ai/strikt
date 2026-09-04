@@ -314,6 +314,7 @@ def build_runtime(
     )
 
     albums: AlbumCollector[InboundMessage] = AlbumCollector()
+    speech = transcriber or build_transcriber(settings)
     deps = AppDeps(
         settings=settings,
         sessions=sessions,
@@ -325,8 +326,8 @@ def build_runtime(
         messenger=messenger,
         bus=bus,
         state_provider=state_provider,
-        transcriber=transcriber or build_transcriber(settings),
-        transcribers=TranscriberFactory(settings, cipher) if transcriber is None else None,
+        transcriber=speech,
+        transcribers=TranscriberFactory(settings, cipher, speech) if transcriber is None else None,
         downloader=downloader or AiogramDownloader(bot),
         albums=albums,
         queue=PerChatQueue(),

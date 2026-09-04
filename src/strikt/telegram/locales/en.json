@@ -87,6 +87,7 @@
     "key.rejected": "Anthropic rejected your key, so nothing was sent.\n\nMake a new one at console.anthropic.com, check that Billing has credit, and paste it here.",
     "secret.saved": "Saved, ends in …{last4}. Your message with it is deleted.",
     "secret.saved_keep": "Saved, ends in …{last4}. I could not delete your message with it, so delete it yourself.",
+    "secret.unchecked": "The service did not answer the check, so it is saved as is.",
     "secret.invalid": "That key did not work. Send another one, or say skip and we move on.",
     "invite.created": "Invite code: {code}",
     "queue.busy": "Still on your previous message, answering in order.",

@@ -85,6 +85,7 @@
     "key.rejected": "Anthropic odrzucił twój klucz, więc nic nie wysłałem.\n\nZrób nowy na console.anthropic.com, sprawdź środki w Billing i wklej tutaj.",
     "secret.saved": "Zapisane, kończy się na …{last4}. Twoja wiadomość z tym jest usunięta.",
     "secret.saved_keep": "Zapisane, kończy się na …{last4}. Nie udało mi się usunąć twojej wiadomości, usuń ją sam.",
+    "secret.unchecked": "Usługa nie odpowiedziała na sprawdzenie, zapisałem tak jak jest.",
     "secret.invalid": "Ten klucz nie zadziałał. Przyślij inny albo powiedz, że pomijamy.",
     "invite.created": "Kod zaproszenia: {code}",
     "queue.busy": "Jeszcze jestem przy poprzedniej wiadomości, odpowiadam po kolei.",

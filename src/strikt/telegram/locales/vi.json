@@ -86,6 +86,7 @@
     "key.rejected": "Anthropic từ chối khoá của bạn nên không có gì được gửi đi.\n\nTạo khoá mới ở console.anthropic.com, kiểm tra Billing còn tiền, rồi dán vào đây.",
     "secret.saved": "Đã lưu, kết thúc bằng …{last4}. Tin nhắn chứa nó đã bị xoá.",
     "secret.saved_keep": "Đã lưu, kết thúc bằng …{last4}. Tôi không xoá được tin nhắn của bạn, bạn xoá giúp.",
+    "secret.unchecked": "Dịch vụ không trả lời phần kiểm tra, tôi lưu nguyên như vậy.",
     "secret.invalid": "Khoá đó không dùng được. Gửi khoá khác, hoặc bảo bỏ qua rồi mình đi tiếp.",
     "invite.created": "Mã mời: {code}",
     "queue.busy": "Tôi vẫn đang xử tin nhắn trước, trả lời lần lượt.",

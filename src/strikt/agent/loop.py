@@ -72,7 +72,6 @@ if TYPE_CHECKING:
 
 log = structlog.get_logger(__name__)
 
-EVENING_HOUR = 20
 MEAL_TOOLS: frozenset[str] = frozenset({"log_meal", "update_meal", "delete_meal", "undo_last"})
 #: Tools whose result names the meal the reply keyboard should act on (in priority order).
 KEYBOARD_MEAL_TOOLS: tuple[str, ...] = ("log_meal", "update_meal")

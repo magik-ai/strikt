@@ -72,23 +72,32 @@ async def _patiently(call: Callable[[], Awaitable[bool]]) -> None:
 
 async def apply_bot_profile(bot: BotProfileAPI, *, pause_s: float = PROFILE_PAUSE_S) -> None:
     """Set commands and descriptions for every language (English is the default profile)."""
+    done: list[str] = []
     for index, lang in enumerate(LANGUAGES):
         code = None if lang == DEFAULT_LANG else lang
         if index and pause_s:
             await asyncio.sleep(pause_s)
-        await _patiently(
-            lambda lang=lang, code=code: bot.set_my_commands(  # type: ignore[misc]
-                bot_commands(lang), language_code=code
+        try:
+            await _patiently(
+                lambda lang=lang, code=code: bot.set_my_commands(  # type: ignore[misc]
+                    bot_commands(lang), language_code=code
+                )
             )
-        )
-        await _patiently(
-            lambda lang=lang, code=code: bot.set_my_short_description(  # type: ignore[misc]
-                short_description(lang), language_code=code
+            await _patiently(
+                lambda lang=lang, code=code: bot.set_my_short_description(  # type: ignore[misc]
+                    short_description(lang), language_code=code
+                )
             )
-        )
-        await _patiently(
-            lambda lang=lang, code=code: bot.set_my_description(  # type: ignore[misc]
-                description(lang), language_code=code
+            await _patiently(
+                lambda lang=lang, code=code: bot.set_my_description(  # type: ignore[misc]
+                    description(lang), language_code=code
+                )
             )
-        )
-    log.info("bot_profile_applied", languages=list(LANGUAGES), commands=list(COMMAND_NAMES))
+        except asyncio.CancelledError:
+            raise
+        except Exception as exc:
+            # one language throttled twice must not cost the nineteen after it
+            log.warning("bot_profile_language_failed", language=lang, error=repr(exc))
+            continue
+        done.append(lang)
+    log.info("bot_profile_applied", languages=done, commands=list(COMMAND_NAMES))

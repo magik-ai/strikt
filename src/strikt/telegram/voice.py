@@ -227,10 +227,15 @@ class TranscriberFactory:
     building an ``AsyncOpenAI`` per voice note leaks connections.
     """
 
-    def __init__(self, settings: Settings, cipher: TokenCipher | None = None) -> None:
+    def __init__(
+        self,
+        settings: Settings,
+        cipher: TokenCipher | None = None,
+        server: Transcriber | None = None,
+    ) -> None:
         self._settings = settings
         self._cipher = cipher
-        self._server = build_transcriber(settings)
+        self._server = server or build_transcriber(settings)
         self._by_key: OrderedDict[str, Transcriber] = OrderedDict()
 
     async def for_user(self, session: AsyncSession, user: User) -> Transcriber:
