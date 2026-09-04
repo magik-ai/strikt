@@ -18,7 +18,15 @@ import aiohttp
 import pytest
 from aiogram import Bot
 from aiogram.exceptions import TelegramRetryAfter
-from aiogram.types import BotCommand, Chat, Message, Update, User as TgUser
+from aiogram.types import (
+    BotCommand,
+    BotDescription,
+    BotShortDescription,
+    Chat,
+    Message,
+    Update,
+    User as TgUser,
+)
 from aiohttp import web
 from aiohttp.test_utils import TestClient, TestServer
 from sqlalchemy import select
@@ -35,7 +43,7 @@ from strikt.events import WorkoutEvent
 from strikt.integrations import whoop
 from strikt.logging import configure_logging
 from strikt.telegram import commands
-from strikt.telegram.copy import LANGUAGES, t
+from strikt.telegram.copy import LANGUAGES, STRINGS, t
 from strikt.telegram.messenger import FakeMessenger
 from tests.conftest import CHAT_ID, TELEGRAM_ID
 from tests.test_handlers_e2e import FakeDownloader, FakeTranscriber
@@ -309,26 +317,46 @@ async def test_nightly_summary_writes_day_and_week_once(
 
 
 class ProfileRecorder:
+    """Records the writes and answers the reads with whatever was last written, so a second
+    ``apply_bot_profile`` over the same recorder has nothing left to do."""
+
     def __init__(self) -> None:
         self.calls: list[tuple[str, Any, str | None]] = []
+        self._commands: dict[str | None, list[BotCommand]] = {}
+        self._description: dict[str | None, str] = {}
+        self._short: dict[str | None, str] = {}
 
     async def set_my_commands(
         self, commands: list[BotCommand], *, language_code: str | None = None
     ) -> bool:
         self.calls.append(("commands", [c.command for c in commands], language_code))
+        self._commands[language_code] = list(commands)
         return True
 
     async def set_my_description(
         self, description: str | None = None, *, language_code: str | None = None
     ) -> bool:
         self.calls.append(("description", description, language_code))
+        self._description[language_code] = description or ""
         return True
 
     async def set_my_short_description(
         self, short_description: str | None = None, *, language_code: str | None = None
     ) -> bool:
         self.calls.append(("short", short_description, language_code))
+        self._short[language_code] = short_description or ""
         return True
+
+    async def get_my_commands(self, *, language_code: str | None = None) -> list[BotCommand]:
+        return self._commands.get(language_code, [])
+
+    async def get_my_description(self, *, language_code: str | None = None) -> BotDescription:
+        return BotDescription(description=self._description.get(language_code, ""))
+
+    async def get_my_short_description(
+        self, *, language_code: str | None = None
+    ) -> BotShortDescription:
+        return BotShortDescription(short_description=self._short.get(language_code, ""))
 
 
 def test_bot_commands_respect_telegram_limits() -> None:
@@ -389,6 +417,23 @@ async def test_the_profile_waits_out_telegram_flood_control() -> None:
     kinds = [(kind, lang) for kind, _, lang in recorder.calls]
     assert kinds.count(("commands", None)) == 1, "the retry replaced the call, not added one"
     assert len(kinds) == 3 * len(LANGUAGES)
+
+
+async def test_a_second_boot_rewrites_nothing(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Sixty unconditional writes on every restart are what tripped Telegram's flood control in
+    the first place, and a container that restarts on failure does it every time."""
+    recorder = ProfileRecorder()
+    await commands.apply_bot_profile(recorder, pause_s=0)
+    assert len(recorder.calls) == 3 * len(LANGUAGES)
+
+    recorder.calls.clear()
+    await commands.apply_bot_profile(recorder, pause_s=0)
+    assert recorder.calls == [], "the copy did not change, so nothing is written"
+
+    # a changed string is the one thing that does bring a write back
+    monkeypatch.setitem(STRINGS["ru"], "bot.short", "Другой текст.")
+    await commands.apply_bot_profile(recorder, pause_s=0)
+    assert [(kind, lang) for kind, _, lang in recorder.calls] == [("short", "ru")]
 
 
 def test_env_example_documents_every_setting() -> None:
