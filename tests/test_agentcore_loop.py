@@ -493,7 +493,7 @@ async def test_images_go_to_the_model_and_are_stubbed_in_history(
     assert any(b["type"] == "image" and b["source"]["data"] == "YWJj" for b in sent)
     turn = (await repo.last_n_turns(session, user.id, 5))[0]
     assert turn.id == result.turn_id
-    assert turn.content == [{"type": "text", "text": f"[image: {'a' * 64}]"}]
+    assert turn.content == [{"type": "text", "text": f"[image: {'a' * 64}]", "media_kind": "image"}]
 
 
 def test_stub_media_blocks_hashes_when_no_sha_given() -> None:
@@ -856,3 +856,23 @@ async def test_evening_closed_day_without_tools_gets_no_buttons(
         make_deps(session, user, fake_llm, test_registry, clock, settings), incoming(user, "всё")
     )
     assert result.outgoings[0].keyboard is None
+
+
+def test_stub_media_blocks_keeps_the_file_id_for_later_turns() -> None:
+    """Without the file_id the coach cannot be shown the menu again two messages later."""
+    photo = Attachment(
+        kind="image", mime="image/jpeg", bytes_b64="YWJj", sha256="d" * 64, file_id="AgACAgQ"
+    )
+    blocks = [
+        {"type": "image", "source": {"type": "base64", "media_type": "image/jpeg", "data": "YWJj"}}
+    ]
+    stubbed = stub_media_blocks(blocks, [photo])
+    assert stubbed == [
+        {
+            "type": "text",
+            "text": f"[image: {'d' * 64}]",
+            "media_kind": "image",
+            "media_file_id": "AgACAgQ",
+            "media_mime": "image/jpeg",
+        }
+    ]

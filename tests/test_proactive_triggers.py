@@ -163,13 +163,15 @@ def test_no_dinner_and_day_not_closed() -> None:
     dinner = make_state(meals=[("19:30", 700, 60, "unknown")])
     assert t.check_no_dinner(dinner, make_ctx("21:00")) is None
 
-    fire2 = t.check_day_not_closed(dinner, make_ctx("23:00"))
-    assert (
-        fire2 is not None
-        and fire2.facts["dinner_logged"] is True
-        and fire2.facts["bed_time"] == "00:30"
-    )
-    assert t.check_day_not_closed(dinner, make_ctx("22:00")) is None
+    # closing is the system's bookkeeping now: a day with food in it is never asked about,
+    # whether or not dinner was part of it
+    assert t.check_day_not_closed(dinner, make_ctx("23:00")) is None
+    assert t.check_day_not_closed(state, make_ctx("23:00")) is None
+    empty = make_state()
+    fire2 = t.check_day_not_closed(empty, make_ctx("23:00"))
+    assert fire2 is not None and fire2.facts["meals_logged"] == 0
+    assert fire2.facts["bed_time"] == "00:30"
+    assert t.check_day_not_closed(empty, make_ctx("22:00")) is None
     assert t.check_day_not_closed(make_state(closed=True), make_ctx("23:00")) is None
 
 

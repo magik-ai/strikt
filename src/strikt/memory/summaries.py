@@ -10,6 +10,7 @@ the scheduler can retry.
 
 from __future__ import annotations
 
+import re
 from collections.abc import Sequence
 from datetime import date, datetime, timedelta
 from functools import lru_cache
@@ -390,6 +391,31 @@ async def write_day_summary(
     )
     log.info("day_summary_written", user_id=user.id, day=day.isoformat(), fallback=parsed is None)
     return row
+
+
+#: Longest verdict the nightly auto-close writes into ``days.verdict``.
+VERDICT_CHARS = 200
+#: Below this a verdict is a fragment, so the next sentence comes along with it.
+MIN_VERDICT_CHARS = 20
+#: A sentence end that is worth cutting at: punctuation, a space, then more text.
+_SENTENCE_END = re.compile(r"(?<=[.!?])\s+")
+
+
+def first_sentence(text: str, limit: int = VERDICT_CHARS) -> str:
+    """The summary's opening sentence(s), for the verdict of a day the user never closed.
+
+    Sentences are taken from the start until there are at least ``MIN_VERDICT_CHARS`` of them,
+    so a two-word opener ("Solid day.") keeps the sentence that explains it instead of being
+    dropped for it.
+    """
+    flat = " ".join(text.split())
+    taken: list[str] = []
+    for part in _SENTENCE_END.split(flat):
+        taken.append(part)
+        if sum(len(p) for p in taken) >= MIN_VERDICT_CHARS:
+            break
+    head = " ".join(taken).strip()
+    return head if len(head) <= limit else head[: limit - 1].rstrip() + "…"
 
 
 def _totals_dict(m: Macros) -> dict[str, float]:

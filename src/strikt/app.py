@@ -36,16 +36,16 @@ from strikt.agent.loop import to_telegram_html
 from strikt.agent.proactive_decide import LLMDecider
 from strikt.agent.tools import build_registry
 from strikt.config import get_settings
-from strikt.core.clock import SystemClock, week_start
+from strikt.core.clock import SystemClock, coaching_today, ensure_utc, week_start
 from strikt.db import repo
 from strikt.db.crypto import TokenCipher
 from strikt.db.engine import make_engine, make_session_factory
-from strikt.db.models import SummaryKind
+from strikt.db.models import SummaryKind, User
 from strikt.events import EventBus
 from strikt.integrations.registry import build_registry as build_integrations
 from strikt.logging import configure_logging
 from strikt.memory.daystate import DayStateBuilder
-from strikt.memory.summaries import update_week_summary, write_day_summary
+from strikt.memory.summaries import first_sentence, update_week_summary, write_day_summary
 from strikt.proactive.engine import ProactiveEngine
 from strikt.proactive.scheduler import ProactiveScheduler
 from strikt.telegram.bot import (
@@ -150,17 +150,88 @@ def make_integration_sync(integrations: Integrations) -> Callable[[], Awaitable[
 
 
 def make_nightly_summary(
-    sessions: async_sessionmaker[AsyncSession], llm_factory: LLMResolver, clock: Clock
+    sessions: async_sessionmaker[AsyncSession],
+    llm_factory: LLMResolver,
+    clock: Clock,
+    *,
+    card: DayCard | None = None,
+    state_provider: DayStateBuilder | None = None,
 ) -> Callable[[int, date], Awaitable[None]]:
-    """03:00 local: summarise yesterday when ``close_day`` did not, then refresh the week. Both
-    calls are billed to the user's own key; a user without one is skipped (``llm_key_missing``
-    in the log, nothing written) until they paste it."""
+    """03:00 local: close every day the user left open, summarise yesterday when ``close_day``
+    did not, then refresh the week.
+
+    The close matters as much as the summary: a day nobody closed used to stay open forever, so
+    the morning message opened with "yesterday is still not closed" and the close trigger kept
+    firing on a day the user had long finished. It runs *before* the summaries and sweeps every
+    open day older than the current coaching day, not only ``day``: the summaries need the
+    user's own API key and a working model call, and a day must close even when the key is
+    missing, the call fails or the process was down that night. A day the user is still living
+    in (a 02:30 bedtime runs the coaching day to 03:30) is older than the cutoff only on the
+    next run, which is exactly when it should close.
+
+    The summary calls are billed to the user's own key; a user without one is skipped
+    (``llm_key_missing`` in the log, nothing summarised) until they paste it."""
+
+    builder = state_provider
+
+    async def _verdict(session: AsyncSession, user: User, day: date) -> str | None:
+        """The summary's opening line, unless the summary is the "nothing happened" fallback."""
+        summary = await repo.get_summary(session, user.id, SummaryKind.day, day)
+        if summary is None:
+            return None
+        data = summary.data if isinstance(summary.data, dict) else {}
+        if data.get("fallback") and not data.get("computed", {}).get("meals_logged"):
+            return None
+        return first_sentence(summary.text)
+
+    async def _refresh_card(session: AsyncSession, user: User, day: date) -> None:
+        """The pinned card must say closed too, or it contradicts the database until morning.
+
+        Only a day that already has a card is touched: posting a *new* card for a past day at
+        03:00 would be a notification in the middle of the night about a day that is over.
+        """
+        if card is None or builder is None:
+            return
+        row = await repo.get_day(session, user.id, day)
+        if row is None or row.card_message_id is None:
+            return
+        try:
+            state = await builder.day_state(session, user, day)
+            await card.close(session, user, state, verdict=state.verdict)
+            await session.commit()
+        except Exception as exc:
+            log.warning(
+                "daycard_close_failed", user_id=user.id, day=day.isoformat(), error=repr(exc)
+            )
+
+    async def close_open_days(session: AsyncSession, user: User, cutoff: date) -> None:
+        for row in await repo.open_days_before(session, user.id, cutoff):
+            await repo.close_day(
+                session,
+                user.id,
+                row.date,
+                verdict=await _verdict(session, user, row.date),
+                now=ensure_utc(clock.now()),
+            )
+            await session.commit()
+            await _refresh_card(session, user, row.date)
+            log.info("day_auto_closed", user_id=user.id, day=row.date.isoformat())
 
     async def nightly(user_id: int, day: date) -> None:
         async with sessions() as session:
             user = await repo.get_user(session, user_id)
             if user is None:
                 return
+            profile = await repo.get_profile(session, user_id)
+            cutoff = coaching_today(
+                clock,
+                user.timezone or "UTC",
+                profile.bed_time if profile else None,
+                profile.wake_time if profile else None,
+            )
+            await close_open_days(session, user, cutoff)
+            await session.commit()
+
             llm = await llm_factory.for_user(session, user)
             if llm is None:
                 log.info("nightly_summary_skipped", user_id=user_id, reason="llm_key_missing")
@@ -168,7 +239,15 @@ def make_nightly_summary(
             if await repo.get_summary(session, user_id, SummaryKind.day, day) is None:
                 await write_day_summary(llm, session, user, day, clock=clock)
             await update_week_summary(llm, session, user, week_start(day), clock=clock)
+            # the day just summarised may have closed above with no verdict (no summary existed
+            # then); give it the one the summary now provides
+            await close_open_days(session, user, cutoff)
+            closed = await repo.get_day(session, user_id, day)
+            if closed is not None and not closed.verdict:
+                closed.verdict = await _verdict(session, user, day)
             await session.commit()
+            if closed is not None and closed.verdict:
+                await _refresh_card(session, user, day)
         log.info("nightly_summary_done", user_id=user_id, day=day.isoformat())
 
     return nightly
@@ -309,7 +388,9 @@ def build_runtime(
         sessions,
         clock,
         scheduler=scheduler,
-        nightly_summary=make_nightly_summary(sessions, llm_factory, clock),
+        nightly_summary=make_nightly_summary(
+            sessions, llm_factory, clock, card=card, state_provider=state_provider
+        ),
         integration_sync=make_integration_sync(integrations),
     )
 

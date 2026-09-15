@@ -59,6 +59,6 @@ def test_coach_prompt_has_no_user_specific_numbers() -> None:
 
 def test_proactive_prompt_has_the_ladder() -> None:
     text = (PROMPTS / "proactive.md").read_text(encoding="utf-8")
-    for step in ("Prompt", "Push", "Demand", "Consequence"):
+    for step in ("Nudge", "Push", "Demand", "Consequence"):
         assert step in text
     assert "Never beyond step 4" in text

@@ -10,6 +10,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from strikt.agent.context import (
     build_context,
+    history_messages,
     looks_like_past_question,
     render_onboarding_checklist,
     render_profile_block,
@@ -381,3 +382,109 @@ def test_estimate_tokens_counts_cyrillic_denser() -> None:
     assert estimate_tokens("a" * 400) == 100
     assert estimate_tokens("я" * 400) == 160  # 2.5 chars/token, not 4
     assert estimate_tokens({"text": "яя"}) >= 3
+
+
+# ------------------------------------------------------------- pictures the coach still sees
+
+
+class FakeRehydrator:
+    """Hands back base64 for known file_ids; anything else has expired on Telegram."""
+
+    def __init__(self, known: dict[str, str]) -> None:
+        self.known = known
+        self.asked: list[str] = []
+
+    async def rehydrate(self, file_id: str, *, mime: str | None = None) -> str | None:
+        self.asked.append(file_id)
+        return self.known.get(file_id)
+
+
+async def _stubbed_photo_turn(
+    session: AsyncSession, user: User, clock: FakeClock, *, file_id: str | None, sha: str
+) -> None:
+    stub: dict[str, object] = {"type": "text", "text": f"[image: {sha}]", "media_kind": "image"}
+    if file_id is not None:
+        stub["media_file_id"] = file_id
+        stub["media_mime"] = "image/jpeg"
+    await repo.add_turn(
+        session, user.id, role=TurnRole.user, content=[stub], now=clock.now(), text="menu"
+    )
+    await repo.add_turn(
+        session,
+        user.id,
+        role=TurnRole.assistant,
+        content=[{"type": "text", "text": "ranked"}],
+        now=clock.now(),
+    )
+
+
+async def test_history_strips_our_media_keys_without_a_rehydrator(
+    session: AsyncSession, user: User, clock: FakeClock, settings: Settings
+) -> None:
+    await _stubbed_photo_turn(session, user, clock, file_id="AgAC1", sha="a" * 8)
+    messages, _ = await history_messages(session, user, settings)
+    block = messages[0]["content"][0]
+    assert block == {"type": "text", "text": f"[image: {'a' * 8}]"}
+
+
+async def test_history_puts_the_recent_pictures_back(
+    session: AsyncSession, user: User, clock: FakeClock, settings: Settings
+) -> None:
+    await _stubbed_photo_turn(session, user, clock, file_id="AgAC1", sha="a" * 8)
+    await _stubbed_photo_turn(session, user, clock, file_id="AgAC2", sha="b" * 8)
+    media = FakeRehydrator({"AgAC1": "AAA", "AgAC2": "BBB"})
+
+    messages, _ = await history_messages(
+        session, user, settings.model_copy(update={"context_recent_images": 1}), media=media
+    )
+    blocks = [b for m in messages for b in m["content"]]
+    images = [b for b in blocks if b["type"] == "image"]
+    assert media.asked == ["AgAC2"]  # newest first, and only as many as the budget allows
+    assert len(images) == 1 and images[0]["source"]["data"] == "BBB"
+    assert {"type": "text", "text": f"[image: {'a' * 8}]"} in blocks  # the older one stays a stub
+
+
+async def test_a_picture_telegram_lost_stays_a_stub(
+    session: AsyncSession, user: User, clock: FakeClock, settings: Settings
+) -> None:
+    await _stubbed_photo_turn(session, user, clock, file_id="gone", sha="c" * 8)
+    messages, _ = await history_messages(session, user, settings, media=FakeRehydrator({}))
+    assert messages[0]["content"][0] == {"type": "text", "text": f"[image: {'c' * 8}]"}
+
+
+async def test_a_pdf_is_never_re_sent(
+    session: AsyncSession, user: User, clock: FakeClock, settings: Settings
+) -> None:
+    """A menu PDF costs tens of megabytes of base64 a turn; it is read once, when it arrives."""
+    await repo.add_turn(
+        session,
+        user.id,
+        role=TurnRole.user,
+        content=[
+            {
+                "type": "text",
+                "text": "[document: e]",
+                "media_kind": "document",
+                "media_file_id": "BQAC",
+                "media_mime": "application/pdf",
+            }
+        ],
+        now=clock.now(),
+    )
+    media = FakeRehydrator({"BQAC": "PDF"})
+    messages, _ = await history_messages(session, user, settings, media=media)
+    assert media.asked == []
+    assert messages[0]["content"][0] == {"type": "text", "text": "[document: e]"}
+
+
+async def test_restored_pictures_are_counted_against_the_turn_budget(
+    session: AsyncSession, user: User, clock: FakeClock, settings: Settings
+) -> None:
+    from strikt.agent.context import IMAGE_TOKENS
+
+    await _stubbed_photo_turn(session, user, clock, file_id="AgAC1", sha="a" * 8)
+    without, plain_tokens = await history_messages(session, user, settings)
+    _, with_image = await history_messages(
+        session, user, settings, media=FakeRehydrator({"AgAC1": "AAA"})
+    )
+    assert without and with_image == plain_tokens + IMAGE_TOKENS

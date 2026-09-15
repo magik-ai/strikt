@@ -9,7 +9,7 @@ import logging
 import re
 import sqlite3
 from collections.abc import AsyncIterator
-from datetime import UTC, date, datetime, timedelta
+from datetime import UTC, date, datetime, time, timedelta
 from pathlib import Path
 from typing import Any
 from unittest.mock import Mock
@@ -35,7 +35,8 @@ from sqlalchemy.ext.asyncio import AsyncEngine, AsyncSession
 from strikt import app as app_mod
 from strikt.agent.client import FakeLLM, FakeLLMFactory
 from strikt.config import Settings
-from strikt.core.clock import FakeClock
+from strikt.core.clock import FakeClock, ensure_utc
+from strikt.core.types import FoodItemIn, Macros
 from strikt.db import repo
 from strikt.db.crypto import TokenCipher
 from strikt.db.models import ProactiveSend, SummaryKind, User, Workout
@@ -313,6 +314,97 @@ async def test_nightly_summary_writes_day_and_week_once(
     assert len(fake_llm.calls) == 3
 
 
+async def test_nightly_closes_the_day_nobody_closed(
+    harness: Harness, user: User, session: AsyncSession, fake_llm: FakeLLM, clock: FakeClock
+) -> None:
+    """A day left open is closed overnight, so nothing nags the user about it in the morning."""
+    nightly = app_mod.make_nightly_summary(
+        harness.runtime.sessions, FakeLLMFactory(fake_llm), clock
+    )
+    yesterday = date(2026, 9, 2)
+    await repo.get_or_open_day(session, user.id, yesterday, now=clock.now())
+    await repo.add_meal_with_items(
+        session,
+        user.id,
+        day_date=yesterday,
+        items=[
+            FoodItemIn(name="творог", macros=Macros(kcal=300, protein_g=40, carbs_g=10, fat_g=8))
+        ],
+        logged_at=clock.now() - timedelta(days=1),
+    )
+    await session.commit()
+
+    fake_llm.queue(FakeLLM.text("not json"), FakeLLM.text("not json"))
+    await nightly(user.id, yesterday)
+
+    await session.rollback()  # read what the job's own session committed
+    day = await repo.get_day(session, user.id, yesterday)
+    assert day is not None and day.closed_at is not None
+    assert day.verdict  # the summary's opening line, not the "nothing happened" fallback
+
+
+async def test_nightly_closes_an_empty_day_without_inventing_a_verdict(
+    harness: Harness, user: User, session: AsyncSession, fake_llm: FakeLLM, clock: FakeClock
+) -> None:
+    """A day with nothing in it closes, but its card must not read "Verdict: no data"."""
+    nightly = app_mod.make_nightly_summary(
+        harness.runtime.sessions, FakeLLMFactory(fake_llm), clock
+    )
+    yesterday = date(2026, 9, 2)
+    await repo.get_or_open_day(session, user.id, yesterday, now=clock.now())
+    await session.commit()
+
+    fake_llm.queue(FakeLLM.text("not json"), FakeLLM.text("not json"))
+    await nightly(user.id, yesterday)
+
+    await session.rollback()
+    day = await repo.get_day(session, user.id, yesterday)
+    assert day is not None and day.closed_at is not None and day.verdict is None
+
+
+async def test_nightly_does_not_close_a_day_the_user_is_still_living_in(
+    harness: Harness, user: User, session: AsyncSession, fake_llm: FakeLLM, clock: FakeClock
+) -> None:
+    """03:00 local with a 02:30 bedtime: the coaching day runs until 03:30, so it stays open."""
+    profile = await repo.get_profile(session, user.id)
+    assert profile is not None
+    profile.bed_time = time(2, 30)
+    today = date(2026, 9, 3)
+    await repo.get_or_open_day(session, user.id, today, now=clock.now())
+    await session.commit()
+    clock.set(datetime(2026, 9, 3, 23, 5, tzinfo=UTC))  # 03:05 on 09-04 in Dubai
+
+    nightly = app_mod.make_nightly_summary(
+        harness.runtime.sessions, FakeLLMFactory(fake_llm), clock
+    )
+    fake_llm.queue(FakeLLM.text("not json"), FakeLLM.text("not json"))
+    await nightly(user.id, today)
+
+    await session.rollback()
+    day = await repo.get_day(session, user.id, today)
+    assert day is not None and day.closed_at is None
+
+
+async def test_nightly_leaves_a_day_the_user_closed_alone(
+    harness: Harness, user: User, session: AsyncSession, fake_llm: FakeLLM, clock: FakeClock
+) -> None:
+    nightly = app_mod.make_nightly_summary(
+        harness.runtime.sessions, FakeLLMFactory(fake_llm), clock
+    )
+    yesterday = date(2026, 9, 2)
+    closed_at = clock.now() - timedelta(hours=4)
+    await repo.close_day(session, user.id, yesterday, verdict="mine", now=closed_at)
+    await session.commit()
+
+    fake_llm.queue(FakeLLM.text("not json"), FakeLLM.text("not json"))
+    await nightly(user.id, yesterday)
+
+    await session.rollback()  # read what the job's own session committed
+    day = await repo.get_day(session, user.id, yesterday)
+    assert day is not None and day.verdict == "mine"
+    assert day.closed_at is not None and ensure_utc(day.closed_at) == closed_at
+
+
 # ------------------------------------------------------------------------------ commands
 
 
@@ -548,3 +640,56 @@ async def test_serve_exits_non_zero_when_polling_dies(
 
     assert exited.value.code == 1
     assert runtime.stopped  # it still shuts down cleanly on the way out
+
+
+async def test_nightly_closes_an_old_day_even_without_an_api_key(
+    harness: Harness, user: User, session: AsyncSession, clock: FakeClock
+) -> None:
+    """The close must not depend on the user's own key: the days would pile up open."""
+
+    class NoKey:
+        async def for_user(self, session: AsyncSession, user: User) -> None:
+            return None
+
+    nightly = app_mod.make_nightly_summary(harness.runtime.sessions, NoKey(), clock)
+    old = date(2026, 8, 30)
+    await repo.get_or_open_day(session, user.id, old, now=clock.now())
+    await session.commit()
+
+    await nightly(user.id, date(2026, 9, 2))
+
+    await session.rollback()
+    day = await repo.get_day(session, user.id, old)
+    assert day is not None and day.closed_at is not None and day.verdict is None
+
+
+async def test_nightly_closes_a_day_the_late_bedtime_left_running(
+    harness: Harness, user: User, session: AsyncSession, fake_llm: FakeLLM, clock: FakeClock
+) -> None:
+    """03:00 with a 02:30 bedtime is too early for that day - the next night closes it."""
+    profile = await repo.get_profile(session, user.id)
+    assert profile is not None
+    profile.bed_time = time(2, 30)
+    day = date(2026, 9, 3)
+    await repo.get_or_open_day(session, user.id, day, now=clock.now())
+    await session.commit()
+
+    nightly = app_mod.make_nightly_summary(
+        harness.runtime.sessions, FakeLLMFactory(fake_llm), clock
+    )
+
+    async def closed_at() -> datetime | None:
+        async with harness.runtime.sessions() as fresh:
+            row = await repo.get_day(fresh, user.id, day)
+            assert row is not None
+            return row.closed_at
+
+    clock.set(datetime(2026, 9, 3, 23, 5, tzinfo=UTC))  # 03:05 on 09-04: still 09-03's day
+    fake_llm.queue(FakeLLM.text("not json"), FakeLLM.text("not json"))
+    await nightly(user.id, day)
+    assert await closed_at() is None
+
+    clock.set(datetime(2026, 9, 4, 23, 5, tzinfo=UTC))  # the next night
+    fake_llm.queue(FakeLLM.text("not json"), FakeLLM.text("not json"))
+    await nightly(user.id, date(2026, 9, 4))
+    assert await closed_at() is not None

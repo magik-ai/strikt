@@ -63,7 +63,13 @@ from strikt.telegram.keys import (
     looks_like_usda_key,
     mentions_key,
 )
-from strikt.telegram.media import MediaError, MediaTooLargeError, prepare_document, prepare_image
+from strikt.telegram.media import (
+    ImageCache,
+    MediaError,
+    MediaTooLargeError,
+    prepare_document,
+    prepare_image,
+)
 from strikt.telegram.voice import TranscriptionError
 
 if TYPE_CHECKING:
@@ -350,6 +356,14 @@ class AppDeps:
     #: Picks the transcriber for a user (their own OpenAI key first). Without one every
     #: voice note goes through ``transcriber``.
     transcribers: TranscriberResolver | None = None
+    #: Re-reads the pictures of the last few turns so the coach still sees them; built from
+    #: ``downloader`` on first use.
+    images: ImageCache | None = None
+
+    def image_cache(self) -> ImageCache:
+        if self.images is None:
+            self.images = ImageCache(self.downloader)
+        return self.images
 
     def tool_services(self) -> dict[str, Any]:
         """The service bag handed to tool handlers (``llm``/``bus`` are added by the loop)."""
@@ -659,9 +673,12 @@ async def build_incoming(
         try:
             data = await deps.downloader.download(ref.file_id)
             if ref.kind == "photo":
-                attachments.append(await prepare_image(data, ref.mime, ref.filename))
+                prepared = await prepare_image(data, ref.mime, ref.filename)
+                # the file_id is how the context fetches this picture again a few turns later
+                attachments.append(prepared.model_copy(update={"file_id": ref.file_id}))
             elif ref.kind == "document":
-                attachments.append(await prepare_document(data, ref.mime, ref.filename))
+                prepared = await prepare_document(data, ref.mime, ref.filename)
+                attachments.append(prepared.model_copy(update={"file_id": ref.file_id}))
             else:
                 transcript = await (transcriber or deps.transcriber).transcribe(
                     data, mime=ref.mime, language_hint=user.language
@@ -769,6 +786,7 @@ async def run_agent_turn(
         state_provider=deps.state_provider,
         services=deps.tool_services(),
         card=deps.card,
+        media=deps.image_cache(),
     )
     try:
         result = await run_turn(turn_deps, incoming)
