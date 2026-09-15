@@ -94,7 +94,7 @@ def test_onboarding_prompt_has_ten_steps_and_the_minimum_set() -> None:
 
 def test_proactive_prompt_covers_every_trigger_and_the_ladder() -> None:
     text = load_prompt("proactive")
-    for step in ("**Prompt**", "**Push**", "**Demand**", "**Consequence**"):
+    for step in ("**Nudge**", "**Push**", "**Demand**", "**Consequence**"):
         assert step in text
     assert "Never beyond step 4" in text
     assert '"reason"' in text

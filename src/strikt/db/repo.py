@@ -389,6 +389,19 @@ async def get_day(session: AsyncSession, user_id: int, day: date) -> Day | None:
     return await _first(session, select(Day).where(Day.user_id == user_id, Day.date == day))
 
 
+async def open_days_before(
+    session: AsyncSession, user_id: int, before: date, *, limit: int = 30
+) -> list[Day]:
+    """Days the user started and never closed, older than ``before``, oldest first."""
+    stmt = (
+        select(Day)
+        .where(Day.user_id == user_id, Day.date < before, Day.closed_at.is_(None))
+        .order_by(Day.date)
+        .limit(limit)
+    )
+    return list((await session.scalars(stmt)).all())
+
+
 async def get_or_open_day(session: AsyncSession, user_id: int, day: date, *, now: datetime) -> Day:
     row = await get_day(session, user_id, day)
     if row is None:

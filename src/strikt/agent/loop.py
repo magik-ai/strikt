@@ -45,7 +45,7 @@ from typing import TYPE_CHECKING, Any, Protocol
 import structlog
 
 from strikt.agent.client import LLMAuthError, LLMCreditError, LLMError, LLMResult, ToolUse
-from strikt.agent.context import ContextBundle, build_context, user_blocks
+from strikt.agent.context import ContextBundle, MediaRehydrator, build_context, user_blocks
 from strikt.agent.tools.registry import ToolContext
 from strikt.agent.usage import LLMUsage
 from strikt.agent.verify import STATE_CHANGING_TOOLS, VERIFY_TOOLS, should_verify, verify_reply
@@ -116,6 +116,8 @@ class TurnDeps:
     state_provider: StateProvider | None = None
     services: dict[str, Any] = field(default_factory=dict)
     card: CardRefresher | None = None
+    #: Fetches the pictures of the newest turns again (``telegram.media.ImageCache``).
+    media: MediaRehydrator | None = None
     commit: bool = True
     parallel_tools: bool = False
 
@@ -159,7 +161,13 @@ def to_telegram_html(text: str) -> str:
 def stub_media_blocks(
     blocks: Sequence[dict[str, Any]], attachments: Sequence[Attachment]
 ) -> list[dict[str, Any]]:
-    """Replace image/document blocks with ``[image: <sha256>]`` text (the DB never keeps bytes)."""
+    """Replace image/document blocks with ``[image: <sha256>]`` text (the DB never keeps bytes).
+
+    The stub carries the Telegram ``file_id`` in ``media_file_id`` so ``agent/context.py`` can
+    fetch the picture again for the newest turns - without it the coach answered "I can't see
+    the menu" two messages after the menu arrived. The extra keys never reach the API:
+    ``context._stored_content`` either turns the stub back into an image block or strips them.
+    """
     by_data = {a.bytes_b64: a for a in attachments if a.bytes_b64}
     out: list[dict[str, Any]] = []
     for block in blocks:
@@ -170,7 +178,11 @@ def stub_media_blocks(
         data = str((block.get("source") or {}).get("data") or "")
         att = by_data.get(data)
         digest = att.sha256 if att is not None and att.sha256 else _sha256_b64(data)
-        out.append({"type": "text", "text": f"[{kind}: {digest}]"})
+        stub: dict[str, Any] = {"type": "text", "text": f"[{kind}: {digest}]", "media_kind": kind}
+        if att is not None and att.file_id:
+            stub["media_file_id"] = att.file_id
+            stub["media_mime"] = att.mime or ("image/jpeg" if kind == "image" else None)
+        out.append(stub)
     return out
 
 
@@ -454,6 +466,7 @@ async def run_turn(deps: TurnDeps, incoming: Incoming) -> TurnResult:
         profile=profile,
         protocol=protocol,
         exclude_turn_id=user_turn.id,
+        media=deps.media,
     )
 
     if deps.bus is not None:

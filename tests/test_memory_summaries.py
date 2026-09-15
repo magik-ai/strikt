@@ -292,3 +292,16 @@ async def test_truncated_summary_is_logged_as_such_not_as_invalid(
         LLMResult(content=[{"type": "text", "text": '{"text": "cut'}], stop_reason=STOP_MAX_TOKENS)
     )
     assert await _call(fake_llm, user_id=1, kind=SummaryKind.day, digest="x", lang="en") is None
+
+
+def test_first_sentence_keeps_the_lead() -> None:
+    from strikt.memory.summaries import first_sentence
+
+    assert (
+        first_sentence("Solid day. Protein 176 g, fiber 22.")
+        == "Solid day. Protein 176 g, fiber 22."
+    )
+    assert first_sentence("Хороший день по структуре и белку. Клетчатка провалилась.") == (
+        "Хороший день по структуре и белку."
+    )
+    assert first_sentence("x" * 400).endswith("…")

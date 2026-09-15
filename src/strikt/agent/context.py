@@ -30,6 +30,7 @@ from __future__ import annotations
 import json
 import math
 import re
+import typing
 from dataclasses import dataclass, field
 from datetime import datetime, time
 from enum import Enum
@@ -53,6 +54,7 @@ from strikt.db.models import (
 from strikt.memory.daystate import DayStateBuilder, render_context, yesterday_close_line
 from strikt.memory.notes import active_notes, render_notes_block
 from strikt.memory.periods import find_period
+from strikt.memory.recent import RECENT_DAYS, recent_block
 from strikt.memory.retrieval import render_rows, search_history
 from strikt.onboarding.checklist import Facts, facts_for, render_state
 from strikt.telegram.copy import resolve_lang, weekday_name
@@ -79,6 +81,11 @@ CONTEXT_SUMMARY_CHARS = 700
 CONTEXT_DAY_SUMMARY_CHARS = 280
 CONTEXT_DAY_SUMMARIES = 3
 MAX_REMINDERS = 8
+#: Pictures from earlier turns put back into the prompt when the settings say nothing else.
+DEFAULT_RECENT_IMAGES = 3
+#: What one restored picture costs the prompt (a 2000 px JPEG lands near this; a budget, not a
+#: count - see ``estimate_tokens``).
+IMAGE_TOKENS = 1600
 TURN_BUDGET_WARN_TOKENS = 60_000
 
 CACHE_1H: dict[str, str] = {"type": "ephemeral", "ttl": "1h"}
@@ -254,9 +261,86 @@ def _merge_same_role(messages: list[dict[str, Any]]) -> list[dict[str, Any]]:
     return merged
 
 
+#: Keys ``loop.stub_media_blocks`` adds to a stored stub. They are ours, not the API's.
+_MEDIA_KEYS = ("media_kind", "media_file_id", "media_mime")
+
+
+class MediaRehydrator(typing.Protocol):
+    """Fetches the bytes behind a Telegram ``file_id`` again (``telegram.media.ImageCache``)."""
+
+    async def rehydrate(self, file_id: str, *, mime: str | None = None) -> str | None:
+        """Base64 JPEG/PDF for the model, or ``None`` when it cannot be fetched."""
+
+
 def _stored_content(content: Any) -> list[dict[str, Any]]:
+    """Stored blocks as the API wants them: our media keys stripped, empty text dropped."""
     blocks = [dict(b) for b in content if isinstance(b, dict)] if isinstance(content, list) else []
-    return [b for b in blocks if b.get("type") != "text" or str(b.get("text", "")).strip()]
+    kept: list[dict[str, Any]] = []
+    for block in blocks:
+        clean = {k: v for k, v in block.items() if k not in _MEDIA_KEYS}
+        if clean.get("type") == "text" and not str(clean.get("text", "")).strip():
+            continue
+        kept.append(clean)
+    return kept
+
+
+def media_stubs(content: Any) -> list[dict[str, Any]]:
+    """The picture stubs of one turn that still know their ``file_id`` (oldest first).
+
+    Images only. A PDF menu is worth tens of megabytes of base64 and several thousand tokens a
+    turn; it is fetched once, when it arrives, and afterwards the model works from what it wrote
+    about it.
+    """
+    blocks = [b for b in content if isinstance(b, dict)] if isinstance(content, list) else []
+    return [
+        b
+        for b in blocks
+        if b.get("media_file_id")
+        and str(b.get("media_mime") or "image/jpeg").startswith("image/")
+        and b.get("media_kind") != "document"
+    ]
+
+
+async def rehydrate_images(
+    rows: list[tuple[Any, dict[str, Any]]],
+    media: MediaRehydrator,
+    *,
+    limit: int,
+) -> int:
+    """Put the pictures back into the newest stored turns, newest first, at most ``limit``.
+
+    ``rows`` pairs each stored turn's raw content with the message built from it. A stub whose
+    file cannot be fetched keeps its ``[image: …]`` text, so the model sees that something was
+    sent and can ask for it again instead of denying it exists.
+    """
+    restored = 0
+    for raw, message in reversed(rows):
+        stubs = media_stubs(raw)
+        if not stubs:
+            continue
+        for stub in reversed(stubs):
+            if restored >= limit:
+                return restored
+            # an iPhone HEIC arrives as a "document" and comes back as a JPEG, so the block
+            # type follows the media type, not the stub's label
+            mime = str(stub.get("media_mime") or "image/jpeg")
+            try:
+                data = await media.rehydrate(str(stub["media_file_id"]), mime=mime)
+            except Exception as exc:  # a dead file_id must never break the turn
+                log.warning("media_rehydrate_failed", error=repr(exc))
+                data = None
+            if not data:
+                continue
+            text = str(stub.get("text") or "")
+            for index, block in enumerate(message["content"]):
+                if block.get("type") == "text" and block.get("text") == text:
+                    message["content"][index] = {
+                        "type": "image",
+                        "source": {"type": "base64", "media_type": mime, "data": data},
+                    }
+                    restored += 1
+                    break
+    return restored
 
 
 async def history_messages(
@@ -265,11 +349,14 @@ async def history_messages(
     settings: Settings,
     *,
     exclude_turn_id: int | None = None,
+    media: MediaRehydrator | None = None,
 ) -> tuple[list[dict[str, Any]], int]:
     """Last N turns within the token budget, oldest trimmed first, as alternating messages.
 
     ``exclude_turn_id`` is the current user turn (already persisted by the loop): it is sent as
-    the current message, not as history.
+    the current message, not as history. ``media`` puts the pictures of the newest turns back
+    (``settings.context_recent_images`` of them); without it the history carries only the
+    ``[image: …]`` stubs.
     """
     max_turns = int(getattr(settings, "context_max_turns", 30))
     max_tokens = int(getattr(settings, "context_max_tokens", 40_000))
@@ -278,7 +365,7 @@ async def history_messages(
     total = await repo.count_turns(session, user.id) - excluded
     rows = [row for row in rows if row.id != exclude_turn_id]
     rows = rows[-history_window(total, max_turns) :] if rows else rows
-    kept: list[dict[str, Any]] = []
+    kept: list[tuple[Any, dict[str, Any]]] = []
     used = 0
     for row in reversed(rows):  # newest first, stop when the budget is full
         content = _stored_content(row.content)
@@ -287,12 +374,19 @@ async def history_messages(
         cost = estimate_tokens(content)
         if kept and used + cost > max_tokens:
             break
-        kept.append({"role": row.role.value, "content": content})
+        kept.append((row.content, {"role": row.role.value, "content": content}))
         used += cost
     kept.reverse()
-    while kept and kept[0]["role"] != "user":
+    while kept and kept[0][1]["role"] != "user":
         kept.pop(0)
-    return _merge_same_role(kept), used
+    if media is not None:
+        limit = int(getattr(settings, "context_recent_images", DEFAULT_RECENT_IMAGES))
+        if limit > 0:
+            restored = await rehydrate_images(kept, media, limit=limit)
+            if restored:
+                used += restored * IMAGE_TOKENS
+                log.debug("history_images_restored", user_id=user.id, images=restored)
+    return _merge_same_role([message for _, message in kept]), used
 
 
 # ------------------------------------------------------------------------------ user message
@@ -412,6 +506,21 @@ async def render_context_block(
     except Exception as exc:
         log.warning("context_summaries_failed", user_id=user.id, error=repr(exc))
         weeks, days = [], []
+    try:
+        recent = await recent_block(
+            session, user.id, today=state.date, tz=tz, lang=lang, days=RECENT_DAYS
+        )
+    except Exception as exc:
+        log.warning("context_recent_failed", user_id=user.id, error=repr(exc))
+        recent = ""
+    if recent:
+        parts.append(
+            f"<recent>the last {RECENT_DAYS} days from the database, one line each - every claim"
+            " you make about a past day comes from here, a summary or a tool result"
+        )
+        parts.append(recent)
+        parts.append("</recent>")
+
     if weeks or days:
         parts.append("<summaries>")
         parts.extend(
@@ -479,6 +588,7 @@ async def build_context(
     protocol: Protocol | None = None,
     state: DayState | None = None,
     exclude_turn_id: int | None = None,
+    media: MediaRehydrator | None = None,
 ) -> ContextBundle:
     """Assemble system, messages and tools for one turn (see the module docstring).
 
@@ -519,7 +629,7 @@ async def build_context(
     ]
 
     history, history_tokens = await history_messages(
-        session, user, settings, exclude_turn_id=exclude_turn_id
+        session, user, settings, exclude_turn_id=exclude_turn_id, media=media
     )
     if history:
         last_blocks = history[-1]["content"]

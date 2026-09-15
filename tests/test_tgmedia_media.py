@@ -312,3 +312,62 @@ async def test_album_collector_keeps_groups_apart() -> None:
         collector.collect("x", "x1"), collector.collect("y", "y1"), collector.collect("x", "x2")
     )
     assert list(results) == [["x1", "x2"], ["y1"], None]
+
+
+# ------------------------------------------------------------------ re-reading what was sent
+
+
+class CountingDownloader:
+    """Serves one JPEG per file_id and counts how often Telegram was actually asked."""
+
+    def __init__(self, files: dict[str, bytes]) -> None:
+        self.files = files
+        self.calls: list[str] = []
+
+    async def download(self, file_id: str) -> bytes:
+        self.calls.append(file_id)
+        if file_id not in self.files:
+            raise MediaError("file is gone")
+        return self.files[file_id]
+
+
+def _cached_jpeg(color: tuple[int, int, int] = (10, 20, 30)) -> bytes:
+    buffer = BytesIO()
+    Image.new("RGB", (40, 30), color).save(buffer, format="JPEG")
+    return buffer.getvalue()
+
+
+async def test_image_cache_downloads_once_and_reuses() -> None:
+    downloader = CountingDownloader({"f1": _cached_jpeg()})
+    cache = media.ImageCache(downloader)
+    first = await cache.rehydrate("f1")
+    second = await cache.rehydrate("f1")
+    assert first and first == second
+    assert downloader.calls == ["f1"]
+
+
+async def test_image_cache_evicts_the_oldest() -> None:
+    files = {f"f{i}": _cached_jpeg((i, i, i)) for i in range(3)}
+    downloader = CountingDownloader(files)
+    cache = media.ImageCache(downloader, max_entries=2)
+    await cache.rehydrate("f0")
+    await cache.rehydrate("f1")
+    await cache.rehydrate("f2")
+    await cache.rehydrate("f0")  # evicted: fetched again
+    assert downloader.calls == ["f0", "f1", "f2", "f0"]
+
+
+async def test_image_cache_returns_none_when_the_file_is_gone() -> None:
+    cache = media.ImageCache(CountingDownloader({}))
+    assert await cache.rehydrate("missing") is None
+
+
+async def test_image_cache_is_bounded_in_bytes_too() -> None:
+    files = {f"f{i}": _cached_jpeg((i * 40, i, i)) for i in range(3)}
+    downloader = CountingDownloader(files)
+    cache = media.ImageCache(downloader, max_entries=10, max_bytes=1)
+    await cache.rehydrate("f0")
+    await cache.rehydrate("f1")
+    assert len(cache._cache) == 1  # the newest entry always stays, whatever the cap says
+    await cache.rehydrate("f0")
+    assert downloader.calls == ["f0", "f1", "f0"]

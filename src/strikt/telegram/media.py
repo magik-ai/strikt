@@ -22,9 +22,11 @@ import asyncio
 import base64
 import hashlib
 import re
+from collections import OrderedDict
 from dataclasses import dataclass, field
 from io import BytesIO
 from pathlib import PurePosixPath
+from time import monotonic
 from typing import TYPE_CHECKING, Protocol
 
 import structlog
@@ -49,6 +51,10 @@ JPEG_QUALITY = 85
 JPEG_QUALITY_STEPS = (85, 70, 55, 40)  # retried when the encoded image would exceed the cap
 ALBUM_DEBOUNCE_S = 1.2
 ALBUM_MAX_PARTS = 10  # sendMediaGroup allows 2–10 items
+#: Base64 the picture cache keeps in memory across every user of this process.
+MAX_CACHE_BYTES = 24 * 1024 * 1024
+#: How long a file_id that failed to download is left alone before trying it again.
+FAILURE_TTL_S = 600.0
 
 HEIC_MIMES = frozenset({"image/heic", "image/heif", "image/heic-sequence", "image/heif-sequence"})
 HEIC_EXTENSIONS = frozenset({".heic", ".heif", ".hif"})
@@ -330,3 +336,70 @@ class AlbumCollector[T]:
         album.result = [part for _, part in sorted(album.parts, key=lambda pair: pair[0])]
         log.debug("album_collected", media_group_id=media_group_id, parts=len(album.result))
         album.done.set()
+
+
+# ------------------------------------------------------------------------- re-reading media
+
+
+class ImageCache:
+    """Fetch a picture the user sent earlier again, by its Telegram ``file_id``.
+
+    The database keeps no bytes (PLAN §3), so a photo from three messages ago exists only as an
+    ``[image: <sha>]`` stub - which is why the coach used to answer "I can't see the menu" right
+    after being sent one. ``agent/context.py`` calls this for the newest few stubs; the little
+    LRU in front of Telegram means the same menu is downloaded once, not once per turn.
+    """
+
+    def __init__(
+        self,
+        downloader: Downloader,
+        *,
+        max_entries: int = 12,
+        max_bytes: int = MAX_CACHE_BYTES,
+    ) -> None:
+        self._downloader = downloader
+        self._max_entries = max(1, max_entries)
+        self._max_bytes = max(1, max_bytes)
+        self._cache: OrderedDict[str, str] = OrderedDict()
+        self._failed: dict[str, float] = {}
+
+    @property
+    def bytes_held(self) -> int:
+        return sum(len(value) for value in self._cache.values())
+
+    async def rehydrate(self, file_id: str, *, mime: str | None = None) -> str | None:
+        """Base64 for the model, or ``None`` when Telegram no longer serves the file.
+
+        A failure is remembered for ``FAILURE_TTL_S``: aiogram raises its own errors for a dead
+        file_id, and retrying three of them on every single turn would cost latency and keep
+        flipping the picture in and out of the prompt, which re-bills the whole cached history.
+        """
+        cached = self._cache.get(file_id)
+        if cached is not None:
+            self._cache.move_to_end(file_id)
+            return cached
+        failed_at = self._failed.get(file_id)
+        if failed_at is not None and monotonic() - failed_at < FAILURE_TTL_S:
+            return None
+        try:
+            data = await self._downloader.download(file_id)
+            if mime == PDF_MIME or is_pdf(data, mime):
+                encoded = base64.b64encode(data).decode("ascii")
+            else:
+                attachment = await prepare_image(data, mime, None)
+                encoded = attachment.bytes_b64 or ""
+        except Exception as exc:  # aiogram errors included: a lost picture is not a broken turn
+            log.info("media_rehydrate_unavailable", file_id=file_id, error=str(exc))
+            self._failed[file_id] = monotonic()
+            return None
+        if not encoded:
+            self._failed[file_id] = monotonic()
+            return None
+        self._failed.pop(file_id, None)
+        self._cache[file_id] = encoded
+        self._cache.move_to_end(file_id)
+        while len(self._cache) > 1 and (
+            len(self._cache) > self._max_entries or self.bytes_held > self._max_bytes
+        ):
+            self._cache.popitem(last=False)
+        return encoded

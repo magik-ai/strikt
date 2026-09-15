@@ -377,16 +377,24 @@ def check_no_dinner(state: DayState | None, ctx: TriggerContext) -> TriggerFire 
 
 
 def check_day_not_closed(state: DayState | None, ctx: TriggerContext) -> TriggerFire | None:
-    """23:00 and the day is still open."""
+    """23:00 and the whole day is empty - nothing logged at all.
+
+    It used to fire on any day the user had not closed by hand, which produced the 08:15
+    "yesterday is still not closed" the owner complained about: closing is the system's
+    bookkeeping (``app``'s nightly job does it with a summary), not the user's homework. A day
+    that merely lacks dinner is ``no_dinner``'s at 21:00; what is left for 23:00 is a day with
+    no food in it at all, which is a different fact and worth one message.
+    """
     day = _open_day(state)
     if day is None or not _at_or_after(ctx, ctx.deadline("day_not_closed", CLOSE_DEADLINE)):
         return None
-    dinner = _has_slot(day, "dinner") or bool(_meals_between(day, ctx.tz, DINNER_FROM, None))
+    if day.meals:
+        return None
     facts = {
-        "dinner_logged": dinner,
-        "last_meal_at": _last_meal_time(day, ctx.tz),
+        "meals_logged": 0,
         "bed_time": _hhmm(ctx.bed_time),
         **_totals(day, ctx),
+        **_skipped_lunch_facts(ctx),
     }
     return _fire("day_not_closed", "time", ctx, facts=facts)
 
