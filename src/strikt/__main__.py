@@ -1,4 +1,4 @@
-"""``python -m strikt`` — the container entrypoint."""
+"""``python -m strikt`` - the container entrypoint."""
 
 from strikt.app import main
 

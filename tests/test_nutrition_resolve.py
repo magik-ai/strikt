@@ -1,6 +1,6 @@
 """nutrition.resolve / off / usda / store with httpx.MockTransport (no network).
 
-Response shapes are copied from research/06 §1.1, §1.3 (OFF v3) and §2.3–2.4 (USDA live search).
+Response shapes are copied from research/06 §1.1, §1.3 (OFF v3) and §2.3-2.4 (USDA live search).
 """
 
 from __future__ import annotations

@@ -3,7 +3,7 @@
 Rules:
 - Every function that touches a user-owned table takes ``user_id`` and filters by it.
 - Functions ``flush`` so ids are available; the caller owns the transaction (``commit``).
-- Timestamps in are UTC-aware; timestamps out may be naive on SQLite — use ``ensure_utc``.
+- Timestamps in are UTC-aware; timestamps out may be naive on SQLite - use ``ensure_utc``.
 - Nothing here talks to the LLM or Telegram.
 """
 
@@ -182,8 +182,8 @@ async def set_llm_key(
     user = await session.get(User, user_id)
     if user is None:
         raise ValueError(f"user {user_id} does not exist")
-    # Set on the ORM object (not a bulk UPDATE) so a ``User`` already loaded in this session —
-    # the handler's — sees the new key at once.
+    # Set on the ORM object (not a bulk UPDATE) so a ``User`` already loaded in this
+    # session (the handler's) sees the new key at once.
     user.llm_key_enc = cipher.encrypt(key)
     user.llm_key_last4 = key[-4:]
     user.llm_key_set_at = now

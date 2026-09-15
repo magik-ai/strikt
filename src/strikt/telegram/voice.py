@@ -1,7 +1,7 @@
 """Voice notes → text. ``Transcriber`` protocol, OpenAI implementation, and a null fallback.
 
 Sonnet 5 takes text and images only (research/02 §1), so audio is transcribed first. Telegram
-voice notes are OGG/Opus and OpenAI accepts OGG directly (research/09 §2.3–2.4): the bytes are
+voice notes are OGG/Opus and OpenAI accepts OGG directly (research/09 §2.3-2.4): the bytes are
 sent as ``("voice.ogg", data, "audio/ogg")`` without ffmpeg. Primary model ``gpt-transcribe``
 takes ``languages=[...]`` (plural); the fallback ``whisper-1`` takes ``language=`` (singular).
 

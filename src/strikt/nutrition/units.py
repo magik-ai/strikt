@@ -2,9 +2,9 @@
 
 Two tables drive everything:
 
-* :data:`UNIT_TO_GRAMS` — mass and volume units to grams (volume assumes density 1.0 unless the
+* :data:`UNIT_TO_GRAMS` - mass and volume units to grams (volume assumes density 1.0 unless the
   caller passes one; cup/tbsp/tsp are the US customary approximations).
-* :data:`PIECE_GRAMS` — default weight of one *piece* of a common food, keyed by a keyword
+* :data:`PIECE_GRAMS` - default weight of one *piece* of a common food, keyed by a keyword
   found in the food name ("2 eggs" → 2 × 50 g). Values are typical edible portions, not
   precise; the sanity layer and the user correct them.
 

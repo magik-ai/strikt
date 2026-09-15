@@ -3,7 +3,7 @@
 ``log_workout`` stores the session (deduplicated by provider id, or by sport + start within ten
 minutes for screenshots) and returns the comparison facts the reply comments on: duration, avg
 HR, kcal, density (kcal per minute), zone split, the last session of the same sport and the
-30-day average — plus the bedtime link when a session ends close to the agreed bedtime.
+30-day average - plus the bedtime link when a session ends close to the agreed bedtime.
 ``log_sleep`` returns onset versus bedtime and wake versus the anchor.
 """
 
@@ -118,7 +118,7 @@ def _bedtime_link(ctx: ToolContext, ended_at: datetime | None) -> str | None:
     if 0 <= gap <= BEDTIME_LINK_MIN:
         return (
             f"ended {local_end:%H:%M}, {gap} min before the {ctx.profile.bed_time:%H:%M} bedtime"
-            " — late intense training pushes sleep onset back"
+            " - late intense training pushes sleep onset back"
         )
     if gap < 0 and gap > -240:
         return f"ended {local_end:%H:%M}, after the {ctx.profile.bed_time:%H:%M} bedtime"

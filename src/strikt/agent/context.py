@@ -4,14 +4,14 @@ Request shape (research/02 §7, shared/prompt-caching.md):
 
 - ``tools``     registry definitions, sorted, strict, byte-stable (cached with system[0]);
 - ``system[0]`` the static coach prompt, ``cache_control {ephemeral, ttl 1h}``;
-- ``system[1]`` the profile block — profile + active protocol + active notes rendered
+- ``system[1]`` the profile block - profile + active protocol + active notes rendered
   deterministically (sorted keys, no timestamps, no ids that change between turns) plus the
-  onboarding prompt and checklist while onboarding is unfinished — ``cache_control {ephemeral}``;
-- ``messages``  the stored turns verbatim — at least ``settings.context_max_turns`` of them,
+  onboarding prompt and checklist while onboarding is unfinished - ``cache_control {ephemeral}``;
+- ``messages``  the stored turns verbatim - at least ``settings.context_max_turns`` of them,
   trimmed with hysteresis (``HISTORY_SLACK``): the window's first row moves only every
   ``HISTORY_SLACK`` new rows, so between trims the history is a byte-stable prefix and the
   explicit ``cache_control`` on its last block is actually *read* (a plain sliding window would
-  change ``messages[0]`` every turn and write the whole history at 1.25× each time) — under
+  change ``messages[0]`` every turn and write the whole history at 1.25× each time) - under
   ``settings.context_max_tokens`` (≈ 4 chars/token for ASCII, 2.5 for Cyrillic); then the
   current user message:
   a ``<context>`` text block (local now, today's day state, yesterday's close line, the week
@@ -114,7 +114,7 @@ def estimate_tokens(value: Any) -> int:
     """≈ 4 chars per token for ASCII and 2.5 for non-ASCII (Cyrillic) over the JSON rendering.
 
     A budget, not a count: the Sonnet 5 tokenizer is not public. English prose lands near
-    4 chars/token; Russian near 2.5–3, so a flat 4 would undercount a Russian history by ~40 %.
+    4 chars/token; Russian near 2.5-3, so a flat 4 would undercount a Russian history by ~40 %.
     """
     if isinstance(value, str):
         text = value
@@ -197,7 +197,7 @@ def render_profile_block(
         f"timezone: {user.timezone or 'UTC'}",
     ]
     if profile is None:
-        lines.append("(no profile yet — onboarding has not started)")
+        lines.append("(no profile yet - onboarding has not started)")
     else:
         mapper = profile.__table__.columns
         rendered: dict[str, str] = {}
@@ -214,7 +214,7 @@ def render_profile_block(
     lines.append("</profile>")
 
     if protocol is None:
-        lines.append("<protocol>none yet — propose one in onboarding step 8</protocol>")
+        lines.append("<protocol>none yet - propose one in onboarding step 8</protocol>")
     else:
         lines += [
             f"<protocol version={protocol.version}>",
@@ -544,7 +544,7 @@ async def render_context_block(
             log.warning("context_history_failed", user_id=user.id, error=repr(exc))
             rendered = ""
         parts.append("<history>")
-        parts.append(rendered or "(nothing matched — use get_history / search_history)")
+        parts.append(rendered or "(nothing matched - use get_history / search_history)")
         parts.append("</history>")
 
     try:

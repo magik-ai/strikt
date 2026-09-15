@@ -2,7 +2,7 @@
 
 Reads go through ``strikt.db.repo`` where a query exists (key, barcode); the name-search fallback
 is a SQLAlchemy query defined here. TTLs: OFF 90 days, USDA 365 days; rows written by the agent
-(``web``/``model``/``user``/``label``) never expire on their own — the agent overwrites them.
+(``web``/``model``/``user``/``label``) never expire on their own - the agent overwrites them.
 Stale rows are still returned as ``stale=True`` so the resolver can serve them when the network
 is down.
 """

@@ -2,7 +2,7 @@
 
 ``setMyCommands`` is per language (Telegram picks the client's language, default = English);
 ``setMyDescription`` / ``setMyShortDescription`` come from ``telegram/copy.py`` so the copy has
-one home. Limits (research/03 §1 item 15–16): command 1–32 ``[a-z0-9_]``, description 1–256,
+one home. Limits (research/03 §1 item 15-16): command 1-32 ``[a-z0-9_]``, description 1-256,
 short description ≤ 120, description ≤ 512.
 """
 

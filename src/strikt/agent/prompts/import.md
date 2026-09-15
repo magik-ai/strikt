@@ -30,3 +30,6 @@ Rules:
   measurements, 5 notes") and ask one question only if something was ambiguous. Imported
   numbers are the user's history, not today's totals: they never change today's remaining
   budget.
+
+Never a long dash: no em dash, no en dash, no minus sign. A hyphen with spaces ( - ), and a
+range as 20-40.

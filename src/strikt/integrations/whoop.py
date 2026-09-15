@@ -9,7 +9,7 @@ Facts from research/04-whoop.md (verified against the live OpenAPI spec on 2026-
 - Collections: ``/v2/activity/workout``, ``/v2/activity/sleep``, ``/v2/recovery``, ``/v2/cycle``
   with ``limit`` (max 25), ``start`` (inclusive), ``end`` (exclusive), ``nextToken`` in, and
   ``records`` + ``next_token`` out. Newest first.
-- Units: kilojoules (``kcal = kJ / 4.184``), ``*_milli`` milliseconds, strain 0–21.
+- Units: kilojoules (``kcal = kJ / 4.184``), ``*_milli`` milliseconds, strain 0-21.
 - ``score`` exists only when ``score_state == "SCORED"``; ``PENDING_SCORE`` records are skipped
   (a later ``*.updated`` webhook re-delivers them); ``UNSCORABLE`` ones are stored without a score.
 - Webhooks: ``X-WHOOP-Signature = base64(HMAC-SHA256(client_secret, timestamp_ms + raw_body))``

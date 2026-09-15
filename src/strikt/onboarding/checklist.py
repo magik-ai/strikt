@@ -115,8 +115,8 @@ STEPS: tuple[Step, ...] = (
         "protocol",
         ("protocol",),
         ("protocol",),
-        "propose kcal and macros with 2–3 alternatives; store the pick with update_protocol",
-        "предложить калории и макросы с 2–3 вариантами; выбор сохранить через update_protocol",
+        "propose kcal and macros with 2-3 alternatives; store the pick with update_protocol",
+        "предложить калории и макросы с 2-3 вариантами; выбор сохранить через update_protocol",
     ),
     Step(
         9,

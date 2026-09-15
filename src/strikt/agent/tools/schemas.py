@@ -1,7 +1,7 @@
 """Pydantic input models for every tool (PLAN §6.4).
 
 Each model's docstring is the tool description the model sees; each field description is the
-parameter doc. Keep them factual and short — they are part of the cached prompt prefix.
+parameter doc. Keep them factual and short - they are part of the cached prompt prefix.
 Avoid free-form ``dict`` fields and numeric constraints: strict tool use forbids
 ``additionalProperties`` other than ``false`` and ``minimum``/``maximum``-style keywords.
 """
@@ -98,13 +98,19 @@ class MealItemInput(ToolInput):
     )
     source: FoodSource = Field(
         default="model",
-        description="Where the numbers came from: label, off, usda, web, model (your estimate) or user.",
+        description=(
+            "Where the numbers came from. label: a nutrition label you read. off/usda: a food "
+            "database. web: a menu, a delivery app or a page (yours or researched) that stated "
+            "them - these under-report, so loose items get the buffer. model: your own estimate "
+            "from ingredients. user: the user stated them."
+        ),
     )
     source_url: str | None = Field(default=None, description="URL that backs the numbers.")
     countable: bool = Field(
         default=True,
-        description="False for loose foods (pasta, rice, sauces, soups, dressed salads) — the "
-        "sanity layer adds the under-report buffer to them.",
+        description="False for loose foods (pasta, rice, sauces, soups, dressed salads). A loose "
+        "item whose numbers a vendor stated (source=web) also gets the under-report buffer; your "
+        "own estimate is taken as it is, so estimate the real plate.",
     )
 
     def to_food_item(self) -> FoodItemIn:

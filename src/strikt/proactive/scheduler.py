@@ -15,12 +15,12 @@ The job table (local time; ``wake``/``bed`` from the profile, defaults 08:00 / 0
     whoop_no_workout       10:00           silence_check 12:00     same_meal_streak 12:05
     fiber_check            13:30           no_lunch 15:00          weekend_risk Fri 17:00
     protein_check          18:00           weekly_review Sun 20:00 no_dinner 21:00
-    day_not_closed         23:00           bedtime_minus_30 bed − 0:30
+    day_not_closed         23:00           bedtime_minus_30 bed - 0:30
     nightly_summary        03:00 (callback into the memory module)
 
 The profile's ``checkin_times`` (brief §4 step 9: "proactive check-ins and at what times") move
-the meal-silence slots: a time before 10:00 replaces ``no_first_meal``, 10:00–16:59 ``no_lunch``,
-17:00–21:59 ``no_dinner``, later ``day_not_closed`` (``triggers.checkin_deadlines``; the
+the meal-silence slots: a time before 10:00 replaces ``no_first_meal``, 10:00-16:59 ``no_lunch``,
+17:00-21:59 ``no_dinner``, later ``day_not_closed`` (``triggers.checkin_deadlines``; the
 preconditions read the same table so the job fires and the check agrees).
 
 Brief §7 adds ``whoop_no_workout``, ``two_off_days``, ``same_meal_streak``, ``event_planned``,

@@ -2,7 +2,7 @@
 
 The verify step (``agent/verify.py``) compares these with the database. Only lines that present
 themselves as a day total are read ("Total", "Итого", "за день", "so far"…); per-item lines and
-"remaining / осталось" lines are ignored on purpose — a false mismatch would trigger a paid
+"remaining / осталось" lines are ignored on purpose - a false mismatch would trigger a paid
 rewrite of a correct reply, while a missed claim only skips the check.
 
 Number formats accepted: ``1240``, ``1 240`` (space or thin space), ``1,240``, ``1240.5``.
@@ -97,7 +97,7 @@ def _kcal_in(line: str) -> float | None:
 
 def _macro_in(line: str, key: str) -> float | None:
     label_first, number_first = _PATTERNS[key]
-    # Case-sensitive single letters (P/C/F, Б/У/Ж) — a lowercase "c" inside a word is not carbs.
+    # Case-sensitive single letters (P/C/F, Б/У/Ж) - a lowercase "c" inside a word is not carbs.
     for pattern in (label_first, number_first):
         match = pattern.search(line)
         if match:
@@ -122,7 +122,7 @@ def extract_numbers(text: str) -> ClaimedTotals:
         if not line or not is_total_line(line):
             continue
         # Many replies put "Total:" on its own line and the numbers on the next; look ahead
-        # only through the same line — the model is told to keep the total on one line.
+        # only through the same line - the model is told to keep the total on one line.
         found_kcal = _kcal_in(line)
         found = {key: _macro_in(line, key) for key in _MACRO_WORDS}
         if found_kcal is None and all(v is None for v in found.values()):

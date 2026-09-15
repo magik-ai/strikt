@@ -7,7 +7,7 @@
 * Nutrient mapping (ids / legacy numbers): 1008/208 kcal, 1003/203 protein, 1004/204 fat,
   1005/205 carbs, 1079/291 fibre, 1093/307 sodium (mg). The live search shape is
   ``{nutrientId, nutrientNumber, value}``; detail/abridged shapes use ``nutrient.id`` /
-  ``number`` and ``amount`` — the parser reads whichever is present. Energy falls back
+  ``number`` and ``amount`` - the parser reads whichever is present. Energy falls back
   2048 → 2047 → 1062 (kJ) → computed 4/4/9.
 * Values are per 100 g. Branded rows carry ``servingSize`` + ``servingSizeUnit``.
 * 1 000 req/h with a registered key; HTTP 429 → None. Never raises.

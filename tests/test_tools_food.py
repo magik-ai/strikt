@@ -119,13 +119,24 @@ async def test_log_meal_avocado_plate_returns_corrected_fat_and_flag_line(
 
 
 async def test_log_meal_loose_food_gets_buffer_and_ask_slot(tool_ctx: ToolContext) -> None:
-    args = schemas.LogMealInput(items=[item("tonkotsu ramen", 780, 38, 85, 30, countable=False)])
+    """A number the restaurant stated (``source="web"``) is buffered; see ``BUFFERED_SOURCES``."""
+    args = schemas.LogMealInput(
+        items=[item("tonkotsu ramen", 780, 38, 85, 30, countable=False, source="web")]
+    )
     result = parsed(await food_tools.log_meal(tool_ctx, args))
     logged = result["items"][0]
     assert logged["countable"] is False
     assert logged["kcal"] == 975  # +25 % buffer from settings
     assert result["ask_slot"] is True
     assert any("loose_under_report" in line for line in result["flags"])
+
+
+async def test_log_meal_does_not_buffer_the_coach_s_own_estimate(tool_ctx: ToolContext) -> None:
+    """The owner stopped trusting the counter: an estimate is not inflated a second time."""
+    args = schemas.LogMealInput(items=[item("tonkotsu ramen", 780, 38, 85, 30, countable=False)])
+    result = parsed(await food_tools.log_meal(tool_ctx, args))
+    assert result["items"][0]["kcal"] == 780
+    assert not any("loose_under_report" in line for line in result["flags"])
 
 
 async def test_log_meal_resolves_missing_numbers_from_cache(

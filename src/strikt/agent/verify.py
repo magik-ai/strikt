@@ -1,11 +1,11 @@
-"""Reflexion check before sending (PLAN §6.3; research/01 D1–D3: reflect on failure only).
+"""Reflexion check before sending (PLAN §6.3; research/01 D1-D3: reflect on failure only).
 
-The evaluator is deterministic and cheap: after a tool that changes today's numbers ran — or
-when the user asked to recalculate — the day state is rebuilt from the database and every day
+The evaluator is deterministic and cheap: after a tool that changes today's numbers ran - or
+when the user asked to recalculate - the day state is rebuilt from the database and every day
 total the draft claims (``agent/numbers.py``) is compared with it (within 2 % or 5 kcal; 2 % or
 1 g for grams). Only on a mismatch is the model called once more, with ``prompts/verify.md``,
 the draft and the authoritative numbers, to rewrite the reply. No self-critique on success, no
-second retry: one bounded trial protects latency (the paper's Ω = 1–3, τ-bench's lesson).
+second retry: one bounded trial protects latency (the paper's Ω = 1-3, τ-bench's lesson).
 """
 
 from __future__ import annotations

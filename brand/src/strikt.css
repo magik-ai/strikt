@@ -39,7 +39,7 @@ html,body{background:var(--paper);color:var(--ink);font-family:var(--sans);font-
 .bubble p + p{margin-top:12px}
 /* Telegram's inline keyboard: separate rounded buttons in a card tint 6 px under the bubble, not a
    bar fused to its bottom edge. It hangs below the bubble and does not move the avatar, so the row
-   that carries one is a two-row grid — avatar and bubble share row 1 and end on the same bottom
+   that carries one is a two-row grid - avatar and bubble share row 1 and end on the same bottom
    edge, the keyboard has row 2 to itself. */
 .row.kbrow{display:grid;grid-template-columns:40px auto;column-gap:14px;justify-content:start;align-items:end}
 .row.kbrow > .av{grid-row:1;grid-column:1;align-self:end}
@@ -51,7 +51,7 @@ html,body{background:var(--paper);color:var(--ink);font-family:var(--sans);font-
 .night .kb span{background:var(--night-card);border-color:var(--rule-dark);color:var(--text-dark)}
 .tick{display:inline-block;vertical-align:-1px;margin-left:6px}
 /* A photo fills its bubble edge to edge, with the time and the ticks overlaid on the picture in a
-   dark translucent pill — Telegram never frames a photo or gives it a caption row of its own. */
+   dark translucent pill - Telegram never frames a photo or gives it a caption row of its own. */
 .bubble.photo{padding:0;max-width:none;position:relative;overflow:hidden;
   border-radius:16px;border-bottom-right-radius:4px;background:var(--card);border:1px solid var(--rule)}
 .bubble.photo > svg{display:block}

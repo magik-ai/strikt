@@ -8,16 +8,16 @@ Examples in the voice the prompts enforce (`PROMPTS.md`), not transcripts.
 
 **A lunch screenshot.** You send a delivery-app item that claims "520 kcal, 38 P, 26 C, 18 F".
 
-> Chicken pasta — 690 kcal / 38 P / 70 C / 24 F / 4 fiber. Menu said 26 g carbs; a real pasta portion is 60–80. Loose food, +25 %.
+> Chicken pasta - 690 kcal / 38 P / 70 C / 24 F / 4 fiber. Menu said 26 g carbs; a real pasta portion is 60-80. Loose food, +25 %.
 > **Total** 1 120 kcal / 80 P / 80 C / 48 F / 4 fiber
 > Left: 780 kcal · 100 P · 40 C · 32 F · 26 fiber
 > Dinner has to carry 70+ g protein. Cottage cheese plate or a large meat dish.
 
 **A challenge.** You write "recalculate, that doesn't add up".
 
-> omelette, 3 eggs — 310 / 22 P / 2 C / 24 F
-> Greek yogurt 0 %, 200 g — 120 / 20 P / 8 C / 0 F
-> chicken pasta — 690 / 38 P / 70 C / 24 F
+> omelette, 3 eggs - 310 / 22 P / 2 C / 24 F
+> Greek yogurt 0 %, 200 g - 120 / 20 P / 8 C / 0 F
+> chicken pasta - 690 / 38 P / 70 C / 24 F
 > Sum: 1 120 kcal / 80 P / 80 C / 48 F. Cross-check 80×4 + 80×4 + 48×9 = 1 072, within 5 %.
 > Total stands. Left: 780 kcal · 100 P.
 
@@ -39,8 +39,8 @@ fiber     6 /    30g  ▓▓░░░░░░
 Left: 830 kcal · 90 P · 58 C · 30 F
 
 Meals
-• 09:10 breakfast — omelette, 3 eggs, Greek yogurt 0%, 200 g blueberries · 430
-• 13:40 lunch — chicken shawarma pl… · 640
+• 09:10 breakfast - omelette, 3 eggs, Greek yogurt 0%, 200 g blueberries · 430
+• 13:40 lunch - chicken shawarma pl… · 640
 Training: strength · 62 min · strain 9.4 · 410 kcal · avg HR 118
 Due: waist
 ```
@@ -98,7 +98,7 @@ A message: album parts are gathered for 1.2 s and merged; a pasted Anthropic key
 - **Postgres 18.** The memory is typed rows, not a vector store: numbers live in tables, summaries cite them. Tests run the same models on SQLite. Migrations from day one.
 - **APScheduler 3.11.** Per-user cron jobs in the user's timezone, in-process, recomputed when the profile changes. 4.x is still alpha.
 - **Claude Sonnet 5 for everything.** Effort `medium` for turns, `low` for verify, proactive decisions, summaries and `web_research`. A cheaper second model was rejected: its 4,096-token cache minimum would silently skip caching the system block (`RESEARCH.md` §7).
-- **Bring your own key.** Each user's model calls run on that user's Anthropic key, pasted once into the chat; the operator pays for hosting, not for other people's tokens, and the "one window" rule holds — the key is a message, not a settings screen. A private deployment flips `LLM_KEY_MODE=server` and pays for everyone with one key.
+- **Bring your own key.** Each user's model calls run on that user's Anthropic key, pasted once into the chat; the operator pays for hosting, not for other people's tokens, and the "one window" rule holds - the key is a message, not a settings screen. A private deployment flips `LLM_KEY_MODE=server` and pays for everyone with one key.
 - **OpenAI `gpt-transcribe` for voice.** Sonnet 5 takes text and images only. Telegram's OGG goes to OpenAI as is, no ffmpeg; `whisper-1` is the fallback. Optional.
 - **Server-side web search in a separate call.** `web_research` is its own model call carrying Anthropic's `web_search` and `web_fetch` tools, so the main tool list never changes and the cache holds. It costs money, so it is for restaurant dishes, not for eggs. The tool type strings are settings (`WEB_SEARCH_TOOL_TYPE`, `WEB_FETCH_TOOL_TYPE`), so a renamed version is a config change, not a deploy; what comes back is marked untrusted and used as data, never as instructions.
 
@@ -145,7 +145,7 @@ Strikt bills every model call to the key of the person it works for. The operato
 **Two modes** (`LLM_KEY_MODE`):
 
 - `user` (default). Each user brings their own key. A new user's `/start` ends with the walkthrough (console → Billing → API keys → paste it here); any message from a user without a key gets the same walkthrough and no model call; a question about the key gets it too; proactive nudges and the nightly summary skip keyless users (`llm_key_missing` in the log). `ANTHROPIC_API_KEY` is optional and, when set, serves only `ADMIN_TELEGRAM_IDS`, so you can use your own bot without pasting a key. The server key is never used for a keyless non-admin.
-- `server`. One operator key for everyone — a private deployment for yourself or your family. `ANTHROPIC_API_KEY` is required; pasted keys are still stored but not used.
+- `server`. One operator key for everyone - a private deployment for yourself or your family. `ANTHROPIC_API_KEY` is required; pasted keys are still stored but not used.
 
 **The key in the chat.** A message containing `sk-ant-…` is handled before anything else and never becomes conversation history. The bot checks the key with one call (`GET /v1/models/<model>` on a client built from that key, 10 s, no retries): a 401 or 403 means "Anthropic rejected this key" and nothing is stored; a network or server error stores the key anyway and says so, and the next real call is the check. The key is Fernet-encrypted into `users`, the message that carried it is deleted from the chat (when Telegram refuses, the reply asks you to delete it), and the reply names only the last four characters. A new key replaces the old one. If Anthropic rejects the stored key later, mid-turn, the reply says so and nothing is retried. `/forget_me` deletes the key with everything else. The key never reaches the logs: any `sk-ant-…` string is masked by the log processor.
 
@@ -161,7 +161,7 @@ You need a Linux machine with Docker Compose and a Telegram account. Each user n
 6. **Start.** `docker compose up -d --build`. Compose starts Postgres 18, waits for it to be healthy, runs `alembic upgrade head`, starts the bot.
 7. **Check.** `docker compose logs -f bot` should show `migrations_done` and `strikt_started`; `curl localhost:8080/health` answers `{"status": "ok", ...}` (the port is published on 127.0.0.1 only; `WEB_PORT` in `.env` changes the host side).
 8. **Name and avatar.** `TELEGRAM_BOT_TOKEN=... uv run python scripts/setup_telegram.py` sets the name, descriptions, commands and the avatar (`brand/avatar/avatar-512.jpg`). The bot sets commands and descriptions itself at start; this adds name and picture.
-9. **Send `/start`.** The bot explains where to get an Anthropic key; paste it, the message with the key disappears, and the ten questions begin — resumable at any message, food logged along the way.
+9. **Send `/start`.** The bot explains where to get an Anthropic key; paste it, the message with the key disappears, and the ten questions begin - resumable at any message, food logged along the way.
 
 **Optional: a domain, HTTPS and webhooks.** WHOOP, Withings and Apple Health need a public HTTPS URL. Point a DNS record at the machine, open ports 80 and 443, set `CADDY_DOMAIN=coach.example.com` and `PUBLIC_BASE_URL=https://coach.example.com`, then `docker compose --profile tls up -d`. Caddy gets a Let's Encrypt certificate and proxies to the bot. For Telegram updates by webhook instead of polling, also set `TELEGRAM_MODE=webhook` and a `TELEGRAM_WEBHOOK_SECRET`; the bot registers `<PUBLIC_BASE_URL>/telegram` on start.
 
@@ -199,13 +199,13 @@ The list from `.env.example`. Compose sets `DATABASE_URL` from `POSTGRES_PASSWOR
 
 | Variable | Required | Default | Meaning |
 |---|---|---|---|
-| `TELEGRAM_BOT_TOKEN` | yes | — | token from BotFather |
+| `TELEGRAM_BOT_TOKEN` | yes | - | token from BotFather |
 | `ALLOWED_TELEGRAM_IDS` | in practice | empty | comma-separated Telegram ids allowed to `/start` without a code |
 | `ADMIN_TELEGRAM_IDS` | no | empty | ids that may `/invite`; admins are also allowed |
 | `TELEGRAM_MODE` | no | `polling` | `polling` or `webhook` (needs HTTPS `PUBLIC_BASE_URL`) |
-| `TELEGRAM_WEBHOOK_SECRET` | in webhook mode | — | secret Telegram sends with each webhook |
+| `TELEGRAM_WEBHOOK_SECRET` | in webhook mode | - | secret Telegram sends with each webhook |
 | `LLM_KEY_MODE` | no | `user` | `user`: each user pastes their own Anthropic key into the chat; `server`: `ANTHROPIC_API_KEY` pays for everyone |
-| `ANTHROPIC_API_KEY` | in server mode | — | the operator's Claude key: everyone's in `server` mode, the fallback for `ADMIN_TELEGRAM_IDS` in `user` mode |
+| `ANTHROPIC_API_KEY` | in server mode | - | the operator's Claude key: everyone's in `server` mode, the fallback for `ADMIN_TELEGRAM_IDS` in `user` mode |
 | `ANTHROPIC_MODEL` | no | `claude-sonnet-5` | model id for every call |
 | `EFFORT_TURN` | no | `medium` | effort for chat turns |
 | `EFFORT_VERIFY` | no | `low` | effort for the verify rewrite |
@@ -223,19 +223,19 @@ The list from `.env.example`. Compose sets `DATABASE_URL` from `POSTGRES_PASSWOR
 | `CONTEXT_MAX_TURNS` | no | `30` | turns of history sent each turn |
 | `CONTEXT_MAX_TOKENS` | no | `40000` | history token cap, whichever comes first |
 | `LLM_TIMEOUT_S` | no | `120` | HTTP timeout per model call |
-| `OPENAI_API_KEY` | no | — | voice transcription; a fallback for users who did not paste their own |
+| `OPENAI_API_KEY` | no | - | voice transcription; a fallback for users who did not paste their own |
 | `OPENAI_TRANSCRIPTION_MODEL` | no | `gpt-transcribe` | primary transcription model |
 | `OPENAI_TRANSCRIPTION_FALLBACK_MODEL` | no | `whisper-1` | fallback when the primary errors |
 | `DATABASE_URL` | no | bundled Postgres | async SQLAlchemy URL; Compose overrides it |
 | `POSTGRES_PASSWORD` | no | `strikt` | password of the bundled Postgres; change it |
-| `TOKEN_ENCRYPTION_KEY` | yes | — | Fernet key for tokens at rest; `make keygen` |
+| `TOKEN_ENCRYPTION_KEY` | yes | - | Fernet key for tokens at rest; `make keygen` |
 | `PUBLIC_BASE_URL` | for integrations | `http://localhost:8080` | public HTTPS base for OAuth callbacks and webhooks |
 | `WEB_HOST` | no | `0.0.0.0` | interface the aiohttp server binds |
 | `WEB_PORT` | no | `8080` | port the aiohttp server listens on; under Compose the host-side port only (the container always listens on 8080, published on 127.0.0.1) |
-| `CADDY_DOMAIN` | with `--profile tls` | — | domain for the Caddy TLS profile |
-| `WHOOP_CLIENT_ID` / `WHOOP_CLIENT_SECRET` | for WHOOP | — | WHOOP developer app |
-| `WITHINGS_CLIENT_ID` / `WITHINGS_CLIENT_SECRET` | for Withings | — | Withings developer app |
-| `USDA_API_KEY` | no | — | USDA FoodData Central key (`DEMO_KEY` works with low limits); a fallback for users who did not paste their own |
+| `CADDY_DOMAIN` | with `--profile tls` | - | domain for the Caddy TLS profile |
+| `WHOOP_CLIENT_ID` / `WHOOP_CLIENT_SECRET` | for WHOOP | - | WHOOP developer app |
+| `WITHINGS_CLIENT_ID` / `WITHINGS_CLIENT_SECRET` | for Withings | - | Withings developer app |
+| `USDA_API_KEY` | no | - | USDA FoodData Central key (`DEMO_KEY` works with low limits); a fallback for users who did not paste their own |
 | `OFF_USER_AGENT` | no | `Strikt/0.1 (...)` | User-Agent Open Food Facts asks for |
 | `LOG_LEVEL` | no | `INFO` | `DEBUG | INFO | WARNING | ERROR | CRITICAL` |
 | `LOG_FORMAT` | no | `pretty` | `json` in production (Compose forces it) |
@@ -245,7 +245,7 @@ The list from `.env.example`. Compose sets `DATABASE_URL` from `POSTGRES_PASSWOR
 | `PROACTIVE_FOLLOWUP_MINUTES` | no | `45` | minutes before an unanswered nudge escalates |
 | `QUIET_START` / `QUIET_END` | no | `00:00` / `07:30` | default quiet hours; per-user values live in the profile |
 | `RUN_MIGRATIONS` | no | `true` | run `alembic upgrade head` in-process on boot |
-| `LOOSE_FOOD_BUFFER` | no | `0.25` | buffer on loose foods (pasta, rice, sauces, soups), 0–1 |
+| `LOOSE_FOOD_BUFFER` | no | `0.25` | buffer on loose foods (pasta, rice, sauces, soups), 0-1 |
 
 ## Connecting WHOOP
 
@@ -270,7 +270,7 @@ Notifications are unsigned, so each one is only a hint: its dates are ignored, t
 
 Anything that syncs into Apple Health (Renpho, Eufy, Xiaomi scales, Apple Watch, Garmin, Oura) reaches Strikt through one personal URL; no developer account needed. In the chat, "connect Apple Health": the coach answers with your URL, `<PUBLIC_BASE_URL>/webhooks/apple-health/<token>`, and these steps in your language. The token is your key; keep the URL private.
 
-- **Option A, Health Auto Export (recommended).** Install "Health Auto Export – JSON+CSV". Automations → + → REST API: your URL, POST, JSON, export version 2, batch requests on. Data types: Health Metrics (weight, body fat, steps, resting HR, HRV, sleep) and Workouts, period "since last sync". Optional header `X-Strikt-Secret: <token>`. HealthKit is unreadable while the phone is locked, so add a Shortcuts "Time of Day" automation at 08:00 that runs its "Run Automation" action.
+- **Option A, Health Auto Export (recommended).** Install "Health Auto Export - JSON+CSV". Automations → + → REST API: your URL, POST, JSON, export version 2, batch requests on. Data types: Health Metrics (weight, body fat, steps, resting HR, HRV, sleep) and Workouts, period "since last sync". Optional header `X-Strikt-Secret: <token>`. HealthKit is unreadable while the phone is locked, so add a Shortcuts "Time of Day" automation at 08:00 that runs its "Run Automation" action.
 - **Option B, Shortcuts only.** "Find Health Samples" (Weight, last 1 day, limit 1) → "Dictionary" with `weight_kg` = the sample's value, `date` = its start date (`steps`, `resting_hr`, `hrv_ms` likewise) → "Get Contents of URL": your URL, POST, JSON body = the dictionary. Automation: Time of Day, 08:00 daily, "Ask Before Running" off.
 
 Three payload shapes are accepted, detected by shape:

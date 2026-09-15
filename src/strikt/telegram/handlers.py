@@ -16,7 +16,7 @@ What happens to a message:
    data can only ever land in the user's own chat.
 3. Bring-your-own-key, before anything else touches the text: a message carrying an Anthropic
    key (``sk-ant-…``) is checked with one cheap call, stored encrypted, deleted from the chat and
-   answered with code-rendered copy — it is never a conversation turn. Then the user's own
+   answered with code-rendered copy - it is never a conversation turn. Then the user's own
    ``LLM`` is resolved (``LLMResolver.for_user``); a user without a key gets the key walkthrough
    (``key.needed``, or ``key.help`` when they asked about the key) and no model call.
 4. Everything else becomes an ``Incoming`` (largest photo, image/PDF documents through
@@ -974,7 +974,7 @@ async def handle_key_message(
     the old one). The message that carried the key is deleted from the chat either way; when
     Telegram refuses, ``key.saved_keep`` asks the user to delete it. Never persisted as a turn,
     never logged (only the last four characters). A user still in onboarding then gets the
-    interview's first question at once — the key was the missing piece after ``/start``."""
+    interview's first question at once - the key was the missing piece after ``/start``."""
     lang = resolve_lang(user.language)
     # the secret leaves the chat first; the check may take up to KEY_CHECK_TIMEOUT_S
     deleted = await _delete_quietly(deps, inbound.chat_id, inbound.message_id)

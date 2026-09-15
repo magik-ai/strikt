@@ -75,7 +75,7 @@ def test_brief_large_pasta_at_26g_carbs_is_corrected_from_the_portion() -> None:
 def test_brief_large_pasta_without_grams_assumes_a_large_portion() -> None:
     checked, flags = check_item(item("Large pasta bolognese", 300, 14, 26, 10))
     assert "portion_implausible" in codes(flags)
-    assert checked.macros.carbs_g == 75  # 250 g × 30 g/100 g, inside the brief's 60–80 g
+    assert checked.macros.carbs_g == 75  # 250 g × 30 g/100 g, inside the brief's 60-80 g
     assert "large" in flags[0].message
 
 
@@ -186,7 +186,8 @@ def test_classify_countable(name: str, countable: bool, category: str) -> None:
 
 
 def test_loose_buffer_applies_to_kcal_and_carbs_only() -> None:
-    checked, flags = check_item(item("Fried rice", 400, 10, 60, 12))
+    """A number a vendor stated: the menu under-reports, so the buffer goes on."""
+    checked, flags = check_item(item("Fried rice", 400, 10, 60, 12, source="web"))
     assert codes(flags) == ["loose_under_report"]
     assert checked.countable is False
     assert checked.macros.kcal == 500
@@ -199,12 +200,12 @@ def test_loose_buffer_applies_to_kcal_and_carbs_only() -> None:
 
 
 def test_loose_buffer_is_configurable() -> None:
-    checked, _ = check_item(item("Fried rice", 400, 10, 60, 12), buffer=0.4)
+    checked, _ = check_item(item("Fried rice", 400, 10, 60, 12, source="web"), buffer=0.4)
     assert checked.macros.kcal == 560
 
 
 def test_loose_buffer_off_still_marks_the_item_loose() -> None:
-    checked, flags = check_item(item("Fried rice", 400, 10, 60, 12), buffer=0)
+    checked, flags = check_item(item("Fried rice", 400, 10, 60, 12, source="web"), buffer=0)
     assert checked.countable is False
     assert checked.macros.kcal == 400
     assert flags[0].code == "loose_under_report"
@@ -220,7 +221,9 @@ def test_loose_buffer_never_inflates_weighed_or_user_numbers(source: FoodSource)
 
 
 def test_model_can_mark_an_unknown_dish_loose() -> None:
-    checked, flags = check_item(item("Chef's special", 400, 20, 40, 15, countable=False))
+    checked, flags = check_item(
+        item("Chef's special", 400, 20, 40, 15, countable=False, source="web")
+    )
     assert codes(flags) == ["loose_under_report"]
     assert "loose:" in flags[0].message
     assert checked.countable is False
@@ -391,7 +394,7 @@ def test_processed_meat_and_cv_helpers() -> None:
 
 
 def test_corrections_compound_in_order_and_each_flag_carries_its_snapshot() -> None:
-    checked, flags = check_item(item("Chicken avocado rice bowl", 420, 40, 45, 7))
+    checked, flags = check_item(item("Chicken avocado rice bowl", 420, 40, 45, 7, source="web"))
     assert codes(flags) == ["implausible_fat", "loose_under_report"]
     assert flags[0].corrected is not None
     assert flags[0].corrected.fat_g == 15
@@ -408,8 +411,17 @@ def test_check_item_is_deterministic() -> None:
 
 def test_check_items_preserves_order() -> None:
     results = check_items(
-        [item("Fried rice", 400, 10, 60, 12), item("Boiled eggs", 140, 12, 1, 10)]
+        [item("Fried rice", 400, 10, 60, 12, source="web"), item("Boiled eggs", 140, 12, 1, 10)]
     )
     assert [r[0].name for r in results] == ["Fried rice", "Boiled eggs"]
     assert codes(results[0][1]) == ["loose_under_report"]
     assert results[1][1] == []
+
+
+def test_the_coach_s_own_estimate_is_not_buffered() -> None:
+    """The owner stopped trusting the counter: a model estimate already includes the oil and the
+    real portion, so a +25 % buffer on top of it counted the same optimism twice."""
+    checked, flags = check_item(item("Fried rice", 400, 10, 60, 12))
+    assert "loose_under_report" not in codes(flags)
+    assert checked.macros.kcal == 400
+    assert checked.countable is False  # still loose, still says so to the model

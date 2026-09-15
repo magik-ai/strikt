@@ -1,6 +1,6 @@
 """Open Food Facts client (research/06 §1): product by barcode over the v3 endpoint.
 
-* ``GET https://world.openfoodfacts.org/api/v3/product/{barcode}?fields=…`` — envelope
+* ``GET https://world.openfoodfacts.org/api/v3/product/{barcode}?fields=…`` - envelope
   ``{"status": "success", "result": {"id": "product_found"}, "product": {...}}``; the v2 URL is
   the fallback when v3 is unavailable (both carry identical ``nutriments`` keys).
 * Nutriments are per 100 g (or 100 ml): ``energy-kcal_100g`` (else ``energy-kj_100g`` / 4.184),

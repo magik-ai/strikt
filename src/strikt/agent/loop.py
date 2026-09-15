@@ -3,24 +3,24 @@
 Order of operations in ``run_turn``:
 
 1. persist the user turn (media blocks verbatim; stubbed to ``[image: <sha256>]`` at the end);
-2. build the context (``agent/context.py``) — before the ladder is reset, so the block can say
+2. build the context (``agent/context.py``) - before the ladder is reset, so the block can say
    which proactive message the user is answering;
 3. publish ``UserReplied`` and mark open proactive sends as answered;
 4. call the model with tools until ``end_turn``: tool calls of one round are executed and their
    results returned in **one** user message (``is_error`` on failure); ``pause_turn`` is re-sent
    as is; ``max_tokens`` gets one continuation (or, when the cut fell inside a tool call, one
-   retry with a doubled output cap — a half-written ``tool_use`` cannot be re-sent); a
+   retry with a doubled output cap - a half-written ``tool_use`` cannot be re-sent); a
    ``refusal`` becomes an honest one-liner; at most ``settings.max_tool_rounds`` rounds;
-5. Reflexion verify (``agent/verify.py``) — only after a state-changing tool or a recalculation
+5. Reflexion verify (``agent/verify.py``) - only after a state-changing tool or a recalculation
    request, against the day the tools actually touched (``log_meal`` at 00:10 with a 00:30
    bedtime, or ``get_day_state(date=yesterday)``, is checked against *that* day; a reply that
    mixes days is not checked), and only rewrites on a real mismatch;
-6. persist the assistant turn (final text only — intermediate tool rounds are not history, the
+6. persist the assistant turn (final text only - intermediate tool rounds are not history, the
    day state carries the ids), publish ``DayStateChanged`` for every day a state-changing tool
    touched, refresh those days' cards when a refresher is wired, pick the keyboard, commit.
 
 Every tool result is parsed once (``ToolTrace``) for the date(s) it reports and the meal id it
-created or changed, so the keyboard's Undo button always targets the meal of *this* turn — never
+created or changed, so the keyboard's Undo button always targets the meal of *this* turn - never
 "whatever meal is now last" after an undo or a correction of an older meal.
 
 Tool calls in one round run sequentially by default: the handlers share the turn's
@@ -494,7 +494,7 @@ async def run_turn(deps: TurnDeps, incoming: Incoming) -> TurnResult:
     try:
         outcome = await _model_loop(deps, user, bundle, ctx)
     except LLMAuthError as exc:
-        # the user's own key was rejected: no retry, no "Claude is down" — ask for a new key
+        # the user's own key was rejected: no retry, no "Claude is down" - ask for a new key
         log.warning("turn_key_rejected", user_id=user.id, status=exc.status)
         error = str(exc)
         outcome = _LoopOutcome(t(lang, "key.rejected"), [], LLMUsage(), 0.0, 0)

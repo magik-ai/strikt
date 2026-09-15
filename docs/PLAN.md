@@ -1,4 +1,4 @@
-# Strikt — architecture plan and module contracts
+# Strikt - architecture plan and module contracts
 
 This is the build spec. Every build agent reads this file first, then the research files in
 `research/`, then the brief at `/root/.claude/uploads/8db7122f-c439-5341-8cf3-2b0544b86168/b739469c-coachbotbrief.md`.
@@ -17,7 +17,7 @@ Bot runtime model: `claude-sonnet-5`. Voice transcription: OpenAI (best model pe
 - The number is the product. Every food message: per-item kcal/P/C/F(+fiber), day total, remaining, one
   line of advice at most.
 - Infinite memory: the agent must never say it lacks context that exists in the DB.
-- Proactive by default (intensity `pushy`), quiet hours 00:00–07:30, max 5 proactive sends per day,
+- Proactive by default (intensity `pushy`), quiet hours 00:00-07:30, max 5 proactive sends per day,
   escalation ladder 1→4, reset on any user reply.
 - Honest voice (brief §3.1, §7.4): fact first, no greeting, no emoji by default, one question max.
 - Universal: nothing in the code hard-codes Ilya's numbers. His data comes in through onboarding/import.
@@ -141,12 +141,12 @@ class Outgoing(BaseModel): text (HTML); keyboard: list[list[Button]] | None; rep
 - `math.py`: `kcal_from_macros(p, c, f, alcohol=0)` (4/4/9/7), `scale(per_100g, grams)`, `sum_macros`,
   `per_serving(label, serving_g)`, `mismatch_ratio(stated_kcal, computed)`.
 - `sanity.py`: pure functions returning `list[Flag]` (`Flag(code, severity, message, corrected: Macros | None)`):
-  - `kcal_mismatch` when |stated − 4/4/9| > 10% → corrected kcal from macros.
+  - `kcal_mismatch` when |stated - 4/4/9| > 10% → corrected kcal from macros.
   - `implausible_fiber` (eggs/meat/dairy claiming fiber; any single dish > 20 g unless legumes/bran).
   - `implausible_fat` (avocado/nut/oil dishes claiming < what the ingredient alone carries; a table of
     minimum fat per named ingredient).
   - `loose_under_report`: pasta/rice/noodles/sauce/soup/curry/salad-with-dressing → `countable=False`,
-    apply +25% kcal/carb buffer (configurable 20–40%) and say why.
+    apply +25% kcal/carb buffer (configurable 20-40%) and say why.
   - `vegetable_fat`: a vegetable side with ≥ 6 g fat → "roasted in oil" note.
   - `sodium_high`: ≥ 600 mg per serving or ≥ 1.5 g/100 g flagged; processed meat + CV-risk note if the
     profile's health_context mentions lipids/cardio (the flag carries a `needs_health_context` marker;
@@ -177,10 +177,10 @@ Every model call for a user is billed to that user's own Anthropic key. `users` 
 per user. The chat handles a pasted `sk-ant-…` before anything else: `AnthropicKeyValidator` (one
 `models.retrieve`, 10 s), store encrypted, delete the message, code-rendered copy (`key.*` in
 `telegram/copy.py`); never a conversation turn, never logged (`logging.py` masks key-like strings).
-Why: the operator must not pay for other users' model calls; the brief's "one window" stands — the
+Why: the operator must not pay for other users' model calls; the brief's "one window" stands - the
 key is a message, not a settings screen.
 
-### 6.2 Context assembly (`context.py`) — the infinite-memory contract
+### 6.2 Context assembly (`context.py`) - the infinite-memory contract
 Order (for caching: stable → volatile):
 1. `system[0]` = coach prompt (static text from `prompts/coach.md`), `cache_control {ephemeral, ttl 1h}`.
 2. `system[1]` = profile block: profile + active protocol + active notes (kind/text), rendered
@@ -274,7 +274,7 @@ The text is always model-written; never a template.
 - `scheduler.py`: `AsyncIOScheduler`; `reschedule_user(user)` computes jobs from the profile in the
   user's timezone: `morning_line` (wake+0:15), `no_first_meal` (wake+3h), `no_lunch` (15:00),
   `fiber_check` (13:30), `protein_check` (18:00), `no_dinner` (21:00), `day_not_closed` (23:00),
-  `bedtime_minus_30` (bed−0:30), `weekend_risk` (Fri 17:00), `weekly_review` (Sun 20:00),
+  `bedtime_minus_30` (bed-0:30), `weekend_risk` (Fri 17:00), `weekly_review` (Sun 20:00),
   `measurement_overdue` (daily 08:05), `silence_check` (daily 12:00), `nightly_summary` (03:00),
   `integration_sync` (every 30 min). Jobs are recomputed on profile change.
 - `triggers.py`: each trigger = precondition over the DB (pure, testable) → `TriggerFire | None`.
@@ -343,7 +343,7 @@ The text is always model-written; never a template.
   Reflexion adopt/reject list summarized), deploy in 15 minutes (docker compose), env vars table,
   connecting WHOOP / Withings / Apple Health, importing history, cost notes, security, dev loop.
 - `PROMPTS.md`: generated from `agent/prompts/*.md` by `scripts/build_prompts_md.py` (test asserts sync).
-- `RESEARCH.md`: consolidated from `research/*.md` — findings and decisions.
+- `RESEARCH.md`: consolidated from `research/*.md` - findings and decisions.
 - `UX.md`: Today card spec, message templates (food reply, menu ranking, workout analysis, day close,
   proactive ladder examples), keyboard map, error copy.
 - `DEMO.md`: transcript onboarding → first food photo → WHOOP sync → day close → next-day query.
