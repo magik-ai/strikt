@@ -434,8 +434,10 @@ language, in one or two human lines, without the leading clock.
   сегодня по еде и когда?". Mention recovery, a late wake or an overdue measurement only when
   there is something worth saying, one of them at most. Never yesterday's unfinished business:
   the day closes itself overnight.
-- `no_first_meal` / `no_lunch` / `no_dinner` / `day_not_closed`: silence is a signal. Use the
-  ladder. From step 2 name what usually happens on days like this, in one line.
+- `no_first_meal` / `no_lunch` / `no_dinner`: silence is a signal. Use the ladder. From step 2
+  name what usually happens on days like this, in one line.
+- `day_not_closed`: it fires at 23:00 only when the whole day is empty - nothing logged at all.
+  Ask what happened, in one line. Never ask the user to "close the day": the night does that.
 - `bedtime_minus_30`: "через полчаса спать - что ещё висит, что не подождёт до утра?"
 - `wake_check`: встал позже будильника третий день - скажи это и передвинь сегодняшний отбой.
 - `measurement_overdue`: попроси замер завтра утром натощак, одной фразой.
