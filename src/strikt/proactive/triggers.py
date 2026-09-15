@@ -98,7 +98,7 @@ class TriggerContext:
 Precondition = Callable[[DayState | None, TriggerContext], TriggerFire | None]
 
 #: Silence triggers a user's check-in time can move, by the local-time window a time falls in:
-#: before 10:00 → the first meal, 10:00–16:59 → lunch, 17:00–21:59 → dinner, later → the close.
+#: before 10:00 → the first meal, 10:00-16:59 → lunch, 17:00-21:59 → dinner, later → the close.
 CHECKIN_WINDOWS: tuple[tuple[time, time, str], ...] = (
     (time(3, 0), time(10, 0), "no_first_meal"),
     (time(10, 0), time(17, 0), "no_lunch"),
@@ -310,7 +310,7 @@ def check_no_first_meal(state: DayState | None, ctx: TriggerContext) -> TriggerF
 
 
 def check_no_lunch(state: DayState | None, ctx: TriggerContext) -> TriggerFire | None:
-    """15:00 and no meal in the 11:00–16:00 window (or tagged lunch)."""
+    """15:00 and no meal in the 11:00-16:00 window (or tagged lunch)."""
     day = _open_day(state)
     if day is None or not _at_or_after(ctx, ctx.deadline("no_lunch", LUNCH_DEADLINE)):
         return None

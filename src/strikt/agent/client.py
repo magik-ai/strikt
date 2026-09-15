@@ -6,8 +6,8 @@ for the conversation tail, records token usage (with cost) and normalises the re
 ``LLMResult`` whose content blocks are plain dicts (ready to store and to send back).
 
 Bring-your-own-key: one ``LLM`` per API key. ``LLMFactory.for_user`` hands out the client that
-bills the right key for a user — the user's own key (``LLM_KEY_MODE=user``, the default; the
-server key serves only admins) or the server key for everyone (``LLM_KEY_MODE=server``) — and
+bills the right key for a user - the user's own key (``LLM_KEY_MODE=user``, the default; the
+server key serves only admins) or the server key for everyone (``LLM_KEY_MODE=server``) - and
 ``None`` when the user has no key yet, so nothing is ever billed to the operator for a keyless
 user. ``AnthropicKeyValidator`` is the one cheap call that checks a pasted key before it is
 stored. ``FakeLLM`` / ``FakeLLMFactory`` / ``FakeKeyValidator`` are the test doubles.
@@ -492,7 +492,7 @@ class LLMFactory:
 
     ``for_user`` applies ``settings.llm_key_mode``:
 
-    - ``user`` (default): the user's stored key; a user without one gets ``None`` — except an
+    - ``user`` (default): the user's stored key; a user without one gets ``None`` - except an
       admin (``ADMIN_TELEGRAM_IDS``), who falls back to the server key when it is set, so the
       operator can use their own bot without pasting a key;
     - ``server``: the server key for everyone (private deployments).

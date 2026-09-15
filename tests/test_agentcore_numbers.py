@@ -10,7 +10,7 @@ from strikt.agent.numbers import ClaimedTotals, extract_numbers, is_total_line
 def test_russian_total_line_with_thin_spaces_and_cyrillic_labels() -> None:
     text = (
         "Записал.\n"
-        "Куриная грудка 200 г — 330 ккал / Б 62 / У 0 / Ж 7\n"
+        "Куриная грудка 200 г - 330 ккал / Б 62 / У 0 / Ж 7\n"
         "Итого за день: 1 240 ккал | Б 118 | У 60 | Ж 45 | клетчатка 12\n"
         "Осталось: 760 ккал | Б 92 | У 15 | Ж 60"
     )
@@ -79,7 +79,7 @@ def test_advice_lines_with_today_do_not_override_the_total() -> None:
     text = (
         "Total: 1240 kcal / P 95 / C 110 / F 48 / fiber 18\n"
         "Left: 760 kcal, P 115\n"
-        "Today you still need 60 g protein — add a shake."
+        "Today you still need 60 g protein - add a shake."
     )
     assert extract_numbers(text) == ClaimedTotals(
         kcal=1240, protein_g=95, carbs_g=110, fat_g=48, fiber_g=18

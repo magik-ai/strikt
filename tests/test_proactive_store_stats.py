@@ -110,7 +110,7 @@ async def test_sleep_nights_and_target(session: AsyncSession, user: User, profil
     nights = await store.sleep_nights(session, user.id, tz=TZ, n=3)
     assert [n.night_of for n in nights] == [TODAY, TODAY - timedelta(days=1)]
     assert nights[0].as_facts()["onset"] == "01:10" and nights[0].as_facts()["woke"] == "07:40"
-    assert store.sleep_target_minutes(profile) == 420  # 00:30 → 08:00 = 450 − 30
+    assert store.sleep_target_minutes(profile) == 420  # 00:30 → 08:00 = 450 - 30
     profile.bed_time = None
     assert store.sleep_target_minutes(profile) == 420
     profile.bed_time = time(2, 0)

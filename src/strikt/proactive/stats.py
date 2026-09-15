@@ -3,10 +3,10 @@
 - ``response_rate``: share of proactive sends for one trigger that got a reply in the last N
   days (the dataset every send row contributes to).
 - ``compute_streaks``: consecutive days closed within target, days with three logged meals,
-  bedtime hits — counted backwards from yesterday (today is not over), or from today when
+  bedtime hits - counted backwards from yesterday (today is not over), or from today when
   today is already closed.
 - ``week_scorecard``: the Sunday numbers (kcal, protein, fiber, sessions, bedtime adherence,
-  measurements) — each a number, no stars.
+  measurements) - each a number, no stars.
 
 Pure aggregation over ``repo`` reads; no writes, no LLM.
 """

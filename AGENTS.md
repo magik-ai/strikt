@@ -1,4 +1,4 @@
-# AGENTS.md — for any agent working on Strikt
+# AGENTS.md - for any agent working on Strikt
 
 Read in this order: this file → `CLAUDE.md` → the brief (product law) → `PLAN.md` (engineering
 law) → the module you own. Keep changes inside your module's contract; if the contract must
@@ -19,7 +19,7 @@ change, change PLAN.md in the same commit and say why.
   regenerate `PROMPTS.md` with `make prompts`.
 - Never say the bot "lacks context": if the DB has it, look it up.
 - Every model call for a user is billed to that user's own Anthropic key: get the client from
-  `llm_factory.for_user(session, user)` (never a process-wide `LLM`); `None` means no key —
+  `llm_factory.for_user(session, user)` (never a process-wide `LLM`); `None` means no key:
   reply `key.needed` or skip with `llm_key_missing`. Never log a key; `logging.py` masks
   `sk-ant-…` strings as a last line of defence, not as permission.
 - No real network in tests. Use `FakeLLM`, `FakeLLMFactory`, `FakeKeyValidator`,

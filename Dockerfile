@@ -6,7 +6,7 @@ ENV UV_COMPILE_BYTECODE=1 UV_LINK_MODE=copy UV_PYTHON_DOWNLOADS=never UV_PROJECT
 WORKDIR /app
 # Dependencies first so they cache independently of source changes: this layer only re-runs when
 # pyproject.toml or uv.lock change, which is the caching that matters. No `--mount=type=cache`
-# here — Railway's builder demands its own cacheKey prefix in the mount id, and the layer cache
+# here - Railway's builder demands its own cacheKey prefix in the mount id, and the layer cache
 # already covers the expensive sync.
 COPY pyproject.toml uv.lock ./
 RUN uv sync --locked --no-dev --no-install-project

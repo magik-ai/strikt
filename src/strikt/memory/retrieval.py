@@ -112,7 +112,7 @@ def _day_start(day: date, tz: str) -> datetime:
 
 def meal_row(meal: Meal, tz: str) -> HistoryRow:
     macros = repo.meal_macros(meal)
-    names = ", ".join(item.name for item in meal.items) or "—"
+    names = ", ".join(item.name for item in meal.items) or "-"
     items = [
         {
             "id": i.id,
@@ -138,7 +138,7 @@ def meal_row(meal: Meal, tz: str) -> HistoryRow:
         f" F {_n(macros.fat_g)}, fiber {_n(macros.fiber_g)}"
     )
     if meal.note:
-        detail += f" — {meal.note}"
+        detail += f" - {meal.note}"
     return HistoryRow(
         kind="meal",
         at=ensure_utc(meal.eaten_at or meal.logged_at),
@@ -262,7 +262,7 @@ def lab_row(lab: Lab, tz: str) -> HistoryRow:
     bits: list[str] = []
     if lab.ref_low is not None or lab.ref_high is not None:
         bits.append(
-            f"ref {lab.ref_low if lab.ref_low is not None else '?'}–{lab.ref_high if lab.ref_high is not None else '?'}"
+            f"ref {lab.ref_low if lab.ref_low is not None else '?'}-{lab.ref_high if lab.ref_high is not None else '?'}"
         )
     if lab.flag:
         bits.append(lab.flag)
@@ -540,7 +540,7 @@ def render_row(row: HistoryRow, tz: str) -> str:
     )
     line = f"{stamp} {row.kind} {row.title}"
     if row.detail:
-        line += f" — {_short(row.detail, MAX_DETAIL_CHARS)}"
+        line += f" - {_short(row.detail, MAX_DETAIL_CHARS)}"
     return line
 
 

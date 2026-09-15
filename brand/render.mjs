@@ -7,18 +7,19 @@
     /opt/node22/bin/node brand/render.mjs --list                                                # print job names
 
   What it does, in order:
-    1. writes the logo SVGs (logo/mark*.svg, logo/favicon.svg, logo/lockup-*.svg) from src/mark.js —
-       pure paths; the lock-ups embed the bundled Newsreader woff2 as a base64 @font-face;
+    1. writes the logo SVGs (logo/mark*.svg, logo/favicon.svg, logo/lockup-*.svg) from
+       src/mark.js (pure paths); the lock-ups embed the bundled Newsreader woff2 as a
+       base64 @font-face;
     2. opens every src/*.html in headless Chromium with the fonts in fonts/ (no network) and
        screenshots it at the size and scale listed in JOBS below;
     3. checks that no text fell back to a system font (fails loudly if it did). The check asks
        Chromium which platform fonts it actually rasterised each text element with
        (CSS.getPlatformFontsForNode over a CDP session), so a single glyph outside a subset's
-       unicode-range — an arrow, a ≥, a ✓ — is caught, not just a wrong font-family;
+       unicode-range - an arrow, a ≥, a ✓ - is caught, not just a wrong font-family;
     4. checks that no glyph was rasterised with LCD subpixel antialiasing. Chromium is launched
        with --disable-lcd-text, so every glyph edge is a grey blend between the text colour and
        what is behind it. The check decodes the PNG it just wrote and walks every text element's
-       box: a pixel whose channel spread (max − min) is over 40 and which does not sit on the
+       box: a pixel whose channel spread (max - min) is over 40 and which does not sit on the
        line between two of that element's own colours is a colour fringe, and fails the run.
 
   Requirements: node >= 18, playwright (module path below) and its Chromium build. Nothing else.
@@ -102,7 +103,7 @@ const JOBS = {
 };
 
 // ---------- fringe check ----------
-// A minimal PNG reader (8-bit, non-interlaced, RGB or RGBA — what Chromium writes) so the build can
+// A minimal PNG reader (8-bit, non-interlaced, RGB or RGBA - what Chromium writes) so the build can
 // look at the pixels it just produced without a native dependency.
 function decodePNG(buf) {
   let pos = 8, w = 0, h = 0, depth = 0, colour = 0, interlace = 0;
@@ -151,7 +152,7 @@ function distToSegment(px, a, b) {
   return Math.sqrt(ex * ex + ey * ey + ez * ez);
 }
 
-const FRINGE_SPREAD = 40;   // max(channel) − min(channel) above which a pixel is coloured
+const FRINGE_SPREAD = 40;   // max(channel) - min(channel) above which a pixel is coloured
 const FRINGE_TOL = 26;      // how far off its own palette a coloured pixel may sit
 
 function scanFringe(img, boxes, texts, scale) {
@@ -200,7 +201,7 @@ async function render(names) {
     // font check, two layers:
     //   a. the declared family of every text node must be one of ours (catches a wrong font-family);
     //   b. the *platform* fonts Chromium actually rasterised each text element with must all be
-    //      ours (catches a single glyph — an arrow, a ≥, a ✓ — falling out of a subset's
+    //      ours (catches a single glyph - an arrow, a ≥, a ✓ - falling out of a subset's
     //      unicode-range into DejaVu, which layer a cannot see).
     const report = await page.evaluate(() => {
       const faces = [...document.fonts].map(f => `${f.family} ${f.weight} ${f.status}`);

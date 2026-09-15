@@ -204,7 +204,7 @@ def _rows(n: int) -> list[HistoryRow]:
 def test_render_rows_format_and_budget() -> None:
     assert render_rows([], "en") == ""
     one = render_rows(_rows(1), "en", tz=TZ)
-    assert one == "2026-09-01 12:00 meal lunch 0 — " + "x" * 100
+    assert one == "2026-09-01 12:00 meal lunch 0 - " + "x" * 100
     dated = HistoryRow(
         kind="recovery", at=datetime(2026, 8, 31, 20, 0, tzinfo=UTC), title="recovery 44%"
     )

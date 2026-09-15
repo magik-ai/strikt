@@ -203,9 +203,9 @@ async def test_weekly_review_keeps_five_lines_while_no_lunch_stays_capped(
     instruction; the generic 4-line cap must not eat the instruction."""
     review = (
         "Неделя: 1 980 ккал в среднем, белок 192 г.\n"
-        "Клетчатка 24 г — ниже цели 30.\n"
+        "Клетчатка 24 г - ниже цели 30.\n"
         "Тренировки: 3 из 3. Отбой в срок 4 ночи из 7.\n"
-        "Паттерн: обе субботы — одна еда до вечера, потом 2 600.\n"
+        "Паттерн: обе субботы - одна еда до вечера, потом 2 600.\n"
         "Задача недели: обед до 14:00 в субботу, замер талии в четверг."
     )
     fake_llm.queue(FakeLLM.json_result({"send": True, "text": review, "reason": "sunday"}))

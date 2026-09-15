@@ -1,4 +1,4 @@
-"""``strikt.app``: the real wiring with fakes — WHOOP webhook → engine, proactive sends, the
+"""``strikt.app``: the real wiring with fakes - WHOOP webhook → engine, proactive sends, the
 dispatcher, the Telegram webhook secret, nightly summaries, bot profile, migrations, config docs."""
 
 from __future__ import annotations
@@ -571,7 +571,7 @@ async def test_migrations_upgrade_head_in_a_thread(tmp_path: Path) -> None:
 async def test_migrations_do_not_silence_the_app_loggers(tmp_path: Path) -> None:
     """``run_migrations`` happens after the bot is wired, so alembic.ini's logging config must not
     apply: its ``disable_existing_loggers`` would mute every logger the app already made and its
-    root level (WARN) would drop the rest — the deployed bot would go silent after startup."""
+    root level (WARN) would drop the rest - the deployed bot would go silent after startup."""
     root = logging.getLogger()
     handlers, level = root.handlers[:], root.level
     configure_logging("INFO", "json")

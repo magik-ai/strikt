@@ -210,7 +210,7 @@ async def finish_onboarding(ctx: ToolContext, args: schemas.FinishOnboardingInpu
     missing = checklist.missing_minimum(ctx.profile, facts)
     if missing:
         return fail(
-            "finish_onboarding: missing " + ", ".join(missing) + " — collect these and call again"
+            "finish_onboarding: missing " + ", ".join(missing) + " - collect these and call again"
         )
     now = ctx.clock.now()
     ctx.profile = await repo.upsert_profile(

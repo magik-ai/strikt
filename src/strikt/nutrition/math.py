@@ -76,7 +76,7 @@ def sum_macros(items: Iterable[Macros]) -> Macros:
 
 
 def mismatch_ratio(stated_kcal: float, computed: float) -> float:
-    """|stated − computed| / computed. Both zero → 0; computed zero with a stated value → 1."""
+    """|stated - computed| / computed. Both zero → 0; computed zero with a stated value → 1."""
     if computed <= 0:
         return 0.0 if stated_kcal <= 0 else 1.0
     return abs(stated_kcal - computed) / computed

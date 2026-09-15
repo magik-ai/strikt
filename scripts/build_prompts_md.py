@@ -14,7 +14,7 @@ PROMPTS_DIR = ROOT / "src" / "strikt" / "agent" / "prompts"
 OUTPUT = ROOT / "PROMPTS.md"
 ORDER = ("coach", "onboarding", "proactive", "verify", "summarize", "import")
 
-HEADER = """# Strikt — prompts
+HEADER = """# Strikt - prompts
 
 Generated from `src/strikt/agent/prompts/*.md` by `scripts/build_prompts_md.py`. Do not edit
 this file by hand; edit the source prompt and run `make prompts`.

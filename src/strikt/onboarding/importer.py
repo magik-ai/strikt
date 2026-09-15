@@ -2,8 +2,8 @@
 labs, notes and the protocol, all with ``source=imported``.
 
 The model extracts rows in the shapes from ``agent/prompts/import.md``; this module parses them
-tolerantly (fields are recognised by shape — a ``HH:MM`` is a time, ``k=v`` groups are numbers,
-a slot word is a slot — so a missing time or a swapped column does not lose the row), writes
+tolerantly (fields are recognised by shape - a ``HH:MM`` is a time, ``k=v`` groups are numbers,
+a slot word is a slot - so a missing time or a swapped column does not lose the row), writes
 what it can and reports what it skipped and why. Re-importing the same text is idempotent:
 meals dedupe on (day, time, items), workouts and sleep on a synthetic external id,
 measurements on (type, instant), labs on (marker, date), notes through ``memory.notes``.

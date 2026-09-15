@@ -5,28 +5,29 @@
 ``Flag.corrected``; the returned item carries the final numbers. Rule order (it matters, because
 corrections compound):
 
-1. ``implausible_fiber`` — fibre-free foods claiming fibre; a fibre ceiling per ingredient.
-2. ``implausible_fat``   — a dish naming a fatty ingredient cannot carry less fat than that
+1. ``implausible_fiber`` - fibre-free foods claiming fibre; a fibre ceiling per ingredient.
+2. ``implausible_fat``   - a dish naming a fatty ingredient cannot carry less fat than that
    ingredient alone (table of minimum fat per named ingredient).
-3. ``portion_implausible`` — pasta/rice/noodles at a stated portion ≥ 200 g with < 40 g carbs.
-4. ``vegetable_fat``     — a vegetable side at ≥ 6 g fat was cooked in oil (note, no correction);
+3. ``portion_implausible`` - pasta/rice/noodles at a stated portion ≥ 200 g with < 40 g carbs.
+4. ``vegetable_fat``     - a vegetable side at ≥ 6 g fat was cooked in oil (note, no correction);
    a roasted/fried vegetable side claiming < 3 g fat gets the oil added.
-5. ``kcal_mismatch``     — |stated − 4/4/9(+7 alcohol)| > 10 % → kcal re-derived from macros.
+5. ``kcal_mismatch``     - |stated - 4/4/9(+7 alcohol)| > 10 % → kcal re-derived from macros.
    Runs after the macro corrections so the re-derivation uses the corrected grams, and before
    the buffer so the buffer is never undone.
-6. ``loose_under_report`` — loose foods (pasta, rice, sauces, soups, curries, dressed salads…)
-   get ``countable=False`` and ``+buffer`` on kcal and carbs (default 25 %, brief: 20–40 %).
-7. ``sodium_high``       — ≥ 600 mg per serving or ≥ 1 500 mg per 100 g; processed meat carries a
+6. ``loose_under_report`` - loose foods (pasta, rice, sauces, soups, curries, dressed salads…)
+   get ``countable=False`` and ``+buffer`` on kcal and carbs (default 25 %, brief: 20-40 %).
+7. ``sodium_high``       - ≥ 600 mg per serving or ≥ 1 500 mg per 100 g; processed meat carries a
    ``needs_health_context`` note (severity ``warn`` when the profile's health context mentions
    lipids / cardio, else ``info``).
 
 Which sources are checked:
 
-* ingredient corrections (1–4) are skipped for weighed/scanned sources (``label``, ``off``,
-  ``usda``) — the rules target restaurant, delivery-app and model-estimated numbers, never
+* ingredient corrections (1-4) are skipped for weighed/scanned sources (``label``, ``off``,
+  ``usda``) - they target restaurant, delivery-app and model-estimated numbers, never
   analytical data;
-* the buffer (6) applies only to ``model`` and ``web`` numbers — a user's own estimate is
-  trusted (brief §3.2: "acknowledge when the user's estimate is better");
+* the buffer (6) applies only to ``web`` numbers, the ones a vendor stated; a user's own
+  estimate is trusted (brief §3.2: "acknowledge when the user's estimate is better") and the
+  coach's own estimate is not buffered either (see ``BUFFERED_SOURCES``);
 * the kcal check (5) and the sodium notes (7) run on every source.
 
 Keyword matching is a substring test on the casefolded name padded with spaces, so a keyword
@@ -66,8 +67,14 @@ ASSUMED_LARGE_PORTION_G: Final[float] = 250.0
 
 TRUSTED_SOURCES: Final[frozenset[FoodSource]] = frozenset({"label", "off", "usda"})
 """Weighed or scanned numbers: no ingredient corrections, no buffer."""
-BUFFERED_SOURCES: Final[frozenset[FoodSource]] = frozenset({"model", "web"})
-"""Restaurant / delivery-app / model-estimated numbers: the loose-food buffer applies."""
+#: The buffer exists because *stated* numbers under-report: a menu, a delivery app or a brand
+#: page publishes the kitchen's optimistic portion. A ``model`` estimate is not a stated number,
+#: it is the coach's own reading of the plate - oil, sauce and portion included - so adding 25 %
+#: on top of it counts the same optimism twice and inflates every restaurant meal. The owner
+#: stopped trusting the counter over exactly this, so ``model`` is no longer buffered; the
+#: ingredient rules (1-4) remain the guard against an estimate that is too low.
+BUFFERED_SOURCES: Final[frozenset[FoodSource]] = frozenset({"web"})
+"""Numbers a vendor stated (a menu, a delivery app, a researched page): buffer applies."""
 
 # --------------------------------------------------------------------------- keyword tables
 
@@ -1224,7 +1231,7 @@ def _rule_loose(category: str, macros: Macros, buffer: float) -> tuple[Macros, F
         code="loose_under_report",
         severity="info",
         message=(
-            f"{category}: loose food, typically under-reported by 20–40%; "
+            f"{category}: loose food, typically under-reported by 20-40%; "
             f"+{buffer * 100:.0f}% on kcal and carbs ({macros.kcal:.0f} → {corrected.kcal:.0f} kcal)"
         ),
         corrected=round_macros(corrected),
@@ -1248,7 +1255,7 @@ def _rule_sodium(
             f"{per100 / 1000:.1f} g sodium per 100 g (≥ {SODIUM_PER_100G_MG / 1000:.1f} g)"
         )
     if parts:
-        message = "; ".join(parts) + " — salty day, expect water weight tomorrow"
+        message = "; ".join(parts) + " - salty day, expect water weight tomorrow"
         if processed:
             message += "; processed meat: fine as an episode, not as a daily base"
         return Flag(
@@ -1282,7 +1289,7 @@ def check_item(
 ) -> tuple[FoodItemIn, list[Flag]]:
     """Run every sanity rule on one item; return the corrected item and its flags.
 
-    ``buffer`` is the loose-food under-report buffer (0.25 = +25 %; brief: 20–40 %).
+    ``buffer`` is the loose-food under-report buffer (0.25 = +25 %; brief: 20-40 %).
     ``health_context`` is the profile's free-text health context; it only changes the severity
     of the processed-meat note, which always carries ``needs_health_context=True``.
     """
@@ -1308,7 +1315,7 @@ def check_item(
     portion_fixed = any(flag.code == "portion_implausible" for flag in flags)
     if not countable and item.source in BUFFERED_SOURCES and not portion_fixed:
         # A portion correction already replaced the stated carbs with a grams-based estimate;
-        # buffering on top of it would overshoot (brief: a real large pasta is 60–80 g carbs).
+        # buffering on top of it would overshoot (brief: a real large pasta is 60-80 g carbs).
         apply(_rule_loose(category if not classified_countable else "loose", macros, buffer))
     sodium_flag = _rule_sodium(name, item, macros, health_context)
     if sodium_flag is not None:

@@ -1,4 +1,4 @@
-"""SQLAlchemy 2.0 typed models — every table from PLAN §3.
+"""SQLAlchemy 2.0 typed models - every table from PLAN §3.
 
 Conventions:
 - Every table except ``users``, ``invites`` and ``foods`` carries ``user_id`` and every query

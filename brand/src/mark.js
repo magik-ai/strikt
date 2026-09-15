@@ -1,4 +1,4 @@
-/* Strikt mark — single source of geometry. Plain script: works in the browser (window.StriktMark)
+/* Strikt mark - single source of geometry. Plain script: works in the browser (window.StriktMark)
    and in node (module.exports). Every stroke is emitted as a filled capsule path, so the SVG files
    contain pure paths and no stroke attributes. viewBox is always 0 0 100 100. */
 (function (root) {
@@ -10,7 +10,7 @@
     night: '#161513', nightCard: '#201E1A', ruleDark: '#35322C', textDark: '#EFEAE0', strikeDark: '#F0604E'
   };
 
-  // Angle of the strike from horizontal, bottom-left to top-right. 28° sits inside the 27–29° window.
+  // Angle of the strike from horizontal, bottom-left to top-right. 28° sits inside the 27-29° window.
   var ANGLE = 28;
   var TAN = Math.tan(ANGLE * Math.PI / 180);
 
@@ -28,16 +28,16 @@
   // at 32 px a 2 px hole between 3 px strokes is two clean background pixels, which is what keeps
   // the four verticals separate; a wider gap would force strokes that vanish at 16 px. Its strike
   // is 2 px, not 3: a 3 px strike bridged the 2 px holes and fused the bars into one ink block
-  // across the crossing (alpha rows 12–19), which is the one thing the small gap has to survive.
+  // across the crossing (alpha rows 12-19), which is the one thing the small gap has to survive.
   //
   // Both pixel cuts are drawn with BUTT caps, not round ones: a round cap at 32 px spends half a
   // pixel row of grey above and below every stroke, so 3 px bars read as fuzzy-tipped 2 px bars and
   // the "whole-pixel edges" claim is only true horizontally. With butt caps the ink of the tiny cut
-  // covers rows 4–27 solid and nothing else.
+  // covers rows 4-27 solid and nothing else.
   //
   // The micro cut is the same drawing on a 16 px canvas (1 px = 6.25 units): 2 px strokes on
   // whole-pixel edges (centres 2 · 6 · 10 · 14 px), 2 px gaps, ink y 2 → 14. Its strike is not a
-  // rotated stroke at all — at 16 px a 2 px diagonal is 8 rows of grey smudge between the bars — but
+  // rotated stroke at all - at 16 px a 2 px diagonal is 8 rows of grey smudge between the bars - but
   // a hand-placed staircase: four 4 × 2 px blocks at rows 10 · 8 · 6 · 4, one step per gap, every
   // edge on a whole pixel and no antialiasing anywhere. Its slope (6 rows over 12 px between block
   // centres) is 26.6°, inside the 27 ± 2° window to within half a degree.
@@ -94,7 +94,7 @@
   }
 
   // The 16 px cut, hand-placed on device pixels (1 px = 6.25 units): four 2 px bars in columns
-  // 1 · 5 · 9 · 13 running rows 2–13, and a four-block staircase for the strike.
+  // 1 · 5 · 9 · 13 running rows 2-13, and a four-block staircase for the strike.
   var MICRO_PX = {
     bars: [1, 5, 9, 13],          // left edge of each 2 px bar; rows 2 → 14
     step: [[0, 10], [4, 8], [8, 6], [12, 4]]  // left edge, top row of each 4 × 2 px block

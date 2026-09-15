@@ -12,6 +12,7 @@ from pathlib import Path
 
 import pytest
 
+from strikt.telegram import render
 from strikt.telegram.copy import (
     LANGUAGES,
     NATIVE_NAMES,
@@ -22,14 +23,14 @@ from strikt.telegram.copy import (
 )
 from strikt.telegram.keyboards import language_picker
 
-LONG_DASH = "—"
+LONG_DASHES = render.LONG_DASHES
 PROMPTS = Path(__file__).resolve().parents[1] / "src" / "strikt" / "agent" / "prompts"
 
 
 def test_rendered_copy_has_no_long_dash() -> None:
     for lang, table in STRINGS.items():
         for key, text in table.items():
-            assert LONG_DASH not in text, (lang, key)
+            assert not any(dash in text for dash in LONG_DASHES), (lang, key)
 
 
 def test_prompts_have_no_long_dash() -> None:
@@ -38,7 +39,8 @@ def test_prompts_have_no_long_dash() -> None:
     files = sorted(PROMPTS.glob("*.md"))
     assert files, "no prompts found"
     for path in files:
-        assert LONG_DASH not in path.read_text(encoding="utf-8"), path.name
+        text = path.read_text(encoding="utf-8")
+        assert not any(dash in text for dash in LONG_DASHES), path.name
 
 
 def test_the_onboarding_checklist_has_no_long_dash() -> None:
@@ -46,9 +48,10 @@ def test_the_onboarding_checklist_has_no_long_dash() -> None:
     from strikt.onboarding import checklist
 
     source = Path(checklist.__file__).read_text(encoding="utf-8")
-    assert LONG_DASH not in source
+    assert not any(dash in source for dash in LONG_DASHES)
     for lang in ("en", "ru"):
-        assert LONG_DASH not in checklist.render_state(None, lang)
+        rendered = checklist.render_state(None, lang)
+        assert not any(dash in rendered for dash in LONG_DASHES)
 
 
 def test_rendered_copy_reads_on_a_phone() -> None:

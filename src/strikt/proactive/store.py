@@ -8,7 +8,7 @@ filters by ``user_id``; nothing here writes.
 
 Local-time rules used throughout (PLAN §14: store UTC, compute local with ``zoneinfo``):
 - a meal's instant is ``eaten_at`` when known, else ``logged_at``;
-- the *lunch window* is 11:00–16:00 local, the *evening* starts at 18:00 local;
+- the *lunch window* is 11:00-16:00 local, the *evening* starts at 18:00 local;
 - a day "counts" for pattern statistics only when at least one meal was logged.
 """
 

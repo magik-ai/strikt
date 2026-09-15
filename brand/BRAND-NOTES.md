@@ -1,4 +1,4 @@
-# Strikt brand — the numbers behind every decision
+# Strikt brand - the numbers behind every decision
 
 Companion to `/BRAND.md` (the system in words). Everything here is what the files actually contain;
 `src/mark.js` is the single source for the geometry and `render.mjs` regenerates every raster from it.
@@ -18,8 +18,8 @@ two semicircular caps), so the SVGs carry no `stroke` attributes and no font dep
 | Stroke centres x | 21.5 · 40.5 · 59.5 · 78.5 | 50 ± 9.5, 50 ± 28.5 |
 | Stroke ends y (cap centres) | 19.5 → 80.5 | ink from 15 to 85 |
 | Group outer edges | 17 → 83 | stroke centre ± 4.5 |
-| Strike width | 9 (night: 9, i.e. equal to the verticals) | equal-width on paper; on night the red drops visually, so the night file keeps it at the vertical width too — the full cut shares the value because 9 was already the vertical width; the rule matters for the small cut and any thinned variant |
-| Strike angle | 28.0° from horizontal, bottom-left up | inside the 27–29° window; tan 28° = 0.5317 |
+| Strike width | 9 (night: 9, i.e. equal to the verticals) | equal-width on paper; on night the red drops visually, so the night file keeps it at the vertical width too - the full cut shares the value because 9 was already the vertical width; the rule matters for the small cut and any thinned variant |
+| Strike angle | 28.0° from horizontal, bottom-left up | inside the 27-29° window; tan 28° = 0.5317 |
 | Strike overshoot | 4.5 beyond each outer edge (cap centre) | reads as a pen leaving the count, not a border |
 | Strike cap centres | (12.5, 69.94) → (87.5, 30.06) | dx 75, dy 39.88 |
 | Ink extremes | x 8 → 92, y 15 → 85 | box 84 × 70, point-symmetric about (50, 50) |
@@ -50,10 +50,10 @@ on a whole pixel and nothing is antialiased into grey:
 |---|---|---|
 | Stroke width | 3 | 9.375 |
 | Gap | 2 | 6.25 · pitch 15.625 |
-| Stroke centres x | 8.5 · 13.5 · 18.5 · 23.5 (strokes 7–10, 12–15, 17–20, 22–25) | 26.5625 · 42.1875 · 57.8125 · 73.4375 |
-| Stroke ends y (butt-cap ends) | ink 4 → 28 (rows 4–27) | 17.1875 → 82.8125 |
+| Stroke centres x | 8.5 · 13.5 · 18.5 · 23.5 (strokes 7-10, 12-15, 17-20, 22-25) | 26.5625 · 42.1875 · 57.8125 · 73.4375 |
+| Stroke ends y (butt-cap ends) | ink 4 → 28 (rows 4-27) | 17.1875 → 82.8125 |
 | Strike | width **2**, 28°, overshoot 2.5 | 6.25 · over 7.8125 |
-| Ink box | 26 × 24 = 81 % × 75 % of the side | — |
+| Ink box | 26 × 24 = 81 % × 75 % of the side | - |
 | Caps | **butt** | rectangles, not capsules |
 
 The gap is 0.67 × the stroke, the only cut that breaks the ≥ 1.1 rule: at 32 px what matters is two
@@ -61,20 +61,19 @@ whole background pixels between strokes.
 
 The caps are **butt**, not round. `mark.js` draws both pixel cuts with `bar()` (a rectangle whose
 ends are square, extended by w/2 along the axis so the ink covers the same extent a capsule would)
-instead of `capsule()`. With round caps the top and bottom rows of every stroke were half-alpha —
-the cap is a semicircle, so it covers a fraction of its last row — which made the 3 px bars read as
+instead of `capsule()`. With round caps the top and bottom rows of every stroke were half-alpha - the cap is a semicircle, so it covers a fraction of its last row - which made the 3 px bars read as
 fuzzy-tipped 2 px bars and made "whole-pixel edges" true horizontally only. Read off the current
-PNG: rows 4–27 are solid `###` in every stroke column, rows 3 and 28 are empty.
+PNG: rows 4-27 are solid `###` in every stroke column, rows 3 and 28 are empty.
 
 The strike is the one place the tiny cut departs from the geometry as well: 2 px, not the 3 px of the
 verticals. At 3 px the pen covered 3.4 rows at every x, so where it crossed a 2 px hole it bridged
 two bars for four rows and the alpha map read `###..###..########` at row 12 and `#########` at rows
-17–19 — an ink block in the middle of the icon. At 2 px **the pen bridges each gap for one or two
-rows and no gap for more than two**: read off the current PNG, gap 3–4 is closed at row 13 (cols
-17–24 solid) with row 12 partial, gap 2–3 at rows 15–16, gap 1–2 at row 18 (cols 7–14 solid) with
-row 19 partial; rows 4–11 and 23–27 carry four separate runs. A pen crossing a count has to touch it;
+17-19 - an ink block in the middle of the icon. At 2 px **the pen bridges each gap for one or two
+rows and no gap for more than two**: read off the current PNG, gap 3-4 is closed at row 13 (cols
+17-24 solid) with row 12 partial, gap 2-3 at rows 15-16, gap 1-2 at row 18 (cols 7-14 solid) with
+row 19 partial; rows 4-11 and 23-27 carry four separate runs. A pen crossing a count has to touch it;
 what it must not do is fill the count in. (An earlier note claimed it "joins one pair of bars and the
-other two gaps stay open" — the raster bridges all three, briefly, and that is what it should say.)
+other two gaps stay open" - the raster bridges all three, briefly, and that is what it should say.)
 
 ### Micro cut (`favicon-16.png`; the 16 px raster a tab actually paints)
 
@@ -83,23 +82,23 @@ The browser downsamples a 32 px icon to 16 px for tabs and bookmarks, which turn
 
 | Item | Device px (at 16) | Units |
 |---|---|---|
-| Stroke width | 2 (cols 1–2, 5–6, 9–10, 13–14) | 12.5 |
-| Gap | 2 (cols 3–4, 7–8, 11–12) | 12.5 · pitch 25 |
+| Stroke width | 2 (cols 1-2, 5-6, 9-10, 13-14) | 12.5 |
+| Gap | 2 (cols 3-4, 7-8, 11-12) | 12.5 · pitch 25 |
 | Stroke centres x | 2 · 6 · 10 · 14 | 12.5 · 37.5 · 62.5 · 87.5 |
-| Stroke ends y | ink 2 → 14 (rows 2–13, butt caps) | 12.5 → 87.5 |
+| Stroke ends y | ink 2 → 14 (rows 2-13, butt caps) | 12.5 → 87.5 |
 | Strike | **a staircase, not a rotated stroke** | four 4 × 2 px blocks |
 | Strike blocks (x, top row) | (0, 10) · (4, 8) · (8, 6) · (12, 4) | 4 px wide, 2 px tall |
-| Ink box | 14 × 12 = 88 % × 75 % of the side | — |
+| Ink box | 14 × 12 = 88 % × 75 % of the side | - |
 
 `mark.js` special-cases this cut (`MICRO_PX`): it emits eight axis-aligned rectangles on whole device
 pixels and nothing else, so the 16 px PNG has **no antialiased pixel at all**. Read off the current
-file, rows 2–13 are fully opaque in every bar column and rows 0–1 and 14–15 are empty.
+file, rows 2-13 are fully opaque in every bar column and rows 0-1 and 14-15 are empty.
 
 A rotated 2 px stroke does not survive here: at 16 px it covers roughly eight rows of partial alpha
 across the three gaps and reads as a smudge between the bars rather than a pen. The staircase steps
-once per gap — the step from row 10 to 8 falls in gap 1–2, 8 to 6 in gap 2–3, 6 to 4 in gap 3–4 — so
+once per gap - the step from row 10 to 8 falls in gap 1-2, 8 to 6 in gap 2-3, 6 to 4 in gap 3-4 - so
 it crosses all four bars and lands on the two 1 px overshoots at columns 0 and 15. Slope: 6 rows over
-12 px between block centres = **26.6°**, half a degree outside the 27–29° window every other cut
+12 px between block centres = **26.6°**, half a degree outside the 27-29° window every other cut
 sits in, and the one place the angle is allowed to move because the alternative is grey.
 
 Link it explicitly (`<link rel="icon" sizes="16x16">`); browsers only pick it over the 32 if told.
@@ -111,7 +110,7 @@ Strokes `text-dark #EFEAE0`, strike `strike-dark #F0604E`, strike width = stroke
 
 ### Day-state rule (the one motion)
 
-`bars` 1–4 = meals logged today (breakfast, lunch, dinner, snack are the four slots in `copy.py`),
+`bars` 1-4 = meals logged today (breakfast, lunch, dinner, snack are the four slots in `copy.py`),
 drawn left to right at the full-cut positions; the strike exists only when the day is closed.
 `StriktMark.svg({bars: n, strike: false})` draws an open day; `{bars: 4}` draws the closed mark.
 Animation, if ever used: strike drawn along its length, 200 ms, `cubic-bezier(0.2, 0, 0, 1)`; bars fade
@@ -126,7 +125,7 @@ in over 150 ms; nothing else moves.
   the diameter**, inside the 74 % safe circle (r 189.4 px) with 21 px to spare. Top of the outer
   strokes: 46.5 units = 160 px. (An earlier note read "66 % of the diameter"; the ratio is of the
   radius.)
-- `avatar-night-512.png`: same box, night colourway; for the brand sheet only — the one JPG serves light
+- `avatar-night-512.png`: same box, night colourway; for the brand sheet only - the one JPG serves light
   and dark clients because paper reads as a neutral disc on dark UIs, which is what
   `telegram-profile-1920x1080.png` now shows on both panels.
 - `favicon.svg`: small cut, all ink, transparent. `favicon-32.png`: **tiny cut**, all ink, box 81 %
@@ -143,9 +142,9 @@ x-height 52, left side bearing of "s" 3, font ascent 74, descent 27.
   (unit 85) sits on the baseline; its top (unit 15) is level with the top of the k.
 - Strokes thinned to 8 units (89 % of the full cut), pitch kept at 19 (gap 11), strike 8.
 - Gap from the strike tip (unit 91) to the ink of the "s": 0.5 × cap height = 36 px at 100 px; the
-  wordmark origin is therefore at x = 91 × 1.0714 + 36 − 3 = 130.5 px from the mark's left edge.
+  wordmark origin is therefore at x = 91 × 1.0714 + 36 - 3 = 130.5 px from the mark's left edge.
 - Strike tip top at unit 26 → 26 px below the ascender line, so nothing hangs into the s.
-- Wordmark: "strikt", Newsreader 500, opsz 72, letter-spacing −0.01em; DM Sans 500 (−0.02em) alternate
+- Wordmark: "strikt", Newsreader 500, opsz 72, letter-spacing -0.01em; DM Sans 500 (-0.02em) alternate
   uses its own metrics (k asc 72, cap 70, s bearing 4).
 - `lockup-light.svg` / `lockup-night.svg`: viewBox `0 0 375 100`, baseline y 87.5, the Newsreader
   woff2 (132 kB, latin subset) embedded as a base64 `@font-face`; total 177 kB each.
@@ -181,12 +180,12 @@ red nowhere but in the mark.
 | Size label under a mark | JetBrains Mono 400 | 14 | 0.04em |
 | Timestamps | JetBrains Mono 400 | 14 | 0.02em |
 | Inline buttons | DM Sans 500 | 19 | 0 |
-| Wordmark in the foot | Newsreader 500 | 34 | −0.01em |
-| System sheet display sample | Newsreader 500 | 40 / 1.08 | −0.01em |
+| Wordmark in the foot | Newsreader 500 | 34 | -0.01em |
+| System sheet display sample | Newsreader 500 | 40 / 1.08 | -0.01em |
 | og line | DM Sans 400, ink | 28 | 0 |
 
 Nothing set in `mute` is under 14 px. On `system-1920x1080.png` the do/don't labels and the
-mark-construction column were 11.5 and 13.5 px; both are 14–15 px now, which is why the do/don't
+mark-construction column were 11.5 and 13.5 px; both are 14-15 px now, which is why the do/don't
 became five rows (tile plus one line) instead of five narrow columns with five-line labels. The
 og line is ink, not mute: a feed renders the 1200 × 630 card at roughly half size, and 3.3 : 1 grey at
 an effective 14 px drops out of the card.
@@ -195,13 +194,12 @@ Russian text: DM Sans and Newsreader ship no Cyrillic, so Russian UI copy is set
 400/500 (OFL, Paratype), including the Latin food names inside Russian sentences so a line has one
 texture. JetBrains Mono covers Cyrillic itself. The full JetBrains Mono build (not the Google subset)
 is bundled, and the images now set the card's bar as the **glyph string `render.bar` actually
-writes** — `▓▓▓▓▓░░░`, U+2593 and U+2591, one cell each in JetBrains Mono (measured: 60 px of a 60 px
+writes** - `▓▓▓▓▓░░░`, U+2593 and U+2591, one cell each in JetBrains Mono (measured: 60 px of a 60 px
 cell at 100 px, same as a digit). It was drawn as flat CSS cells before, on the grounds that the
-shade glyphs dither; they do, and that is the point — the dither is what a Telegram client shows, and
+shade glyphs dither; they do, and that is the point - the dither is what a Telegram client shows, and
 an image that draws a cleaner bar promises a card the bot cannot send. Checked at 22 px and 24 px:
 `▓` and `░` are two clearly different greys and the eight cells sit on the mono grid. The `BAR_CSS`
-block and its `<i>` cells are gone from `gen-sources.py`, and `rule` no longer paints a bar track —
-the empty cells are `░` in ink, like the filled ones.
+block and its `<i>` cells are gone from `gen-sources.py`, and `rule` no longer paints a bar track - the empty cells are `░` in ink, like the filled ones.
 
 ## 6. Card numbers (internally consistent)
 
@@ -209,30 +207,30 @@ Protocol: 2 100 kcal · 180 P · 200 C · 70 F · 30 fiber.
 
 | Meal | kcal | P | C | F | fiber | Atwater check (4P + 4C + 9F) |
 |---|---|---|---|---|---|---|
-| 08:55 breakfast — skyr, oats, blueberries | 480 | 38 | 62 | 9 | 8 | 481 |
-| 13:20 lunch — chicken thigh 180 g (325 · 41 · 0 · 17), rice 150 g (195 · 4 · 42 · 1), cucumber salad 120 g (70 · 1 · 4 · 5) | 590 | 46 | 46 | 23 | 3 | 575 |
-| 16:40 snack — greek yogurt, walnuts | 270 | 21 | 12 | 15 | 2 | 267 |
-| 19:50 dinner — grilled chicken plate | 540 | 52 | 42 | 18 | 6 | 538 |
+| 08:55 breakfast - skyr, oats, blueberries | 480 | 38 | 62 | 9 | 8 | 481 |
+| 13:20 lunch - chicken thigh 180 g (325 · 41 · 0 · 17), rice 150 g (195 · 4 · 42 · 1), cucumber salad 120 g (70 · 1 · 4 · 5) | 590 | 46 | 46 | 23 | 3 | 575 |
+| 16:40 snack - greek yogurt, walnuts | 270 | 21 | 12 | 15 | 2 | 267 |
+| 19:50 dinner - grilled chicken plate | 540 | 52 | 42 | 18 | 6 | 538 |
 | after lunch (food reply, russian) | 1 070 | 84 | 108 | 32 | 11 | left 1 030 · 96 · 92 · 38 · 19 |
 | after snack (hero, 17:02; menu, 18:47) | 1 340 | 105 | 120 | 47 | 13 | left 760 · 75 · 80 · 23 |
-| closed (card-closed, profile, sheet) | 1 880 | 157 | 162 | 65 | 19 | — |
+| closed (card-closed, profile, sheet) | 1 880 | 157 | 162 | 65 | 19 | - |
 
-Bars follow `render.bar`: `round(value / target × 8)` filled cells — after snack 5/5/5/5/3, closed
+Bars follow `render.bar`: `round(value / target × 8)` filled cells - after snack 5/5/5/5/3, closed
 7/7/6/7/5.
 
 The day runs 10:10 → 13:21 → 17:02 → 18:47 → 22:41 and every image is the same Thursday (3 September
 2026 is a Thursday; the cards used to read "Wed 3 Sep", which is 2025), so the figures have to agree
 across images:
 
-- **The day chains.** The menu reply at 18:47 opens on **Left: 760 kcal · 75 P** — the state the hero
-  card shows at 17:02 — and ends "Chicken plate. Nothing else on the list reaches 50 P." So the
+- **The day chains.** The menu reply at 18:47 opens on **Left: 760 kcal · 75 P** - the state the hero
+  card shows at 17:02 - and ends "Chicken plate. Nothing else on the list reaches 50 P." So the
   closed card's 19:50 dinner *is* that plate: 540 kcal · 52 P · 18 F from the menu row, plus 42 C and
-  6 fiber (Atwater 538). The totals move with it — 1 880 / 157 P / 162 C / 65 F / 19 fiber — and the
-  verdict reads "Closed at 1 880 / 157 P / 19 fiber. Protein short 23 g" (180 − 157 = 23). The
+  6 fiber (Atwater 538). The totals move with it - 1 880 / 157 P / 162 C / 65 F / 19 fiber - and the
+  verdict reads "Closed at 1 880 / 157 P / 19 fiber. Protein short 23 g" (180 - 157 = 23). The
   dinner used to be salmon, potatoes, broccoli at 600, so a reader following the day watched the
   bot's own recommendation get ignored without comment.
 - The food reply, the Russian reply and the sheet carry **four columns on every row** (kcal · P · C ·
-  F). Fiber is in the prose line under the block — "Fiber 11 of 30", and 11 + 19 = 30 — not a fifth
+  F). Fiber is in the prose line under the block - "Fiber 11 of 30", and 11 + 19 = 30 - not a fifth
   column that appears on the last three rows only and steps the table's right edge out.
 - The closed card carries **no Left line**: once the verdict is written the day is over, and the
   verdict already says "Protein short 23 g". `render.render_day_card` skips the line when
@@ -243,26 +241,26 @@ across images:
 
 Menu image: protein per 100 kcal = P / kcal × 100 (52/540 → 9.6, 38/620 → 6.1, 31/690 → 4.5,
 24/580 → 4.1, 44/1180 → 3.7). The rows are sorted by that ratio, so the column is monotonic and the
-pick / okay / skip boundary follows it — caesar (4.5) is okay and falafel (4.1) is skip, the way
+pick / okay / skip boundary follows it - caesar (4.5) is okay and falafel (4.1) is skip, the way
 round the numbers actually argue. Every row carries a fat column and the brief's one line of why
 (5.7). **The why never repeats a number already printed in its own row and never states one
 ambiguously.** "52 of 75 P left" read as *52 of the remaining 75 are still left* rather than
-*covered*, so the pick row says "leaves 23 P" (75 − 52). "deep fried, 24 P" repeated the 24 P two
+*covered*, so the pick row says "leaves 23 P" (75 - 52). "deep fried, 24 P" repeated the 24 P two
 columns to its left, so the falafel row says "deep fried" and lets its 29 F carry the case. The
 burger's is "fries add 360" (620 → 980).
 
 The delivery-app screenshot is client chrome, not brand: `#FFFFFF` card on radius 12, `#111111`
 names and prices in DM Sans 500 with proportional figures, `#8E8E93` secondary, `#ECECEC` / `#F2F2F2`
 separators, a `#F2F2F2` delivery chip, and 56 px photo placeholders drawn as three neutral greys
-(`#EFEFEF` ground, `#E1E1E1` and `#D2D2D2` discs — a plate out of focus). No mono, no palette token
+(`#EFEFEF` ground, `#E1E1E1` and `#D2D2D2` discs - a plate out of focus). No mono, no palette token
 and no line illustration anywhere inside it: mono is the bot's table and the single-weight ink line
 is the bot's drawing, and this tile has to read as another company's app. Only the bubble around it
-is ours, because a user sent it — and, being a photo message, it is edge to edge in that bubble with
+is ours, because a user sent it - and, being a photo message, it is edge to edge in that bubble with
 the 18:47 pill on top of it.
 
 The staircase under the four bubbles carries the **same grid as the timeline above it**: the `.lad`
 and `.stair` boxes are both x 112 → 1808, the four columns have a 434 px pitch (394 wide, 40 gap), so
-a riser stands on the left edge of the column whose send it opens — 546 · 980 · 1414, measured off
+a riser stands on the left edge of the column whose send it opens - 546 · 980 · 1414, measured off
 the PNG at 545.5 · 979.5 · 1413.5 against column text starting at 547 · 981 · 1415. The svg is
 `viewBox 0 0 1696 132`, `preserveAspectRatio="none"`, risers at 434 · 868 · 1302. Before, the path
 used four equal 424-unit steps from 0, which put every riser 14, 24 and 34 px left of its own moment
@@ -274,9 +272,9 @@ One more collision fixed there: the column tick was `.tick`, which is also `stri
 the drawn delivery ticks (`margin-left: 6px`). Every tick was inheriting that margin and standing
 6 px right of its own column. It is `.tk` now, and the ticks measure 112 · 546 · 980 · 1414.
 
-Ladder timestamps 10:10 · 10:55 · 11:40 · 12:25 — 45 minutes apart (the follow-up delay in
-`ladder.py`), starting at wake + 3 h. Step 2 quotes the brief (7.2) verbatim — "Two hours past your
-usual first meal" — so the card moved rather than the sentence: breakfast is logged at **08:55**, and
+Ladder timestamps 10:10 · 10:55 · 11:40 · 12:25 - 45 minutes apart (the follow-up delay in
+`ladder.py`), starting at wake + 3 h. Step 2 quotes the brief (7.2) verbatim - "Two hours past your
+usual first meal" - so the card moved rather than the sentence: breakfast is logged at **08:55**, and
 08:55 + 2 h = 10:55 exactly. At the old 08:10 the line was 2 h 45 out, which is not "two hours".
 
 **Two deliberate departures from the brief's wording in the ladder, both on purpose.**
@@ -286,7 +284,7 @@ usual first meal" — so the card moved rather than the sentence: breakfast is l
    Those two figures are the first user's own waist measurements. CLAUDE.md law 3 keeps that person's
    numbers out of the repository, and the spec line "exact wording per brief section 7.2 examples"
    loses to it. The sentence is otherwise untouched, and no image in the set carries a personal body
-   number — the protocol on the cards (2 100 kcal · 180 P · 200 C · 70 F · 30 fiber) is invented for
+   number - the protocol on the cards (2 100 kcal · 180 P · 200 C · 70 F · 30 fiber) is invented for
    the images too, not the first user's scheme. A reviewer diffing the image against the brief will
    see this and should stop here.
 2. Step 2 prints "2 600 kcal" where the brief writes "2,600 kcal". That is house style, not a
@@ -295,7 +293,7 @@ usual first meal" — so the card moved rather than the sentence: breakfast is l
 
 ## 7. Spacing and radius in the images
 
-Base 4 px. Stage padding 88 / 112 px; chat column 794–898 px; bubble padding 18 × 24 px, radius 16
+Base 4 px. Stage padding 88 / 112 px; chat column 794-898 px; bubble padding 18 × 24 px, radius 16
 with a 4 px corner on the tail side; avatar 40 px with the small cut at 67.5 % (27 px); cards and
 panels radius 24; no shadows anywhere; user bubbles are `rule` on paper, bot bubbles `card` with a
 1 px `rule` hairline.
@@ -306,9 +304,8 @@ Three edges that have to line up and did not:
   they have to be the same frame twice. The bubble has a fixed width (844 px, the closed card's
   natural width) and a pinned top (240 px), so the card box is x 166 → 1010 in both; before, the
   bubble shrink-wrapped its longest line and the card changed width and position when the day closed.
-  The state mark is one box too: both files draw a 260 px full-cut svg with the same −20.8 px left
-  bearing, so bars 1–3 of the open day land on exactly the x of bars 1–3 of the closed mark —
-  measured off the PNGs, ink from x 1258 in both, the closed frame adding bar 4 out to 1429 — and the
+  The state mark is one box too: both files draw a 260 px full-cut svg with the same -20.8 px left
+  bearing, so bars 1-3 of the open day land on exactly the x of bars 1-3 of the closed mark - measured off the PNGs, ink from x 1258 in both, the closed frame adding bar 4 out to 1429 - and the
   block (mark plus caption, 348 px wide) is centred between the card's right edge and the 1808
   margin. The hero's caption carries the one thing the frame cannot show: the avatar is always the
   full mark, because Telegram holds one picture per bot; the state lives in the card.
@@ -317,8 +314,8 @@ Three edges that have to line up and did not:
   width is the column minus 54, not the column: 794 → 740 (food reply), 834 → 780 (russian). Both
   bubbles in a column end on the same vertical.
 - **One left edge per image.** Captions, footers and the left edge of a left-aligned composition sit
-  on the 112 px grid. The state mark is offset by the *closed* mark's left bearing (−20.8 px at
-  260 px, 2.6 px per unit) so its strike cap sits on the caption's left edge — and the open frame
+  on the 112 px grid. The state mark is offset by the *closed* mark's left bearing (-20.8 px at
+  260 px, 2.6 px per unit) so its strike cap sits on the caption's left edge - and the open frame
   keeps that same offset instead of its own, which is what puts its three bars in the closed frame's
   slots. The system sheet's footer sits at the shared baseline (y 982) with its do/don't column
   ending 77 px above it; it used to sit 21 px lower and 18 px under the last tile.
@@ -340,12 +337,12 @@ picture with a padded caption row under it, which is a layout Telegram does not 
 screenshot uses the same treatment, because a screenshot is a photo message: 420 px app card, edge to
 edge, radius 0 inside the bubble's own 16.
 
-Outgoing messages carry drawn delivery ticks — the ✓ glyph is not in the
+Outgoing messages carry drawn delivery ticks - the ✓ glyph is not in the
 DM Sans or Newsreader subsets, so they are a 17 × 11 SVG in `mute` at 1.6 px (paper on the photo
 pill), matching the illustration rule.
 
 **Bubble widths follow the mono block, not the canvas, and the block fits a phone.** A phone renders
-a `<code>` block at roughly 35–45 columns, so a 53-column row is a message that wraps on the only
+a `<code>` block at roughly 35-45 columns, so a 53-column row is a message that wraps on the only
 device the product runs on. Every table was re-cut to fit, by lifting the unit words out of every
 cell into one header row:
 
@@ -358,7 +355,7 @@ cell into one header row:
 
 JetBrains Mono's advance is 0.6 em exactly (measured: 60 px at 100 px, digits, spaces, figure space
 and the two shade glyphs alike), so a cell is 14.4 px at 24 px and 9 px at 15 px. The mono size in
-the three reply images went 20–21 px → 24 px, the size of the prose beside it, which is how Telegram
+the three reply images went 20-21 px → 24 px, the size of the prose beside it, which is how Telegram
 renders a `<code>` block. Chat columns follow: 693 px (food), 707 px (Russian). The menu screenshot
 and its reply are one centred composition, like the food reply, instead of a row stretched to the
 1 696 px grid.
@@ -368,16 +365,15 @@ shorter than «салат из огурцов» and consistent with itself; the 
 they typed, and the English food name stays English, which is the point of the image.
 
 **The system sheet's third column and its small-cut row.** Every mark in the row now carries its own
-size in 14 px mono under it — 64 · 48 · 40 · 32 on paper, 48 · 40 on night, then the 32 and 16 px
-favicons — so a reader can tell which is which; the row's caption is one line of its own under it
+size in 14 px mono under it - 64 · 48 · 40 · 32 on paper, 48 · 40 on night, then the 32 and 16 px
+favicons - so a reader can tell which is which; the row's caption is one line of its own under it
 ("small cut · paper and night · favicon 32 · 16 · ink", 50 characters, inside the 55 the 564 px
 column holds at 15 px with 0.08em tracking) instead of a `favicon 32 · 16 · ink` fragment beside the
 marks that broke with `· ink` orphaned on a second line. Paying for the label row cost 21 px, so the
-do/don't tiles went 56 → 52 px high and three gaps tightened by 2–6 px: the column now ends at 952.7
+do/don't tiles went 56 → 52 px high and three gaps tightened by 2-6 px: the column now ends at 952.7
 with the footer at 964.7, where it used to run under it.
 
-The mono specimen on the same sheet quoted the **closed** totals with a `Left:` line under them —
-a card state that cannot exist, because `render.render_day_card` skips that line when the day is
+The mono specimen on the same sheet quoted the **closed** totals with a `Left:` line under them - a card state that cannot exist, because `render.render_day_card` skips that line when the day is
 closed and the verdict carries the shortfall. It shows the open day instead (kcal 1 340 / 2 100,
 P 105 / 180 g, bars 5/5), and its `Left: 760 kcal · 75 P · 80 C · 23 F` is set in DM Sans, which is
 where the card sets it: prose, not a column.
@@ -390,12 +386,12 @@ timestamps moved from tracked uppercase JetBrains Mono to DM Sans 500 / 400 at 1
 `#707579` / `#AAAAAA`, sentence case ("Info", "Chats"): Telegram sets both in its system sans, and
 an image whose whole claim is "this is someone else's window" cannot set them in the brand's face.
 
-`sheet.html` is one grid of two rows — the specimen band, then the applications band — 56 px columns,
+`sheet.html` is one grid of two rows - the specimen band, then the applications band - 56 px columns,
 64 px row gap. Every cell in the bottom row opens with its caption, so the three captions sit on one
 baseline (y 695) instead of three (714 · 744 · 772) with 180 px of void above them.
 
 Its captions are broken by hand rather than left to wrap, because an 11.5 px mono line at 0.06em
-holds about 54 characters in the 400–440 px columns and three of them were orphaning a word:
+holds about 54 characters in the 400-440 px columns and three of them were orphaning a word:
 "mark.svg · 420 px · ink … / strike …" now breaks at the middot before "full cut" and ends
 "over 4.5"; "telegram · circle crop · 96 and 40 px" breaks before "paper · night"; "state · one
 stroke per logged meal" breaks before "the strike when the day is closed"; and the filename in
@@ -405,14 +401,14 @@ every break is one that was chosen.
 
 `telegram-profile-1920x1080.png` is painted in Telegram's own chrome, not in the palette: light
 `#FFFFFF` rows with `#E9E9E9` separators and an `#F1F1F1` section gap; dark `#212121` rows on
-`#181818`; secondary text `#707579` / `#AAAAAA`. That is the claim the image makes — the paper avatar
-holding up inside someone else's window — so it has to be someone else's window. The panel height
+`#181818`; secondary text `#707579` / `#AAAAAA`. That is the claim the image makes - the paper avatar
+holding up inside someone else's window - so it has to be someone else's window. The panel height
 follows its rows (it was a fixed 860 px, leaving an 85 px empty strip), and the contacts are ordered
 so the cool client tints (blue, violet, green) sit next to the Strikt row and the two warm ones
 (coral, pink) at the bottom, with the timestamps still descending the way a client sorts a list.
 
-The plate in `food-reply-1920x1080.png` is a **boneless** chicken thigh — an irregular flat oval
-with one skin line across it and three grain marks — a mound of rice with grain hatching, and five
+The plate in `food-reply-1920x1080.png` is a **boneless** chicken thigh - an irregular flat oval
+with one skin line across it and three grain marks - a mound of rice with grain hatching, and five
 overlapping single-ring cucumber slices with three seeds each. It carried a bone knuckle (two 7.5-unit
 circles and two short lines off the top-right of the meat) until now, which drew a drumstick; the
 message names a thigh, and the plate has to be the food the message names. It used to carry double-ring slices (life buoys) and a circle with a horizontal tail
@@ -433,14 +429,14 @@ Measured in the render at 100 px, with `getBoundingClientRect` on a `white-space
 | digit `8` | 61 | 60 | 50 | 60 |
 
 So the thin space is the 1/5 em it is defined to be in every bundled face, and **one third of a cell**
-in JetBrains Mono — not the 0.31 an earlier note claimed, but close enough that the conclusion is the
+in JetBrains Mono - not the 0.31 an earlier note claimed, but close enough that the conclusion is the
 same. `render._macro_line` pads its columns by character count, so any value past 999 pulled its bar
-two thirds of a character left of the others — visible on every card, because kcal is always four
+two thirds of a character left of the others - visible on every card, because kcal is always four
 digits. U+2007 FIGURE SPACE is digit-width by definition and measures a full cell in JetBrains Mono.
 
 The consequence, stated plainly because a reviewer will notice it: **the closed card writes `1 880`
-twice at two different gap widths** — 14.4 px in the 24 px mono row and 4.8 px in the 24 px DM Sans
-verdict — and at chat-preview sizes (13.5 px on the sheet, 16 px in the profile) the prose gap is
+twice at two different gap widths** - 14.4 px in the 24 px mono row and 4.8 px in the 24 px DM Sans
+verdict - and at chat-preview sizes (13.5 px on the sheet, 16 px in the profile) the prose gap is
 under 3 px and close to invisible. That is the price of a mono column that has to hold a cell, and it
 is the state of the shipped files. If it has to go, the fix is one character in `render.fmt_num`:
 U+00A0, at 0.27 em in DM Sans, is the widest of the candidates and stays unbreakable. It is **not**
@@ -490,17 +486,17 @@ glyph edge on a grey blend between the text colour and what is behind it, and th
 on every run:
 
 1. it keeps the screenshot buffer and decodes it (a ~60-line 8-bit non-interlaced PNG reader on
-   `node:zlib` — no native dependency);
+   `node:zlib` - no native dependency);
 2. for every element that holds text it collects the colours that element is allowed to paint: its
    own text colour, the text and background colours of all its descendants, and every non-transparent
    background up its ancestor chain;
-3. inside that element's box, a pixel fails if its channel spread (max − min) is over 40 **and** it
+3. inside that element's box, a pixel fails if its channel spread (max - min) is over 40 **and** it
    is more than 26 away, in RGB, from the nearest point on any segment between two of those colours.
    Greyscale antialiasing always lands on such a segment; a subpixel fringe does not.
 
 The palette-segment test is what lets the check run over the whole set without exceptions: the white
 initial on a `#65AADD` Telegram avatar, the `#B32E22` "don't" inside a mute caption and the red
-strike itself are all blends of two declared colours, and they pass. Verified both ways — with the
+strike itself are all blends of two declared colours, and they pass. Verified both ways - with the
 flag every job reports zero; with it removed, `card-closed` alone reports **26 304 px in 15
 elements**, e.g. `(240,195,139)` at 196,487 on the meals list.
 

@@ -5,12 +5,12 @@ credential (32 random url-safe bytes from ``repo.generate_webhook_token``); an o
 ``X-Strikt-Secret`` header, when present, must match it too (constant-time compare). Three
 dialects are accepted on the same URL, detected by shape:
 
-1. **Health Auto Export** — ``{"data": {"metrics": [...], "workouts": [...]}}`` with metric names
+1. **Health Auto Export** - ``{"data": {"metrics": [...], "workouts": [...]}}`` with metric names
    like ``weight_&_body_mass``, ``body_fat_percentage``, ``step_count``, ``resting_heart_rate``,
    ``heart_rate_variability``, ``sleep_analysis``; dates ``yyyy-MM-dd HH:mm:ss Z`` or ISO-8601.
-2. **Shortcuts (simple)** — ``{"weight_kg": 82.4, "steps": 8500, "resting_hr": 54, "hrv_ms": 48,
+2. **Shortcuts (simple)** - ``{"weight_kg": 82.4, "steps": 8500, "resting_hr": 54, "hrv_ms": 48,
    "sleep": {"start": ..., "end": ..., "asleep_min": ...}, "date": "2026-09-03"}``.
-3. **Native samples** — ``{"samples": [{"type": "weight", "value": 82.4, "unit": "kg",
+3. **Native samples** - ``{"samples": [{"type": "weight", "value": 82.4, "unit": "kg",
    "start": ..., "end": ...}, ...]}`` for any client that can build a list.
 
 Everything is idempotent: measurements dedupe on (source, type, instant, metric), sleeps and
@@ -115,17 +115,17 @@ _INSTRUCTIONS: dict[str, str] = {
         "Your personal URL (keep it private, it is your key):\n"
         "{url}\n"
         "\n"
-        "Option A — Health Auto Export app (recommended, 2 minutes):\n"
-        "1. Install “Health Auto Export – JSON+CSV” from the App Store.\n"
+        "Option A - Health Auto Export app (recommended, 2 minutes):\n"
+        "1. Install “Health Auto Export - JSON+CSV” from the App Store.\n"
         "2. Automations → + → REST API. URL: the link above. Method POST, format JSON, "
         "export version 2, batch requests on.\n"
         "3. Data types: Health Metrics (weight, body fat, steps, resting HR, HRV, sleep) "
         "and Workouts. Period: since last sync. Enable the automation.\n"
         "4. Optional header: {header}: {token}\n"
-        "5. iPhone must be unlocked for it to run — add a Shortcuts “Time of Day” automation "
+        "5. iPhone must be unlocked for it to run - add a Shortcuts “Time of Day” automation "
         "at 08:00 that runs Health Auto Export’s “Run Automation” action.\n"
         "\n"
-        "Option B — Shortcuts only (no extra app):\n"
+        "Option B - Shortcuts only (no extra app):\n"
         "1. Shortcuts → + → add “Find Health Samples” (Weight, last 1 day, sort by Start Date, limit 1).\n"
         "2. Add “Dictionary”: weight_kg = the sample’s Value, date = the sample’s Start Date. "
         "Add steps / resting_hr / hrv_ms the same way if you want them.\n"
@@ -141,24 +141,24 @@ _INSTRUCTIONS: dict[str, str] = {
         "Твоя личная ссылка (не показывай никому, это ключ):\n"
         "{url}\n"
         "\n"
-        "Вариант A — приложение Health Auto Export (рекомендую, 2 минуты):\n"
-        "1. Поставь «Health Auto Export – JSON+CSV» из App Store.\n"
+        "Вариант A - приложение Health Auto Export (рекомендую, 2 минуты):\n"
+        "1. Поставь «Health Auto Export - JSON+CSV» из App Store.\n"
         "2. Automations → + → REST API. URL: ссылка выше. Метод POST, формат JSON, "
         "export version 2, batch requests включить.\n"
         "3. Data types: Health Metrics (вес, жир, шаги, пульс покоя, HRV, сон) и Workouts. "
         "Период: since last sync. Включи автоматизацию.\n"
         "4. Необязательный заголовок: {header}: {token}\n"
-        "5. iPhone должен быть разблокирован — добавь в «Команды» автоматизацию «Время суток» "
+        "5. iPhone должен быть разблокирован - добавь в «Команды» автоматизацию «Время суток» "
         "на 08:00, которая запускает действие Health Auto Export «Run Automation».\n"
         "\n"
-        "Вариант B — только «Команды» (без приложений):\n"
+        "Вариант B - только «Команды» (без приложений):\n"
         "1. Команды → + → «Найти образцы Здоровья» (Вес, за последний 1 день, сортировка по дате начала, лимит 1).\n"
         "2. Добавь «Словарь»: weight_kg = Значение образца, date = Дата начала образца. "
         "Так же можно steps / resting_hr / hrv_ms.\n"
         "3. Добавь «Получить содержимое URL»: URL выше, метод POST, тело запроса JSON = Словарь.\n"
         "4. Автоматизация → Время суток → 08:00 ежедневно → запустить команду, «Спрашивать» выключить.\n"
         "\n"
-        "Отправь первый пуш — подтвержу, что пришло."
+        "Отправь первый пуш - подтвержу, что пришло."
     ),
 }
 

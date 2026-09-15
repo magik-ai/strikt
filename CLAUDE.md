@@ -1,4 +1,4 @@
-# Strikt — working in this repo
+# Strikt - working in this repo
 
 Strikt is a one-window Telegram health coach on Claude Sonnet 5 (`claude-sonnet-5`). Python
 package `strikt`, `src/` layout, GitHub repo `magik-ai/bomiso` (to be renamed).
@@ -14,6 +14,12 @@ package `strikt`, `src/` layout, GitHub repo `magik-ai/bomiso` (to be renamed).
    (`LLM_KEY_MODE=user`, the default). Resolve the client with `llm_factory.for_user(session,
    user)`; a `None` means "no key": reply with the walkthrough (`key.needed`) or skip silently
    (`llm_key_missing`). Never call the server key for a keyless non-admin; never log a key.
+5. **No long dashes anywhere.** The em dash, the en dash, the horizontal bar and the minus sign
+   are banned in this project: in the bot's messages, in prompts, copy and locales, in code,
+   comments, docs and commit messages, and in your own replies to the owner in chat. Write a
+   hyphen with spaces ( - ) instead; a numeric range is `20-40`. `plain_dashes` in
+   `telegram/render.py` strips them from every outgoing message as the last line of defence, and
+   `tests/test_no_long_dashes.py` fails the build if one is committed.
 
 ## Dev loop
 
@@ -76,7 +82,7 @@ server: health, OAuth callbacks, webhooks, optional Telegram webhook), `app.py` 
 - Complete type hints, `from __future__ import annotations`, pydantic models for all tool IO.
 - `structlog.get_logger()`; never `print`. Never log a secret.
 - Time: store UTC, compute local with `zoneinfo` via `core/clock.py`; SQLite returns naive
-  datetimes — normalise with `ensure_utc`. "What day is it" is `coaching_today`, never
+  datetimes - normalise with `ensure_utc`. "What day is it" is `coaching_today`, never
   `local_date`: `log_meal` dates food by the coaching day, so anything that disagrees puts the
   card and the triggers on a day the food did not land on.
 - Copy: model-written replies come out in the user's language on their own; code-rendered strings

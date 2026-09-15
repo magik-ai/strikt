@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import html
+import re
 from datetime import date, datetime
 from typing import TYPE_CHECKING
 
@@ -25,6 +26,47 @@ MAX_CARD_MEALS = 8
 MAX_ITEM_NAME = 20
 MAX_ITEMS_PER_MEAL = 3
 CARD_MAX_CHARS = 1000
+
+
+#: Dashes the bot never sends: the em dash, the en dash, the horizontal bar and the minus sign.
+#: The owner asked for the short hyphen everywhere, so this is enforced in code and not left to
+#: the model's good behaviour - it is the last thing every outgoing message passes through.
+LONG_DASHES = "\u2014\u2013\u2015\u2212"
+#: Horizontal whitespace only: a dash at the end of a line must not swallow the line break and
+#: glue two bullet points into one sentence.
+_DASH_RUN = re.compile(rf"[^\S\n]*[{LONG_DASHES}]+[^\S\n]*")
+
+
+def plain_dashes(text: str) -> str:
+    """Every long dash becomes a spaced hyphen.
+
+    A dash between digits is a range and comes out tight (``1-2``); a dash glued to the front of
+    a number is a sign and keeps it (``-5``); everything else becomes ``слово - слово``. A dash
+    that opens or ends a line keeps the line's own spacing.
+    """
+
+    def replace(match: re.Match[str]) -> str:
+        start, end = match.span()
+        before = text[start - 1] if start else ""
+        after = text[end] if end < len(text) else ""
+        raw = match.group()
+        dashes = raw.strip()
+        lead, trail = raw.split(dashes, 1) if dashes else ("", "")
+        if after.isdigit() and not trail:
+            # nothing between the dash and the number: "20-40" is a range and "-5" is signed,
+            # while "Итого - 1900" has a space there and is prose
+            if before.isdigit() and not lead:
+                return "-"
+            if not before or before.isspace() or before in "([{" or lead:
+                return " -" if lead else "-"
+        if not before or before == "\n":
+            # the line opens with the dash; ``lead`` is its indentation and a sub-bullet keeps it
+            return f"{lead}- "
+        if not after or after == "\n":  # and it must not grow a trailing space
+            return " -"
+        return " - "
+
+    return _DASH_RUN.sub(replace, text)
 
 
 def escape(text: str) -> str:
@@ -110,10 +152,10 @@ def _meal_line(meal: MealView, lang: str, tz: str) -> str:
     shown = [_short(item.name) for item in meal.items[:MAX_ITEMS_PER_MEAL]]
     if len(meal.items) > MAX_ITEMS_PER_MEAL:
         shown.append(f"+{len(meal.items) - MAX_ITEMS_PER_MEAL}")
-    names = ", ".join(shown) or "—"
+    names = ", ".join(shown) or "-"
     slot = t(lang, f"card.slot.{meal.slot}")
     when = fmt_time(meal.eaten_at or meal.logged_at, tz)
-    return f"• {when} {slot} — {escape(names)} · {fmt_num(meal.macros.kcal)}"
+    return f"• {when} {slot} - {escape(names)} · {fmt_num(meal.macros.kcal)}"
 
 
 def render_day_card(state: DayState, lang: str | None, tz: str = "UTC") -> str:

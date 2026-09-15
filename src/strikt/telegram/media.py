@@ -1,9 +1,9 @@
 """Inbound Telegram media: download, HEIC → JPEG, resize, hash, base64; PDFs; album debounce.
 
-Facts this module is built on (research/03 §3–6, research/02 §8–9, research/09 §2.10):
+Facts this module is built on (research/03 §3-6, research/02 §8-9, research/09 §2.10):
 
 - Bots can download files of at most 20 MB (``getFile``); ``file_id`` is persistent.
-- Claude vision accepts JPEG/PNG/GIF/WebP only — never HEIC — at most 10 MB of base64 per image,
+- Claude vision accepts JPEG/PNG/GIF/WebP only - never HEIC - at most 10 MB of base64 per image,
   and every image must stay within 2000 px per side once a request carries more than 20 images.
   Sonnet 5 downscales to a 2576 px long edge anyway, so 2000 px loses nothing that matters.
 - PDFs go in as ``document`` blocks: at most 32 MB per request and 100 pages when the context
@@ -50,7 +50,7 @@ MAX_IMAGE_EDGE = 2000  # px; keeps many-image requests valid and stays under Son
 JPEG_QUALITY = 85
 JPEG_QUALITY_STEPS = (85, 70, 55, 40)  # retried when the encoded image would exceed the cap
 ALBUM_DEBOUNCE_S = 1.2
-ALBUM_MAX_PARTS = 10  # sendMediaGroup allows 2–10 items
+ALBUM_MAX_PARTS = 10  # sendMediaGroup allows 2-10 items
 #: Base64 the picture cache keeps in memory across every user of this process.
 MAX_CACHE_BYTES = 24 * 1024 * 1024
 #: How long a file_id that failed to download is left alone before trying it again.

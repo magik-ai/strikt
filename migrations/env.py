@@ -15,7 +15,7 @@ from strikt.db.models import Base
 config = context.config
 # ``configure_logger`` is alembic's own flag for programmatic runs: ``app.py`` sets it to False so
 # that the startup ``upgrade head`` does not reconfigure logging out from under the running bot.
-# ``disable_existing_loggers=False`` is the second half of that guarantee — the default True would
+# ``disable_existing_loggers=False`` is the second half of that guarantee - the default True would
 # silence every logger created before this point, the app's included.
 if config.config_file_name is not None and config.attributes.get("configure_logger", True):
     fileConfig(config.config_file_name, disable_existing_loggers=False)

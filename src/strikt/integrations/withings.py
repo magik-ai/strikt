@@ -14,7 +14,7 @@ Facts from research/05-scales-apple-health.md §1 (verified on 2026-09-03):
   (``userid``, ``appli``, ``startdate``, ``enddate``). They are treated as a *hint only*: the
   body's window is ignored, the data is re-fetched from the stored cursor with the user's own
   token, the cursor is advanced only by the scheduled ``sync``, and a user is fetched for at most
-  once per ``WEBHOOK_MIN_INTERVAL`` — so a spoofed POST (user ids are small integers) can
+  once per ``WEBHOOK_MIN_INTERVAL`` - so a spoofed POST (user ids are small integers) can
   neither move the cursor past an unimported weigh-in nor burn the user's API quota.
 """
 

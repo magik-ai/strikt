@@ -5,7 +5,7 @@ Rules:
   window has no send yet, when the last send was answered (``responded_at``), or when the
   user's latest message is newer than the last send (a reply the bus may have missed);
 - daily cap: 5 (``drill_sergeant`` 8, ``gentle`` 2), counted from the local midnight;
-- quiet hours come from the profile (default 00:00–07:30); the engine exempts
+- quiet hours come from the profile (default 00:00-07:30); the engine exempts
   ``bedtime_minus_30`` and user-set reminders;
 - effective intensity honours ``temp_intensity`` until ``temp_intensity_until``;
 - three clean days set the cooldown flag (``clean_streak_days`` ≥ 3): class A pressure backs

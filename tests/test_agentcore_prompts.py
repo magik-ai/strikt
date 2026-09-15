@@ -34,7 +34,7 @@ def test_coach_prompt_covers_the_brief() -> None:
         # food method
         "P×4 + C×4 + F×9",
         "Countable vs loose",
-        "20–40 %",
+        "20-40 %",
         "Brussels sprouts at 9 g fat",
         "≥ 600 mg per serving",
         "soluble corn fiber",

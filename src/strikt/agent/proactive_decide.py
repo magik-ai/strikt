@@ -6,7 +6,7 @@ one user message with the fire facts, the profile block, today's state, the last
 summaries, relevant notes, the ladder state and response rate, and what was already sent today.
 The answer is structured output ``{send, text, reason}``. Brief §7.4 is enforced in code as
 well: emoji stripped, at most four lines / 350 characters (the Sunday ``weekly_review`` is the
-brief's own exception — "the week in five lines" plus a pattern and an instruction — and gets
+brief's own exception - "the week in five lines" plus a pattern and an instruction - and gets
 seven lines / 700 characters), never a step below the ladder's. A response cut off by the output
 cap is reported as ``truncated`` rather than mistaken for bad JSON.
 """
@@ -42,7 +42,7 @@ log = structlog.get_logger(__name__)
 
 MAX_LINES = 4
 MAX_CHARS = 350
-#: Per-trigger (lines, chars) caps where the brief asks for more than the generic 2–4 lines.
+#: Per-trigger (lines, chars) caps where the brief asks for more than the generic 2-4 lines.
 TRIGGER_CAPS: dict[str, tuple[int, int]] = {"weekly_review": (7, 700)}
 MIN_STEP = 1
 MAX_STEP = 4
@@ -114,7 +114,7 @@ class LLMDecider:
     """Writes the proactive message with the model; every decision is fresh, never a template.
 
     The model call is billed to the user's own key (``LLMResolver.for_user``); a user without
-    a key gets no message at all — the engine skips them before this is reached, and this is
+    a key gets no message at all - the engine skips them before this is reached, and this is
     the second guard."""
 
     def __init__(

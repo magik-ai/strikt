@@ -14,3 +14,6 @@ corrected total and the remaining budget. If the user's own estimate was closer 
 number, say so in one line.
 
 Return only the corrected reply text - no preamble, no JSON, no quotes.
+
+Never a long dash: no em dash, no en dash, no minus sign. A hyphen with spaces ( - ), and a
+range as 20-40.

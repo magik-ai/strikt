@@ -50,11 +50,11 @@ def kb(*labels):
     return '<div class="kb">%s</div>' % ''.join('<span>%s</span>' % l for l in labels)
 
 # Two thousands separators, exactly as render.py writes them:
-#   TS  thin space U+2009 — prose (a verdict, a ladder line, a chat preview). Measured in the
+#   TS  thin space U+2009 - prose (a verdict, a ladder line, a chat preview). Measured in the
 #       render at 100 px: 20 px in DM Sans, Newsreader, Golos Text and JetBrains Mono alike, i.e.
 #       the 1/5 em a thin space is defined to be. (U+202F NARROW NO-BREAK SPACE is *narrower* in
-#       these faces — 14 px in DM Sans, 12 in Newsreader — so it is not the fix it looks like.)
-#   FS  figure space U+2007 — inside a mono block, where it is digit-width, i.e. one full cell
+#       these faces - 14 px in DM Sans, 12 in Newsreader - so it is not the fix it looks like.)
+#   FS  figure space U+2007 - inside a mono block, where it is digit-width, i.e. one full cell
 #       (60 px of a 60 px cell), so the padded columns and the bars stay on one vertical. The thin
 #       space is 1/3 of a cell there, which is why the two are not interchangeable.
 TS='\u00a0'  # no-break space, the separator render.fmt_num writes
@@ -69,8 +69,8 @@ W('og.html', HEAD('Strikt og', """
 # ---------------- hero + closed ----------------
 # The two frames register: the card is the same box in both (left edge 166 = 112 grid + 40 avatar +
 # 14 gap, fixed width 844, top pinned at 240), so only its contents change when the day closes. The
-# state column is the same box too — the mark svg carries the same −20.8 px left bearing in both
-# files, so bars 1–3 of the open day sit exactly where bars 1–3 of the closed mark sit.
+# state column is the same box too - the mark svg carries the same -20.8 px left bearing in both
+# files, so bars 1-3 of the open day sit exactly where bars 1-3 of the closed mark sit.
 CARD_CSS = """
 .chat{position:absolute;left:112px;top:240px;width:898px}
 .bubble{padding:22px 28px 14px}
@@ -94,12 +94,12 @@ open_lines=[macro('kcal','1'+FS+'340','2'+FS+'100','',5),macro('P','105','180','
 closed_lines=[macro('kcal','1'+FS+'880','2'+FS+'100','',7),macro('P','157','180','g',7),macro('C','162','200','g',6),macro('F','65','70','g',7),macro('fiber','19','30','g',5)]
 # The day chains across the images: the menu at 18:47 recommends the grilled chicken plate
 # (540 kcal · 52 P from the menu rows), so the closed card's dinner is that plate.
-meals=['• 08:55 breakfast — Skyr, oats, blueberries · 480','• 13:20 lunch — Chicken thigh, rice, cucumber salad · 590','• 16:40 snack — Greek yogurt, walnuts · 270','• 19:50 dinner — Grilled chicken plate · 540']
+meals=['• 08:55 breakfast - Skyr, oats, blueberries · 480','• 13:20 lunch - Chicken thigh, rice, cucumber salad · 590','• 16:40 snack - Greek yogurt, walnuts · 270','• 19:50 dinner - Grilled chicken plate · 540']
 DATE='Thu 3 Sep'
 VERDICT='Closed at 1'+TS+'880 / 157 P / 19 fiber. Protein short 23 g, third day running. Bed by 00:30.'
-# The mark svg is offset by its own left bearing so the ink of the *closed* mark — the strike cap at
-# unit 8 — sits on the caption's left edge. The open frame carries the same offset, not its own, so
-# bars 1–3 land on exactly the x they occupy in the closed frame. 260 px = 2.6 px per unit.
+# The mark svg is offset by its own left bearing so the ink of the *closed* mark - the strike cap at
+# unit 8 - sits on the caption's left edge. The open frame carries the same offset, not its own, so
+# bars 1-3 land on exactly the x they occupy in the closed frame. 260 px = 2.6 px per unit.
 def state(inner, caps):
     return '<div class="state"><div class="in"><div style="margin-left:-20.8px">%s</div>%s</div></div>' % (inner, caps)
 hero = HEAD('Strikt hero', CARD_CSS) + '<div class="stage"><div class="top cap">the today card · pinned in the chat · day open</div>'
@@ -120,9 +120,9 @@ W('card-closed.html', closed)
 
 # ---------------- food reply ----------------
 # Chicken thigh (hatched, bone end), a mound of rice with grain marks, five overlapping cucumber
-# slices with seeds. Single-weight ink line, 2.6 px, round caps — the illustration rule. Nothing
+# slices with seeds. Single-weight ink line, 2.6 px, round caps - the illustration rule. Nothing
 # abstract on the plate: no cutlery stub, no double rings.
-# The thigh is boneless: a flat irregular oval with one skin line across it and a light hatch — a
+# The thigh is boneless: a flat irregular oval with one skin line across it and a light hatch - a
 # drumstick with a bone knuckle is a different cut, and the message names a thigh.
 PLATE = """<svg viewBox="0 0 400 300" width="400" height="300" fill="none" stroke="#1A1814" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round">
 <ellipse cx="200" cy="152" rx="168" ry="118"/>
@@ -139,7 +139,7 @@ FOOD_CSS = """
 .stage{display:flex;align-items:center;justify-content:center}
 .chat{width:693px}
 /* the bot bubble takes the whole chat column minus the avatar and its gap, so both bubbles
-   end on the same right edge (693 − 40 − 14 = 639); 639 = 41 mono cells at 24 px (590.4) plus the
+   end on the same right edge (693 - 40 - 14 = 639); 639 = 41 mono cells at 24 px (590.4) plus the
    bubble's 2 × 24 px padding */
 .bubble{max-width:639px}
 .row .bubble:not(.user){width:639px}
@@ -148,7 +148,7 @@ FOOD_CSS = """
 """
 # Six rows: per item, the meal in bold, the day so far, what is left. Every row carries the same
 # four columns, so the block has one right edge; fiber lives in the prose line under it, where it
-# is the one thing worth saying. 53 mono columns — a phone renders a <code> block at roughly that
+# is the one thing worth saying. 53 mono columns - a phone renders a <code> block at roughly that
 # width, and the bubble is sized to it rather than to the canvas.
 # Four columns under one header instead of a unit word on every cell: 41 mono cells, inside the
 # 35-45 a phone gives a <code> block, where the old 53-cell rows wrapped.
@@ -200,7 +200,7 @@ LADDER_CSS = """
 .stair .why b{color:var(--ink);font-weight:500}
 """
 # The clock: the user's usual first meal is 08:55 (the breakfast on the Today card), the silence
-# trigger fires at wake + 3 h, and the follow-ups are 45 minutes apart — so 10:10 · 10:55 · 11:40 ·
+# trigger fires at wake + 3 h, and the follow-ups are 45 minutes apart - so 10:10 · 10:55 · 11:40 ·
 # 12:25 and step 2's "two hours past your usual first meal" is exact (08:55 + 2 h = 10:55). The
 # brief's sentence is kept verbatim; the card moved instead.
 # No personal body numbers in any image: the waist figures are generic (CLAUDE.md law 3).
@@ -209,7 +209,7 @@ steps=[('10:10','1 · prompt','one line, factual','Nothing logged yet. Breakfast
        ('11:40','3 · demand','an instruction with a deadline','Eat something with 40 g protein in the next hour and send me a photo.'),
        ('12:25','4 · consequence','the goal in concrete terms','Waist target is 90. You\'re at 97. Days like this cost a week each.')]
 # One label per step: the timestamped header sits above the bubble, so the row under the staircase
-# carries the timing facts only — it does not repeat "prompt · push · demand · consequence".
+# carries the timing facts only - it does not repeat "prompt · push · demand · consequence".
 rungs=[('wake + 3 h','nothing logged yet today'),('+ 45 min','still nothing'),('+ 45 min','a deadline attached'),('+ 45 min','the last send of the ladder')]
 lad = HEAD('Strikt ladder', LADDER_CSS) + '<div class="stage"><div class="top cap">the escalation ladder · one silent morning · four sends, 45 minutes apart</div>'
 lad += '<div class="lad"><div class="line"></div><div class="steps">'
@@ -217,14 +217,14 @@ for t,s,d,txt in steps:
     lad += '<div class="step"><div class="tk"></div><div class="cap"><b>%s</b> · %s<br>%s</div>%s</div>' % (t,s,d,row(bubble(txt,t)))
 lad += '</div></div>'
 # the rungs as one ink stair: each tread is one column of the timeline above it
-# Risers at 434 · 868 · 1302 in the svg's own 1696-unit width — the same grid the header hairline
+# Risers at 434 · 868 · 1302 in the svg's own 1696-unit width - the same grid the header hairline
 # and the four columns use (column pitch 434, first column left edge 0), so every step rises on the
 # exact x where its send begins instead of 14, 24 and 34 px early.
 lad += '<div class="stair"><svg viewBox="0 0 1696 132" preserveAspectRatio="none" fill="none" stroke="#1A1814" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M0 122 H434 V88 H868 V54 H1302 V20 H1696" vector-effect="non-scaling-stroke"/></svg><div class="why">'
 for (t,s,d,txt),(when,what) in zip(steps,rungs):
     lad += '<div class="cap"><b>%s</b> · %s</div>' % (when, what)
 lad += '</div></div>'
-lad += '<div class="note"><div class="foot" style="position:static"><div data-lockup="34"></div><div class="cap">never beyond step four · resets on any reply · quiet hours 00:00–07:30 · at most five sends a day</div></div></div></div>' + TAIL()
+lad += '<div class="note"><div class="foot" style="position:static"><div data-lockup="34"></div><div class="cap">never beyond step four · resets on any reply · quiet hours 00:00-07:30 · at most five sends a day</div></div></div></div>' + TAIL()
 W('ladder.html', lad)
 
 # ---------------- menu ----------------
@@ -232,9 +232,8 @@ MENU_CSS = """
 .stage{display:flex;align-items:center;justify-content:center}
 /* the screenshot and the reply are one centred composition, like the food reply */
 .chat{width:auto;flex-direction:row;align-items:center;gap:80px}
-/* The screenshot is somebody else's app, so it is painted in plain client chrome — white card,
-   system-sans names and prices with proportional figures, grey photo placeholders, neutral greys —
-   never in the palette. No mono anywhere in it: mono is the bot's own table. Only the bubble
+/* The screenshot is somebody else's app, so it is painted in plain client chrome - white card,
+   system-sans names and prices with proportional figures, grey photo placeholders, neutral greys - never in the palette. No mono anywhere in it: mono is the bot's own table. Only the bubble
    around it is ours, because a user sent it. */
 .app{width:420px;background:#FFFFFF;border-radius:12px;padding:20px 22px 16px;color:#111111;font-size:18px;font-variant-numeric:proportional-nums}
 .app .hd{display:flex;justify-content:space-between;align-items:baseline;border-bottom:1px solid #ECECEC;padding-bottom:14px;margin-bottom:2px}
@@ -255,7 +254,7 @@ MENU_CSS = """
 .bubble .code b{font-weight:500}
 .top{position:absolute;left:112px;top:80px}
 """
-# Grey photo placeholders — a horizon, a sun and a hill in five neutral greys. Deliberately not the
+# Grey photo placeholders - a horizon, a sun and a hill in five neutral greys. Deliberately not the
 # brand's line illustrations: this tile belongs to the other app, and the reader has to see that.
 # a plate seen from above, out of focus: three neutral greys, no line work, nothing that could be
 # mistaken for the brand's own illustration
@@ -272,7 +271,7 @@ items=[('Grilled chicken plate','380 g','AED 34'),('Beef burger with fries','450
 app = '<div class="app"><div class="hd"><b>Grill house</b><span>4.7</span></div>'
 for i,(n,w,p) in enumerate(items):
     app += '<div class="it"><div class="l"><div class="ph">%s</div><div><div class="n">%s</div><div class="w">%s</div></div></div><div class="p">%s</div></div>' % (thumb(i),n,w,p)
-app += '<div class="chip">delivery 25–35 min</div></div>'
+app += '<div class="chip">delivery 25-35 min</div></div>'
 # Ranked by protein per 100 kcal, so the column is monotonic (9.6 · 6.1 · 4.5 · 4.1 · 3.7) and the
 # verdicts fall out of it; the last column is the brief's one line of why per row.
 #            verdict  item                    kcal   P    F   P/100 kcal  the one line of why
@@ -283,7 +282,7 @@ menu_rows=[('pick','grilled chicken plate','540','52','18','9.6','leaves 23 P'),
            ('okay','caesar with chicken','690','31','48','4.5','dressing aside'),
            ('skip','falafel bowl','580','24','29','4.1','deep fried'),
            ('skip','margherita pizza','1'+FS+'180','44','38','3.7','over by 420')]
-# Two lines per item, 42 mono columns at the widest — a phone renders a <code> block at 35-45, and
+# Two lines per item, 42 mono columns at the widest - a phone renders a <code> block at 35-45, and
 # one 78-column row would wrap into three broken lines there. Line 1 is the decision, the dish and
 # its protein per 100 kcal; line 2 the numbers and the one line of why.
 def mrow(i, r):
@@ -306,7 +305,7 @@ RU_CSS = """
 /* wider than the english column: the Cyrillic labels («осталось», «ккал») are longer, so the same
    four columns take 42 mono cells instead of 41 */
 .chat{width:707px}
-/* 707 − 40 avatar − 14 gap: the bot bubble ends on the user bubble's right edge; 653 = 42 mono
+/* 707 - 40 avatar - 14 gap: the bot bubble ends on the user bubble's right edge; 653 = 42 mono
    cells at 24 px (604.8) plus the bubble's 2 × 24 px padding */
 .bubble{max-width:653px;font-family:var(--cyr)}
 .row .bubble:not(.user){width:653px}
@@ -315,7 +314,7 @@ RU_CSS = """
 .top{position:absolute;left:112px;top:80px}
 """
 # «итого» is the Russian word for a table total; «приём» stays the name of the unknown meal slot.
-# Column order is БЖУ — protein · fat · carbs — because that is how a Russian reader says and reads
+# Column order is БЖУ - protein · fat · carbs - because that is how a Russian reader says and reads
 # it; Б·У·Ж would be a transliteration of P·C·F. `copy.py` card.remaining (ru) has the same order.
 # 42 mono cells with the unit words in one header row, the way the English reply now sets it; the
 # name column is one cell wider because «огуречный салат 120 г» is.
@@ -327,7 +326,7 @@ def rurow(i, r):
     return '<b>%s</b>' % line if i==3 else line
 ru_reply = ('<p>Chicken thigh, рис, огуречный салат. Около 450 г.</p><span class="code">' +
  '\n'.join(['%-21s%6s%5s%5s%5s' % ('','ккал','Б','Ж','У')] + [rurow(i,r) for i,r in enumerate(ru_rows)]) +
- '</span><p style="margin-top:10px">Клетчатка 11 из 30. На ужин — овощи.</p>')
+ '</span><p style="margin-top:10px">Клетчатка 11 из 30. На ужин - овощи.</p>')
 ru = HEAD('Strikt russian', RU_CSS, lang='ru') + '<div class="stage"><div class="top cap">language mirroring · russian in, russian out · food names stay as written</div><div class="chat">'
 ru += row(bubble('обед: chicken thigh с рисом и салат из огурцов, грамм 450', '13:20', user=True), user=True)
 ru += row(bubble(ru_reply, '13:21'), kbd=kb('Убрать','Пересчитать'))
@@ -336,7 +335,7 @@ W('russian.html', ru)
 
 # ---------------- telegram profile ----------------
 # The chat stays in Telegram's own theme (BRAND.md §9), so both panels are painted in Telegram's
-# neutral chrome — white rows on #F1F1F1, and #212121 rows on #181818 — not in the brand palette.
+# neutral chrome - white rows on #F1F1F1, and #212121 rows on #181818 - not in the brand palette.
 # The only brand object in the image is the one paper avatar, which is the point of it.
 PROF_CSS = """
 /* the panels end at y 900 like every other composition's content, and the frame carries the same
@@ -352,7 +351,7 @@ PROF_CSS = """
 .about{padding:22px 36px 22px;font-size:19px;line-height:1.45;border-bottom:8px solid #F1F1F1}
 .night .about{border-color:#181818}
 /* Telegram sets its section labels and its times in the same system sans as the rows, sentence
-   case, in the secondary grey — no mono, no tracking, no uppercase. DM Sans stands in for SF /
+   case, in the secondary grey - no mono, no tracking, no uppercase. DM Sans stands in for SF /
    Roboto here; the brand's own typography stops at the edge of somebody else's window. */
 .about .lab{font-size:15px;font-weight:500;color:#707579;margin-bottom:6px}
 .night .about .lab{color:#AAAAAA}
@@ -420,7 +419,7 @@ SYS_CSS = """
 .sec{margin-top:26px}.sec:first-child{margin-top:0}
 .sw{display:grid;grid-template-columns:40px 130px 90px 1fr;align-items:center;column-gap:14px;padding:5px 0;border-bottom:1px solid var(--rule);font-size:15px}
 .sw:last-child{border-bottom:0}
-/* every swatch carries a hairline so the ground colours — paper, card, night — read as chips */
+/* every swatch carries a hairline so the ground colours - paper, card, night - read as chips */
 .sw i{display:block;width:40px;height:28px;border-radius:6px;box-shadow:inset 0 0 0 1px var(--rule)}
 .sw .nm{font-weight:500}.sw .hx{font-family:var(--mono);font-size:14px;color:var(--mute)}.sw .us{color:var(--mute);font-size:14px}
 .nt{background:var(--night);color:var(--text-dark);border-radius:16px;padding:14px 18px 6px;margin-top:14px}
@@ -460,7 +459,7 @@ def swatch(name, hexv, use):
 light=[('paper','#F6F2E9','image and page ground'),('card','#FFFCF5','bubbles, cards'),('rule','#E3DDD1','hairlines, user bubble, button edges'),('mute','#8A857A','captions, timestamps, never body'),('ink','#1A1814','text, the four strokes'),('strike','#D3392B','the one accent: the fifth stroke'),('strike-deep','#B32E22','accent as small text (5.6:1)'),('strike-soft','#F5D6D1','tinted chip, track under red')]
 dark=[('night','#161513','ground'),('night-card','#201E1A','bubbles'),('rule-dark','#35322C','hairlines'),('text-dark','#EFEAE0','text, strokes'),('mute-dark','#9B968A','captions on night'),('strike-dark','#F0604E','the fifth stroke on night')]
 sysh = HEAD('Strikt system', SYS_CSS) + '<div class="stage">'
-sysh += '<div class="head"><div class="h">Strikt <span class="mute" style="font-weight:400">— the system on one page</span></div><div class="cap">paper · ink · one red · newsreader / dm sans / jetbrains mono · the tally mark</div></div>'
+sysh += '<div class="head"><div class="h">Strikt <span class="mute" style="font-weight:400"> - the system on one page</span></div><div class="cap">paper · ink · one red · newsreader / dm sans / jetbrains mono · the tally mark</div></div>'
 sysh += '<div class="cols">'
 # col 1 palette
 sysh += '<div><div class="cap">palette · light · one accent per composition</div><div style="margin-top:8px">' + ''.join(swatch(*x) for x in light) + '</div>'
@@ -468,7 +467,7 @@ sysh += '<div class="nt"><div class="cap">palette · night</div>' + ''.join(swat
 sysh += '<div class="cap" style="margin-top:16px">contrast on paper · ink 15.9 · mute 3.3 (captions only) · strike 4.3 (≥ 18 px) · strike-deep 5.6<br>on night · text-dark 15.2 · mute-dark 6.2 · strike-dark 5.6</div></div>'
 # col 2 type
 sysh += '<div><div class="cap">type · three roles</div>'
-sysh += '<div class="tp"><div class="cap">newsreader 500 · opsz 72 · display and wordmark · 36 px and up · −0.01em</div><div class="s1">Closed at 1'+TS+'880.<br>Bed by 00:30.</div></div>'
+sysh += '<div class="tp"><div class="cap">newsreader 500 · opsz 72 · display and wordmark · 36 px and up · -0.01em</div><div class="s1">Closed at 1'+TS+'880.<br>Bed by 00:30.</div></div>'
 sysh += '<div class="tp"><div class="cap">dm sans 400 / 500 / 600 · ui and body · 16 / 1.55 · cyrillic in golos text</div><div class="s2">Chicken plate. 52 P at 540 kcal, the best ratio on the list. Fiber 11 of 30. Sleep is the one target you have not hit once this month.</div></div>'
 # The specimen quotes an OPEN day: a closed day has no "left" line (render.render_day_card skips
 # it, the verdict carries the shortfall), so the closed totals with a Left under them were a card
@@ -494,7 +493,7 @@ for d in (48,40):
 sysh += unit('<div data-mark="tiny" data-size="32" data-red="#1A1814"></div>', 32)
 sysh += unit('<div data-mark="micro" data-size="16" data-red="#1A1814"></div>', 16)
 sysh += '</div><div class="cap" style="margin-top:8px">small cut · paper and night · favicon 32 · 16 · ink</div>'
-# do / don't — one row per rule so the label is a legible 15 px line, not five wrapped 11 px lines
+# do / don't - one row per rule so the label is a legible 15 px line, not five wrapped 11 px lines
 sysh += '<div class="cap" style="margin-top:12px">do · don\'t</div><div class="dd">'
 sysh += '<div class="r"><div class="t" style="background:var(--paper)"><div data-mark="full" data-size="56"></div></div><div class="l"><b class="ok">do</b> · ink on paper, one red, the strike rising</div></div>'
 sysh += '<div class="r"><div class="t"><svg width="56" height="56" viewBox="0 0 100 100"><g data-markinline="nostrike"></g><path fill="#D3392B" d="M8.5 25.5 L91.5 74.5" stroke="#D3392B" stroke-width="9" stroke-linecap="round"/></svg></div><div class="l"><b>don\'t</b> · mirror the strike: that is a prohibition sign</div></div>'
@@ -545,7 +544,7 @@ html,body{width:1600px;height:1000px}
 .lbl{margin-top:10px}
 """
 sheet = HEAD('Strikt brand sheet', SHEET_CSS, rel='./') + '<div class="sheet">'
-sheet += '<div class="head"><div class="h">Strikt <span class="mute" style="font-weight:400">— brand sheet · the tally mark</span></div><div class="cap">four strokes in ink · the fifth is the strike · viewbox 0 0 100 100 · fonts bundled</div></div>'
+sheet += '<div class="head"><div class="h">Strikt <span class="mute" style="font-weight:400"> - brand sheet · the tally mark</span></div><div class="cap">four strokes in ink · the fifth is the strike · viewbox 0 0 100 100 · fonts bundled</div></div>'
 sheet += '<div class="grid">'
 # --- row 1: the mark, the client sizes, the lock-ups ---
 sheet += '<div class="col"><div class="big"><div data-mark="full" data-size="420"></div></div>'

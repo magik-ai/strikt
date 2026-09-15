@@ -14,7 +14,7 @@ from aiogram.types import (
     LinkPreviewOptions,
 )
 
-from strikt.telegram.render import split_message
+from strikt.telegram.render import plain_dashes, split_message
 
 if TYPE_CHECKING:
     from collections.abc import Sequence
@@ -88,7 +88,7 @@ class AiogramMessenger:
         reply_to: int | None = None,
         silent: bool = False,
     ) -> int:
-        parts = split_message(text)
+        parts = split_message(plain_dashes(text))
         last_id = 0
         for index, part in enumerate(parts):
             is_last = index == len(parts) - 1
@@ -114,7 +114,7 @@ class AiogramMessenger:
     ) -> bool:
         try:
             await self._bot.edit_message_text(
-                text,
+                plain_dashes(text),
                 chat_id=chat_id,
                 message_id=message_id,
                 parse_mode=ParseMode.HTML,
@@ -202,7 +202,7 @@ class FakeMessenger:
         silent: bool = False,
     ) -> int:
         last_id = 0
-        for part in split_message(text):
+        for part in split_message(plain_dashes(text)):
             self.next_message_id += 1
             last_id = self.next_message_id
             self.sent.append(
@@ -227,6 +227,7 @@ class FakeMessenger:
         keyboard: Sequence[Sequence[Button]] | None = None,
     ) -> bool:
         key = (chat_id, message_id)
+        text = plain_dashes(text)
         if key not in self._texts or self._texts[key] == text:
             return False
         self._texts[key] = text

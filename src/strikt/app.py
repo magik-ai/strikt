@@ -4,13 +4,13 @@ One process, one event loop (``uvloop.run`` when available, research/09 §1 item
 
 - ``run_migrations``: ``alembic upgrade head`` in a worker thread (Alembic's env runs its own
   ``asyncio.run``), skipped with ``RUN_MIGRATIONS=false``;
-- ``build_runtime``: engine + session factory, the ``LLMFactory`` (one ``LLM`` per API key —
-  each user's own key in ``LLM_KEY_MODE=user``, the server key in ``server`` mode — recording
+- ``build_runtime``: engine + session factory, the ``LLMFactory`` (one ``LLM`` per API key:
+  each user's own key in ``LLM_KEY_MODE=user``, the server key in ``server`` mode, recording
   usage through ``DbUsageRecorder``) and the key validator, the event bus, the integrations
   registry, ``DayStateBuilder``, ``LLMDecider`` → ``ProactiveEngine`` → ``ProactiveScheduler``
   (nightly summaries + 30-minute integration sync), ``AiogramMessenger``, the pinned
   ``DayCard``, the aiohttp app (OAuth, provider webhooks, optional Telegram webhook) and the
-  aiogram dispatcher — every collaborator injectable so tests wire fakes;
+  aiogram dispatcher - every collaborator injectable so tests wire fakes;
 - ``Runtime.start`` reschedules every active user, starts the web server, applies the bot
   profile (commands/descriptions) and either long-polls or registers the webhook;
 - ``Runtime.stop`` is the graceful shutdown on SIGTERM/SIGINT.
