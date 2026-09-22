@@ -928,7 +928,13 @@ async def _callback_undo(
     if last is not None and last.id == meal_id:
         result = await deps.registry.dispatch(ctx, "undo_last", {})
     else:
-        result = await deps.registry.dispatch(ctx, "delete_meal", {"meal_id": meal_id})
+        # The button carries the meal id the card was built from, so the id is read, not guessed:
+        # it passes the item name the id guard wants instead of being refused on an older day.
+        meal = await repo.get_meal(session, user.id, meal_id)
+        args: dict[str, Any] = {"meal_id": meal_id}
+        if meal is not None and meal.items:
+            args["expect_name"] = meal.items[0].name
+        result = await deps.registry.dispatch(ctx, "delete_meal", args)
     lang = resolve_lang(user.language)
     if result.is_error:
         if "not found" in str(result.content) or "nothing to undo" in str(result.content):

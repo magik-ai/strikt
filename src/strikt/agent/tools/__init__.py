@@ -52,6 +52,12 @@ ONBOARDING_TOOL_NAMES: tuple[str, ...] = (
     "update_protocol",
     "finish_onboarding",
     "import_history",
+    # The checklist asks for these by name (prompts/onboarding.md): the weight baseline, the
+    # integrations and the optional keys. Without them the interview would need a load_tools
+    # round trip on almost every answer, and finish_onboarding would fail on a missing weight.
+    "log_measurement",
+    "connect_integration",
+    "request_key",
 )
 
 

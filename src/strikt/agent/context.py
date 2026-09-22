@@ -88,7 +88,9 @@ DEFAULT_RECENT_IMAGES = 3
 #: What one restored picture costs the prompt (a 2000 px JPEG lands near this; a budget, not a
 #: count - see ``estimate_tokens``).
 IMAGE_TOKENS = 1600
-TURN_BUDGET_WARN_TOKENS = 60_000
+#: Above the history budget (``context_max_tokens``, 60k) plus the fixed part, so the warning
+#: means "this turn is unusual", not "the history is full".
+TURN_BUDGET_WARN_TOKENS = 90_000
 
 CACHE_1H: dict[str, str] = {"type": "ephemeral", "ttl": "1h"}
 CACHE_5M: dict[str, str] = {"type": "ephemeral"}
@@ -176,6 +178,18 @@ def history_window(total_rows: int, max_turns: int, slack: int = HISTORY_SLACK) 
         return total_rows
     start = ((total_rows - max_turns) // max(1, slack)) * max(1, slack)
     return total_rows - start
+
+
+def message_text(incoming: Incoming) -> str:
+    """Everything the user actually said this turn: the message plus a transcript or a caption.
+
+    A voice note and a photo caption arrive as ``Attachment.text``, not ``Incoming.text``, so
+    anything that reads the message for keywords (the playbooks, the past-question check) has to
+    look in both or it silently never fires for voice.
+    """
+    parts = [incoming.text or ""]
+    parts += [a.text or "" for a in incoming.attachments if a.text]
+    return "\n".join(part for part in parts if part).strip()
 
 
 def looks_like_past_question(text: str | None, *, now_local: datetime, lang: str | None) -> bool:
@@ -576,7 +590,7 @@ async def render_context_block(
             )
         parts.append("</summaries>")
 
-    if looks_like_past_question(incoming.text, now_local=now_local, lang=lang):
+    if looks_like_past_question(message_text(incoming), now_local=now_local, lang=lang):
         try:
             rows = await search_history(session, user, incoming.text or "", now_local=now_local)
             rendered = render_rows(rows, lang, tz=tz, max_tokens=CONTEXT_HISTORY_TOKENS)
@@ -603,7 +617,7 @@ async def render_context_block(
 
     parts.extend(
         f"<playbook {name}>\n{load_prompt(f'play/{name}')}\n</playbook>"
-        for name in playbooks_for(incoming.text, state.flags)
+        for name in playbooks_for(message_text(incoming), state.flags)
     )
 
     if answered_send is not None:

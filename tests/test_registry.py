@@ -60,7 +60,17 @@ def test_core_tier_is_the_daily_loop_and_much_smaller(registry: Registry) -> Non
     assert estimate_tokens(core) < 0.6 * estimate_tokens(registry.definitions())
 
     onboarding = [d["name"] for d in registry.definitions(tool_names_for(onboarding_done=False))]
-    assert "update_profile" in onboarding and "finish_onboarding" in onboarding
+    # every tool prompts/onboarding.md asks for by name, or the interview stalls on a round trip
+    for name in (
+        "update_profile",
+        "update_protocol",
+        "finish_onboarding",
+        "import_history",
+        "log_measurement",
+        "connect_integration",
+        "request_key",
+    ):
+        assert name in onboarding, name
 
 
 def test_definitions_are_sorted_strict_and_closed(registry: Registry) -> None:

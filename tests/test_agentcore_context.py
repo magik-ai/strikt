@@ -505,6 +505,13 @@ async def test_playbooks_arrive_only_when_the_message_is_about_them(
     )
     assert "<playbook" not in messages[-1]["content"][0]["text"]
 
+    # a voice note carries its transcript on the attachment, not on Incoming.text
+    voice = incoming(
+        user, None, attachments=[Attachment(kind="voice", text="плохо сплю третью ночь")]
+    )
+    _, messages, _, _ = await build(session, user, clock, settings, registry, voice)
+    assert "<playbook sleep>" in messages[-1]["content"][0]["text"]
+
 
 async def test_a_turn_carries_the_daily_loop_not_the_whole_catalogue(
     session: AsyncSession,

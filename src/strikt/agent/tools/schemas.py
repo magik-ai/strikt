@@ -207,8 +207,8 @@ class DeleteMealInput(ToolInput):
     expect_name: str | None = Field(
         default=None,
         description=(
-            "An item name or the slot of the meal you believe this id points at. Checked "
-            "before the delete; required for a meal older than yesterday."
+            "The name of an item in the meal you believe this id points at, as the day state "
+            "writes it. Checked before the delete; required for a meal older than yesterday."
         ),
     )
 
@@ -574,8 +574,9 @@ class LoadToolsInput(ToolInput):
     """Load the rest of the tool catalogue for this turn. The turn starts with the tools of the
     daily loop (food, the day, training, history, research). Call this once, before answering,
     when what the user asks for needs something else: the profile or the protocol, targets,
-    reminders, notes to retire, day flags or a day plan, weight or a lab report, an integration
-    or a key, the coaching intensity, onboarding or an import of past weeks."""
+    reminders, notes to retire, day flags or a day plan, weight or a lab report, a search of what
+    was said before, an integration or a key, the coaching intensity, onboarding or an import of
+    past weeks."""
 
     need: str = Field(description="What you need to do, in four or five words.")
 

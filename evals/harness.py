@@ -488,7 +488,8 @@ def grade(outcome: RunOutcome) -> Grade:
         check("rows_added", got == int(count), f"{name}: expected {count}, got {got}")
 
     # Always, in every case: a turn may not rewrite a day that is already closed.
-    today = to_local(outcome.case.when, DEFAULT_TZ).date()
+    tz = str(outcome.case.seed.get("timezone", DEFAULT_TZ))
+    today = to_local(outcome.case.when, tz).date()
     stale = [
         f"#{i} {before.items[i][0]} ({before.items[i][3]})"
         for i in before.items

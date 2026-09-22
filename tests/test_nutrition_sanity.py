@@ -425,3 +425,13 @@ def test_the_coach_s_own_estimate_is_not_buffered() -> None:
     assert "loose_under_report" not in codes(flags)
     assert checked.macros.kcal == 400
     assert checked.countable is False  # still loose, still says so to the model
+
+
+def test_carries_fiber_is_about_the_plant_not_the_word() -> None:
+    """The fibre keywords are substrings: an oil and a pepperoni must not match their plant."""
+    from strikt.nutrition.sanity import carries_fiber
+
+    for name in ("Brussel Sprouts", "оливки", "салат с оливковым маслом", "bell pepper salad"):
+        assert carries_fiber(name), name
+    for name in ("Pepperoni calzone", "olive oil", "оливковое масло", "chicken breast"):
+        assert not carries_fiber(name), name

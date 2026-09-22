@@ -12,7 +12,18 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parent.parent
 PROMPTS_DIR = ROOT / "src" / "strikt" / "agent" / "prompts"
 OUTPUT = ROOT / "PROMPTS.md"
-ORDER = ("coach", "onboarding", "proactive", "verify", "summarize", "import")
+ORDER = (
+    "coach",
+    "play/body",
+    "play/edge",
+    "play/sleep",
+    "onboarding",
+    "proactive",
+    "triggers",
+    "verify",
+    "summarize",
+    "import",
+)
 
 HEADER = """# Strikt - prompts
 
@@ -33,6 +44,12 @@ How the prompts are used (PLAN §6):
 
 def build() -> str:
     parts = [HEADER]
+    on_disk = {
+        str(path.relative_to(PROMPTS_DIR).with_suffix("")) for path in PROMPTS_DIR.rglob("*.md")
+    }
+    missing = sorted(on_disk - set(ORDER))
+    if missing:
+        raise SystemExit(f"prompt files missing from ORDER in {__file__}: {missing}")
     for name in ORDER:
         path = PROMPTS_DIR / f"{name}.md"
         body = path.read_text(encoding="utf-8").rstrip() + "\n"

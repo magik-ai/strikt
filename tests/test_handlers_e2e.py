@@ -22,6 +22,7 @@ from strikt.agent.client import FakeKeyValidator, FakeLLM, FakeLLMFactory
 from strikt.agent.tools import build_registry
 from strikt.config import Settings
 from strikt.core.clock import FakeClock
+from strikt.core.types import FoodItemIn, Macros
 from strikt.db import repo
 from strikt.db.crypto import TokenCipher, generate_key
 from strikt.db.engine import make_session_factory
@@ -394,6 +395,37 @@ async def test_callback_undo_soft_deletes_and_refreshes(
     assert messenger.callbacks[-1][1] == t("ru", "btn.undo")
     assert "пока ничего не записано" in messenger.edits[-1][2]
     assert seen == ["undo"]
+
+
+async def test_callback_undo_works_on_a_meal_from_an_earlier_day(
+    deps: AppDeps, messenger: FakeMessenger, fake_llm: FakeLLM, user: User, session: AsyncSession
+) -> None:
+    """The id guard refuses a blind delete of an old row; the button is not blind, it read the id."""
+    from datetime import timedelta
+
+    log_meal_script(fake_llm)
+    await handle_message(deps, photo_msg())
+    meal = (await session.scalars(select(Meal))).one()
+    meal.day_date = meal.day_date - timedelta(days=9)
+    # a newer meal, so the button's target is not "the last meal" and the handler has to take
+    # the delete_meal branch, which is the one the id guard sits on
+    await repo.add_meal_with_items(
+        session,
+        user.id,
+        day_date=meal.day_date + timedelta(days=9),
+        items=[
+            FoodItemIn(name="творог", macros=Macros(kcal=200, protein_g=30, carbs_g=8, fat_g=5))
+        ],
+        slot=MealSlot.dinner,
+        logged_at=deps.clock.now(),
+        eaten_at=deps.clock.now(),
+    )
+    await session.commit()
+
+    await handle_callback(deps, cb(f"undo:{meal.id}"))
+    await session.refresh(meal)
+    assert meal.deleted_at is not None
+    assert messenger.callbacks[-1][1] == t("ru", "btn.undo")
 
 
 async def test_malformed_callback_is_answered_and_ignored(

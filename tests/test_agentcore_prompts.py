@@ -137,3 +137,15 @@ def test_coach_prompt_dates_event_notes_and_the_night_boundary() -> None:
     assert "after midnight" in coach and "bedtime + 1 h" in coach
     field = WriteNoteInput.model_fields["expires_at"]
     assert field.description is not None and "planned event" in field.description
+
+
+def test_prompts_md_carries_every_prompt_file() -> None:
+    """A prompt that is not in ORDER silently vanishes from the brief's deliverable."""
+    import sys
+
+    sys.path.insert(0, str(PROMPTS.parent.parent.parent.parent / "scripts"))
+    import build_prompts_md
+
+    on_disk = {str(p.relative_to(PROMPTS).with_suffix("")) for p in PROMPTS.rglob("*.md")}
+    assert on_disk == set(build_prompts_md.ORDER)
+    build_prompts_md.build()  # raises when a file is missing from ORDER

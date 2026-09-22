@@ -399,7 +399,8 @@ FIBER_CEILING_G: Final[Mapping[str, float]] = {
     "шампиньон": 4.0,
     "carrot": 4.0,
     "морков": 4.0,
-    "pepper": 3.0,
+    "bell pepper": 3.0,
+    "болгарск": 3.0,
     " перец": 3.0,
     "zucchini": 3.0,
     "кабач": 3.0,
@@ -409,7 +410,7 @@ FIBER_CEILING_G: Final[Mapping[str, float]] = {
     "спарж": 4.0,
     "celery": 3.0,
     "сельдер": 3.0,
-    "olive": 4.0,
+    "olives": 4.0,
     "оливк": 4.0,
     "маслин": 4.0,
     "seeds": 8.0,
@@ -418,6 +419,11 @@ FIBER_CEILING_G: Final[Mapping[str, float]] = {
 }
 """Maximum plausible fibre for one dish serving containing this ingredient (used when the item
 names no legume/bran source). The ceiling for a dish is the maximum over matched keywords."""
+
+#: Words that make a plant name an oil: the fat, not the food.
+OIL_WORDS: Final[tuple[str, ...]] = _kw(" oil", "масло", "масла", "маслом")
+#: The olive keys ``OIL_WORDS`` cancels.
+OLIVE_KEYS: Final[frozenset[str]] = frozenset({"olives", "оливк", "маслин"})
 
 FIBER_RICH: Final[tuple[str, ...]] = _kw(
     "lentil",
@@ -1106,7 +1112,14 @@ def carries_fiber(name: str) -> bool:
     each is what put a day at 7 g of fibre when it held 14.
     """
     text = _norm(name)
-    return _has(text, FIBER_RICH) or bool(_matches(text, FIBER_CEILING_G))
+    if _has(text, FIBER_RICH):
+        return True
+    matched = _matches(text, FIBER_CEILING_G)
+    # An oil is not its plant: "оливковое масло" and "olive oil" carry no fibre, while "салат с
+    # оливковым маслом" still does, through the salad.
+    if _has(text, OIL_WORDS):
+        matched = [key for key in matched if key not in OLIVE_KEYS]
+    return bool(matched)
 
 
 def _rule_fiber(name: str, item: FoodItemIn, macros: Macros) -> tuple[Macros, Flag | None]:
