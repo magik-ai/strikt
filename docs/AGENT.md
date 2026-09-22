@@ -27,8 +27,9 @@ One ordinary turn, empty day, one line of user text:
 
 The agent's attention budget was spent almost entirely on rules and schemas, and 0.6 % of it on
 the user. `update_profile` alone cost 1 644 tokens on every turn and is used about once a week.
-Every tool also shipped its description twice: once as the tool description, once as the schema
-root's `description` (pydantic copies the docstring).
+Every tool also shipped its description twice (once as the tool description, once as the schema
+root's, which pydantic copies from the docstring) and a `"default": null` on each of its hundred
+optional fields. Both are gone: the full catalogue is 8 078 tokens now, the daily loop 4 262.
 
 ## The five decisions
 
@@ -39,7 +40,7 @@ training, history, research, notes) plus `load_tools`. Everything cold (profile,
 reminders, flags, plans, weight, labs, integrations, keys, intensity, onboarding, import) is one
 `load_tools` call away; the turn loop then re-sends the same turn with the full catalogue.
 
-- 12 tools and 4 542 tokens on an ordinary turn instead of 28 and 9 793.
+- 12 tools and 4 262 tokens on an ordinary turn instead of 28 and 9 793.
 - Two stable tool sets, so two cache entries, not a new prefix per turn: the core set is
   byte-identical on every ordinary turn.
 - While onboarding is unfinished, the checklist tools join the core set, because then they *are*
@@ -99,14 +100,27 @@ fails the call. An id carried over from an earlier day used to rewrite a closed 
    render the same bytes for the same inputs; everything that changes per turn goes in the
    `<context>` block of the user message.
 
+## Proving it: the eval
+
+`evals/` holds 21 real turns, most of them from the chat that produced this file, and grades what
+ends up in the database: which tools ran, what was written, what the reply says. `make eval` runs
+them against a real model (`ANTHROPIC_API_KEY`), `make eval-judge` adds one rubric question per
+case. Every case also checks the invariant that started this work: a turn may not change a row
+from an earlier day.
+
+Numbers in this file that describe the *request* (tokens, tool counts) come from
+`context_built`; anything about the *answers* has to come from an eval run, and a claim without
+one does not belong here. The set is small enough that a difference under about ten points is
+noise: `--reps 3` before believing a small win.
+
 ## Known gaps, in the order they are worth fixing
 
-- `log_meal`, `update_meal` and `log_workout` are still 1 059 / 838 / 804 tokens of schema.
-  Trimming field descriptions is the next measurable win.
-- The proactive decider gets its own 2 044 token prompt and the whole ladder state. It should
-  carry the same three-kinds discipline the coach has.
-- `context_max_turns` is 30 rows. Now that proactive sends are rows too, a busy day pushes the
-  morning out of the window sooner; worth raising once the fixed part is smaller.
-- There is no eval. Every claim in this file is a measurement of the request, not of the answers.
-  A small graded set of real turns (log, question, correction, photo) is what would make the next
-  round of changes provable.
+- `log_meal`, `update_meal` and `log_workout` are still 931 / 698 / 666 tokens of schema, which
+  is most of what an ordinary turn now carries.
+- The proactive decider gets its own 2 044 token prompt and the whole ladder state, and it does
+  not carry the three-kinds discipline the coach has. The eval does not cover that flow either:
+  it is a different entry point and needs its own cases.
+- Photos and voice are not in the eval: the harness sends text only.
+- `context_max_turns` went from 30 to 60 rows when the fixed part dropped to 9k tokens, because
+  the window is where "he does not remember anything" comes from and proactive check-ins are rows
+  in it now too. Nothing measures whether 60 is the right number.

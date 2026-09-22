@@ -398,8 +398,8 @@ async def history_messages(
     (``settings.context_recent_images`` of them); without it the history carries only the
     ``[image: …]`` stubs.
     """
-    max_turns = int(getattr(settings, "context_max_turns", 30))
-    max_tokens = int(getattr(settings, "context_max_tokens", 40_000))
+    max_turns = int(getattr(settings, "context_max_turns", 60))
+    max_tokens = int(getattr(settings, "context_max_tokens", 60_000))
     rows = await repo.last_n_turns(session, user.id, max_turns + HISTORY_SLACK + 1)
     excluded = sum(1 for row in rows if row.id == exclude_turn_id)
     total = await repo.count_turns(session, user.id) - excluded

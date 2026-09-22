@@ -165,6 +165,10 @@ def _strictify(node: Any) -> Any:
     for key, value in node.items():
         if key in _DROP_KEYS:
             continue
+        # ``"default": null`` on an optional field says nothing the ``anyOf [..., null]`` does not
+        # say already, and it is four tokens on every one of the hundred optional fields.
+        if key == "default" and value is None:
+            continue
         if key == "format" and value not in _ALLOWED_FORMATS:
             continue
         if key == "minItems" and isinstance(value, int) and value > 1:

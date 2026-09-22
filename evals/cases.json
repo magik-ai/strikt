@@ -1,0 +1,365 @@
+{
+  "flow": "turn",
+  "about": [
+    "One case = a seeded day, one incoming message, and what must be true afterwards.",
+    "Most cases are the owner's real chat of 22 September 2026: the day that produced",
+    "docs/AGENT.md. The rest are the ordinary turns that must not regress.",
+    "Every case also carries an implicit check: a turn may never change a row from an",
+    "earlier day. Times are Asia/Dubai."
+  ],
+  "cases": [
+    {
+      "id": "psyllium_is_logged",
+      "tags": ["log", "fibre"],
+      "note": "Real: the coach refused it as 'not really food' and the day ended 9 g of fibre short.",
+      "now": "2026-09-22T11:10:00+04:00",
+      "seed": { "profile": { "wake_time": "09:30" } },
+      "message": "пока не знаю\nно с утра уже выпил 2 чайных псиллиума",
+      "expect": {
+        "must_call": ["log_meal"],
+        "meals_added": 1,
+        "fiber_added_at_least": 5,
+        "reply_not_matches": ["не буду .{0,20}запис", "не еда", "держи это в уме"],
+        "judge": "Does the reply log the psyllium and say what it adds, instead of arguing that it is not food?"
+      }
+    },
+    {
+      "id": "psyllium_pushback",
+      "tags": ["log", "fibre", "correction"],
+      "note": "Real: the user had to argue for it.",
+      "now": "2026-09-22T16:17:00+04:00",
+      "seed": {
+        "history": [
+          { "role": "user", "text": "с утра выпил 2 чайных псиллиума" },
+          { "role": "assistant", "text": "Псиллиум записывать не буду, это не еда по сути." }
+        ],
+        "meals": [
+          {
+            "at": "14:39",
+            "slot": "breakfast",
+            "items": [
+              { "name": "scrambled eggs", "kcal": 140, "protein_g": 12, "carbs_g": 1, "fat_g": 10 },
+              { "name": "avocado half", "kcal": 179, "protein_g": 2, "carbs_g": 9, "fat_g": 15, "fiber_g": 7 }
+            ]
+          }
+        ]
+      },
+      "message": "ну а псиллиум? поэтому его и надо логировать блин",
+      "expect": {
+        "must_call": ["log_meal"],
+        "meals_added": 1,
+        "fiber_added_at_least": 5,
+        "judge": "Does the reply accept the correction in one line and log it, without a paragraph of apology?"
+      }
+    },
+    {
+      "id": "vegetables_carry_fibre",
+      "tags": ["log", "fibre"],
+      "note": "Real: sprouts and an avocado toast were both logged at 0 g fibre.",
+      "now": "2026-09-22T16:13:00+04:00",
+      "message": "обед в HEAT Cafe: брюссельская капуста, тост с лососем и авокадо, куриная грудка 150 г",
+      "expect": {
+        "must_call": ["log_meal"],
+        "meals_added": 1,
+        "fiber_added_at_least": 4,
+        "judge": "Does the reply state the meal's numbers and one thing that follows for the rest of the day?"
+      }
+    },
+    {
+      "id": "dinner_question_is_not_a_meal",
+      "tags": ["advice", "no-write"],
+      "note": "The complaint: a question gets logged as food.",
+      "now": "2026-09-22T21:00:00+04:00",
+      "seed": {
+        "meals": [
+          { "at": "14:39", "slot": "breakfast", "items": [{ "name": "omelette", "kcal": 474, "protein_g": 24, "carbs_g": 12, "fat_g": 38, "fiber_g": 7 }] },
+          { "at": "16:13", "slot": "lunch", "items": [{ "name": "salmon and chicken plate", "kcal": 905, "protein_g": 88, "carbs_g": 24, "fat_g": 32, "fiber_g": 7 }] }
+        ]
+      },
+      "message": "что на ужин?",
+      "expect": {
+        "must_not_call": ["log_meal", "update_meal", "delete_meal"],
+        "meals_added": 0,
+        "today_untouched": true,
+        "reply_has_number": true,
+        "judge": "Does the reply name a concrete dinner with an amount, rather than asking the user what they want?"
+      }
+    },
+    {
+      "id": "evening_plan_question",
+      "tags": ["advice", "no-write"],
+      "note": "Real message from the chat.",
+      "now": "2026-09-22T16:14:00+04:00",
+      "seed": {
+        "meals": [
+          { "at": "16:13", "slot": "lunch", "items": [{ "name": "salmon and chicken plate", "kcal": 905, "protein_g": 88, "carbs_g": 24, "fat_g": 32, "fiber_g": 7 }] }
+        ]
+      },
+      "message": "вечером видимо 300 г курицы + шейк + еще что-то?",
+      "expect": {
+        "must_not_call": ["log_meal"],
+        "meals_added": 0,
+        "judge": "Does the reply answer the plan with what is still missing for the day (protein, fibre) instead of logging it?"
+      }
+    },
+    {
+      "id": "menu_is_ranked_not_logged",
+      "tags": ["advice", "no-write"],
+      "now": "2026-09-22T13:30:00+04:00",
+      "message": "рядом только шаурма, бургер или салат с курицей. что брать?",
+      "expect": {
+        "must_not_call": ["log_meal"],
+        "meals_added": 0,
+        "reply_has_number": true,
+        "judge": "Does the reply pick one option and say why, with numbers?"
+      }
+    },
+    {
+      "id": "list_today_is_read_only",
+      "tags": ["read", "no-write"],
+      "note": "Real: 'дай мне весь список того что ты залогировал сегодня со всем кбжу'.",
+      "now": "2026-09-22T16:16:00+04:00",
+      "seed": {
+        "meals": [
+          { "at": "14:39", "slot": "breakfast", "items": [{ "name": "omelette", "kcal": 474, "protein_g": 24, "carbs_g": 12, "fat_g": 38, "fiber_g": 7 }] },
+          { "at": "16:13", "slot": "lunch", "items": [{ "name": "salmon and chicken plate", "kcal": 905, "protein_g": 88, "carbs_g": 24, "fat_g": 32, "fiber_g": 7 }] }
+        ]
+      },
+      "message": "дай мне весь список того что ты залогировал сегодня со всем кбжу",
+      "expect": {
+        "must_not_call": ["log_meal", "delete_meal"],
+        "meals_added": 0,
+        "today_untouched": true,
+        "reply_matches": ["1379|1 379"],
+        "judge": "Does the list match the database and end with what is left against the targets?"
+      }
+    },
+    {
+      "id": "fibre_challenge_fixes_the_right_rows",
+      "tags": ["correction", "fibre"],
+      "note": "Real: the fix landed on a watermelon logged eleven days earlier.",
+      "now": "2026-09-22T16:15:00+04:00",
+      "seed": {
+        "meals": [
+          { "days_ago": 11, "at": "13:00", "slot": "lunch", "items": [{ "name": "арбуз", "kcal": 90, "protein_g": 2, "carbs_g": 22, "fat_g": 0, "fiber_g": 1 }] },
+          { "at": "14:39", "slot": "breakfast", "items": [{ "name": "avocado half", "kcal": 179, "protein_g": 2, "carbs_g": 9, "fat_g": 15, "fiber_g": 7 }] },
+          {
+            "at": "16:13",
+            "slot": "lunch",
+            "items": [
+              { "name": "Brussel Sprouts", "kcal": 144, "protein_g": 4, "carbs_g": 6, "fat_g": 9, "fiber_g": 0 },
+              { "name": "Grilled Salmon Mashed Avocado", "kcal": 401, "protein_g": 39, "carbs_g": 6, "fat_g": 16, "fiber_g": 0 }
+            ]
+          }
+        ]
+      },
+      "message": "почему всего 7 клетчатки? я ел брюссельскую капусту и авокадо",
+      "expect": {
+        "must_not_call": ["delete_meal"],
+        "meals_added": 0,
+        "judge": "Does the reply fix the two lunch rows that are missing fibre, and only those?"
+      }
+    },
+    {
+      "id": "portion_correction",
+      "tags": ["correction"],
+      "now": "2026-09-22T17:00:00+04:00",
+      "seed": {
+        "meals": [
+          { "days_ago": 3, "at": "13:00", "slot": "lunch", "items": [{ "name": "rice bowl", "kcal": 600, "protein_g": 30, "carbs_g": 80, "fat_g": 12, "fiber_g": 4 }] },
+          { "at": "16:13", "slot": "lunch", "items": [{ "name": "chicken breast 200 g", "grams": 200, "kcal": 410, "protein_g": 60, "carbs_g": 0, "fat_g": 18 }] }
+        ]
+      },
+      "message": "курицы было 150 грамм, а не 200",
+      "expect": {
+        "must_call": ["update_meal"],
+        "meals_added": 0,
+        "reply_has_number": true
+      }
+    },
+    {
+      "id": "delete_the_last_meal",
+      "tags": ["correction"],
+      "now": "2026-09-22T17:30:00+04:00",
+      "seed": {
+        "meals": [
+          { "at": "16:13", "slot": "lunch", "items": [{ "name": "protein shake", "kcal": 220, "protein_g": 30, "carbs_g": 8, "fat_g": 5 }] }
+        ]
+      },
+      "message": "убери последний приём, я его в итоге не пил",
+      "expect": {
+        "must_call_any": ["delete_meal", "undo_last"],
+        "meals_added": -1
+      }
+    },
+    {
+      "id": "wake_time_is_stored",
+      "tags": ["fact", "tools"],
+      "note": "Real: 'я встаю в 9-30' after a check-in that assumed 08:00.",
+      "now": "2026-09-22T11:10:00+04:00",
+      "seed": {
+        "history": [
+          { "role": "assistant", "text": "три часа как встал, а по еде пока пусто - что на обед берёшь?" }
+        ]
+      },
+      "message": "я встаю в 9-30",
+      "expect": {
+        "must_call": ["load_tools", "update_profile"],
+        "meals_added": 0,
+        "profile_equals": { "wake_time": "09:30" },
+        "max_rounds": 4
+      }
+    },
+    {
+      "id": "own_check_in_is_not_denied",
+      "tags": ["memory"],
+      "note": "Real: the coach told the owner it had never written the message on his screen.",
+      "now": "2026-09-22T21:01:00+04:00",
+      "seed": {
+        "proactive_send": {
+          "trigger": "no_dinner",
+          "minutes_ago": 60,
+          "text": "последний раз ел в 16:17, уже четыре часа - что будет на ужин?"
+        },
+        "history": [
+          { "role": "user", "text": "а что за тренировка" },
+          { "role": "assistant", "text": "Тренировки сегодня нет в логе - последняя была вчера, бокс." }
+        ],
+        "meals": [
+          { "at": "16:13", "slot": "lunch", "items": [{ "name": "salmon plate", "kcal": 905, "protein_g": 88, "carbs_g": 24, "fat_g": 32, "fiber_g": 7 }] }
+        ]
+      },
+      "message": "ну ты написал \"последний раз ел в 16:17, уже четыре часа - что будет на ужин?\" - что ты имел в виду?",
+      "expect": {
+        "meals_added": 0,
+        "reply_not_matches": ["не писал", "не отправл", "это не от меня", "не моё сообщение"],
+        "judge": "Does the reply own the check-in it sent and answer the question about it?"
+      }
+    },
+    {
+      "id": "weight_is_a_measurement",
+      "tags": ["body", "tools"],
+      "now": "2026-09-22T09:40:00+04:00",
+      "message": "взвесился, 104.2",
+      "expect": {
+        "must_call": ["load_tools", "log_measurement"],
+        "rows_added": { "measurements": 1 },
+        "must_not_call": ["log_meal"],
+        "judge": "Does the reply avoid reading one morning's weight as a result?"
+      }
+    },
+    {
+      "id": "workout_is_logged",
+      "tags": ["training"],
+      "now": "2026-09-22T19:30:00+04:00",
+      "message": "пробежал 8 км за 45 минут",
+      "expect": {
+        "must_call": ["log_workout"],
+        "rows_added": { "workouts": 1 },
+        "must_not_call": ["log_meal"],
+        "judge": "Does the reply react like a training partner in one line and say one thing it changes?"
+      }
+    },
+    {
+      "id": "reminder_is_set",
+      "tags": ["tools"],
+      "now": "2026-09-22T22:00:00+04:00",
+      "message": "напомни завтра в 8 утра замерить талию",
+      "expect": {
+        "must_call": ["load_tools", "set_reminder"],
+        "rows_added": { "reminders": 1 },
+        "max_rounds": 4
+      }
+    },
+    {
+      "id": "sick_day_pauses_the_protocol",
+      "tags": ["edge"],
+      "now": "2026-09-22T12:00:00+04:00",
+      "message": "отравился вчерашним, весь день тошнит, ничего не ел",
+      "expect": {
+        "must_call": ["load_tools", "set_day_flag"],
+        "must_not_call": ["log_meal"],
+        "judge": "Does the reply pause the targets, name electrolytes and a doctor threshold, and skip training?"
+      }
+    },
+    {
+      "id": "remaining_numbers_are_the_database",
+      "tags": ["read", "numbers"],
+      "now": "2026-09-22T18:00:00+04:00",
+      "seed": {
+        "meals": [
+          { "at": "14:39", "slot": "breakfast", "items": [{ "name": "omelette", "kcal": 474, "protein_g": 24, "carbs_g": 12, "fat_g": 38, "fiber_g": 7 }] },
+          { "at": "16:13", "slot": "lunch", "items": [{ "name": "salmon plate", "kcal": 905, "protein_g": 88, "carbs_g": 24, "fat_g": 32, "fiber_g": 7 }] }
+        ]
+      },
+      "message": "сколько осталось?",
+      "expect": {
+        "must_not_call": ["log_meal"],
+        "meals_added": 0,
+        "reply_matches": ["70[0-9]"],
+        "judge": "Are the numbers the database's, and is the reply short?"
+      }
+    },
+    {
+      "id": "ambiguous_message_asks_instead_of_logging",
+      "tags": ["advice", "no-write"],
+      "now": "2026-09-22T13:00:00+04:00",
+      "message": "курица с рисом",
+      "expect": {
+        "meals_added": 0,
+        "reply_matches": ["\\?"],
+        "judge": "Does the reply ask one short question about whether this was eaten or is being chosen?"
+      }
+    },
+    {
+      "id": "log_and_answer_in_one_turn",
+      "tags": ["log", "advice"],
+      "now": "2026-09-22T15:00:00+04:00",
+      "seed": {
+        "meals": [
+          { "at": "11:00", "slot": "breakfast", "items": [{ "name": "coffee", "kcal": 10, "protein_g": 0, "carbs_g": 1, "fat_g": 0 }] }
+        ]
+      },
+      "message": "съел омлет из 3 яиц с сыром, что на ужин планировать?",
+      "expect": {
+        "must_call": ["log_meal"],
+        "meals_added": 1,
+        "reply_has_number": true,
+        "judge": "Does the reply do both: log the omelette and answer the dinner question?"
+      }
+    },
+    {
+      "id": "acknowledgement_logs_nothing",
+      "tags": ["no-write"],
+      "now": "2026-09-22T16:20:00+04:00",
+      "seed": {
+        "history": [
+          { "role": "user", "text": "обед: лосось и брюссельская" },
+          { "role": "assistant", "text": "записал, 905 ккал и 88 белка. до нормы ещё 98 белка." }
+        ],
+        "meals": [
+          { "at": "16:13", "slot": "lunch", "items": [{ "name": "salmon plate", "kcal": 905, "protein_g": 88, "carbs_g": 24, "fat_g": 32, "fiber_g": 7 }] }
+        ]
+      },
+      "message": "ага",
+      "expect": {
+        "must_not_call": ["log_meal", "update_meal"],
+        "meals_added": 0,
+        "today_untouched": true,
+        "max_rounds": 1
+      }
+    },
+    {
+      "id": "restaurant_dish_is_researched",
+      "tags": ["log", "research"],
+      "now": "2026-09-22T14:00:00+04:00",
+      "message": "взял в Wagamama chicken katsu curry, съел целиком",
+      "expect": {
+        "must_call": ["log_meal"],
+        "meals_added": 1,
+        "kcal_added_between": [700, 1600],
+        "judge": "Did the numbers come from research or a named source, and does the reply say where they came from?"
+      }
+    }
+  ]
+}

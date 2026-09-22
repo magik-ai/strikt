@@ -60,7 +60,7 @@ default-groups = ["dev"]
 [tool.ruff]
 line-length = 100
 target-version = "py313"
-src = ["src", "tests", "scripts", "migrations"]
+src = ["src", "tests", "scripts", "migrations", "evals"]
 extend-exclude = ["migrations/versions/*.py", "brand/**"]
 
 [tool.ruff.lint]
@@ -101,10 +101,11 @@ ignore = [
 [tool.ruff.lint.per-file-ignores]
 "tests/**" = ["PLR2004", "S101", "DTZ", "PT011", "PT018", "ASYNC", "N802"]
 "scripts/**" = ["T20"]
+"evals/**" = ["T20", "PLR2004", "BLE001", "S101"]
 "migrations/env.py" = ["T20"]
 
 [tool.ruff.lint.isort]
-known-first-party = ["strikt"]
+known-first-party = ["evals", "strikt"]
 combine-as-imports = true
 
 [tool.ruff.format]

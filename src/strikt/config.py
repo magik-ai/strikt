@@ -104,8 +104,12 @@ class Settings(BaseSettings):
     # server tool type strings for web_research; a renamed version is a config change, not a deploy
     web_search_tool_type: str = "web_search_20260318"
     web_fetch_tool_type: str = "web_fetch_20260318"
-    context_max_turns: int = 30
-    context_max_tokens: int = 40_000
+    #: Rows of conversation kept in the prompt. Raised from 30 once the fixed part of a turn
+    #: dropped from 15k to 9k tokens (docs/AGENT.md): the window is what "he does not remember
+    #: anything" actually comes from, and proactive check-ins are rows in it now too. The tail is
+    #: cached, so the extra rows are read at cache prices on almost every turn.
+    context_max_turns: int = 60
+    context_max_tokens: int = 60_000
     #: Pictures from earlier turns re-attached to the prompt, so a menu sent two messages ago is
     #: still visible. 0 turns it off; every one of them costs input tokens on the user's key.
     context_recent_images: int = 3

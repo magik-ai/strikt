@@ -30,6 +30,7 @@ make lint                     # ruff check + format --check
 make type                     # mypy --strict src
 make test                     # pytest (SQLite + aiosqlite, no network)
 make check                    # all of the above + PROMPTS.md sync
+make eval                     # 21 real turns against the real model (ANTHROPIC_API_KEY, evals/)
 make prompts                  # regenerate PROMPTS.md from src/strikt/agent/prompts/*.md
 make migrate / make revision m="…"
 make keygen                   # TOKEN_ENCRYPTION_KEY

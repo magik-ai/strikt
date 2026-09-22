@@ -1,4 +1,4 @@
-.PHONY: sync lint fmt type test check run migrate revision prompts keygen preflight clean
+.PHONY: sync lint fmt type test check run migrate revision prompts keygen preflight eval eval-judge clean
 
 UV ?= uv
 
@@ -41,6 +41,12 @@ keygen:          ## Print a fresh TOKEN_ENCRYPTION_KEY
 
 preflight:       ## One real Anthropic call with the coach's tools (ANTHROPIC_API_KEY=...)
 	$(UV) run python scripts/preflight.py
+
+eval:            ## Run the turn eval: 21 real turns, graded on the database (ANTHROPIC_API_KEY=...)
+	$(UV) run python -m evals.run
+
+eval-judge:      ## The same, plus one rubric question per case answered by Haiku
+	$(UV) run python -m evals.run --judge
 
 clean:
 	rm -rf .mypy_cache .ruff_cache .pytest_cache dist build
