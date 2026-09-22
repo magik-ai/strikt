@@ -92,3 +92,37 @@ async def test_cases_file_is_valid_json_with_notes() -> None:
     assert raw["flow"] == "turn"
     real = [c for c in raw["cases"] if c.get("note")]
     assert len(real) >= 5  # the cases that came from the owner's own chat
+
+
+async def test_proactive_case_runs_and_is_graded(fake_llm: FakeLLM, settings: Settings) -> None:
+    """The decider flow: a scripted decision goes through the same checks a real one would."""
+    from evals.harness import PROACTIVE_CASES_PATH, grade_proactive, run_proactive_case
+
+    cases = load_cases(PROACTIVE_CASES_PATH)
+    case = next(c for c in cases if c.id == "no_first_meal_without_a_known_wake_time")
+
+    fake_llm.queue(
+        FakeLLM.json_result(
+            {"send": True, "text": "бро, ты сегодня ещё ничего не ел. что на обед?", "reason": "ok"}
+        )
+    )
+    good = grade_proactive(await run_proactive_case(case, fake_llm, settings))
+    assert good.passed, good.failures
+
+    fake_llm.queue(
+        FakeLLM.json_result(
+            {"send": True, "text": "11:00. три часа как встал, а по еде пусто.", "reason": "x"}
+        )
+    )
+    bad = grade_proactive(await run_proactive_case(case, fake_llm, settings))
+    assert not bad.passed
+    assert any("no_clock_opening" in f for f in bad.failures)
+    assert any("text_not_matches" in f for f in bad.failures)
+
+
+async def test_proactive_cases_all_declare_a_fire() -> None:
+    from evals.harness import PROACTIVE_CASES_PATH
+
+    for case in load_cases(PROACTIVE_CASES_PATH):
+        assert case.expect.get("fire", {}).get("trigger"), case.id
+        assert "sends" in case.expect, case.id

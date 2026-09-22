@@ -2,7 +2,7 @@
 
 ``LLMDecider`` implements ``proactive.types.Decider``. The prompt is compact and cheap (effort
 ``low`` via the ``proactive`` purpose): ``prompts/proactive.md`` as the cached system block, then
-one user message with the fire facts, the profile block, today's state, the last three day
+one user message with the fire facts, the firing trigger's own line from ``prompts/triggers.md``, the profile block, today's state, the last three day
 summaries, relevant notes, the ladder state and response rate, and what was already sent today.
 The answer is structured output ``{send, text, reason}``. Brief §7.4 is enforced in code as
 well: emoji stripped, at most four lines / 350 characters (the Sunday ``weekly_review`` is the
@@ -16,6 +16,7 @@ from __future__ import annotations
 import json
 import re
 from datetime import datetime
+from functools import lru_cache
 from typing import TYPE_CHECKING, Any
 
 import structlog
@@ -71,6 +72,38 @@ _EMOJI = re.compile(
     "]+"
 )
 _MULTISPACE = re.compile(r"[ \t]{2,}")
+#: ``- `a` / `b`: text`` in prompts/triggers.md (some triggers share one entry).
+_TRIGGER_LINE = re.compile(r"^- ((?:`[a-z0-9_]+`(?:\s*/\s*)?)+):\s*(.*)$")
+_TRIGGER_NAME = re.compile(r"`([a-z0-9_]+)`")
+
+
+@lru_cache(maxsize=1)
+def _trigger_guidance() -> dict[str, str]:
+    """``prompts/triggers.md`` parsed into one entry per trigger.
+
+    The per-trigger guidance used to sit in the cached system block: 899 tokens of instructions
+    for twenty-five triggers, of which one fire needs one. It now travels with the facts, which
+    is both cheaper and closer to what the model is deciding about.
+    """
+    entries: dict[str, list[str]] = {}
+    current: list[str] = []
+    for line in load_prompt("triggers").splitlines():
+        match = _TRIGGER_LINE.match(line)
+        if match:
+            current = _TRIGGER_NAME.findall(match.group(1))
+            for name in current:
+                entries[name] = [match.group(2).strip()]
+        elif current and line.startswith("  "):
+            for name in current:
+                entries[name].append(line.strip())
+        elif not line.strip():
+            current = []
+    return {name: " ".join(parts) for name, parts in entries.items()}
+
+
+def guidance_for(trigger: str) -> str:
+    """The guidance for one trigger, or an empty string when the file has no entry for it."""
+    return _trigger_guidance().get(trigger, "")
 
 
 def strip_emoji(text: str) -> str:
@@ -212,6 +245,9 @@ class LLMDecider:
         if fire.payload:
             parts.append(f"payload: {_short(_json(fire.payload), 600)}")
         parts.append("</fire>")
+        guidance = guidance_for(fire.name)
+        if guidance:
+            parts.append(f"<trigger_guidance>{guidance}</trigger_guidance>")
         parts += [
             "<ladder>",
             f"step: {step} of {MAX_STEP} (write at this step's voice)",

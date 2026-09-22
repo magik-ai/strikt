@@ -72,8 +72,8 @@ class Case:
         return datetime.fromisoformat(self.now)
 
 
-def load_cases(path: Path = CASES_PATH) -> list[Case]:
-    raw = json.loads(path.read_text(encoding="utf-8"))
+def load_cases(path: Path | None = None) -> list[Case]:
+    raw = json.loads((path or CASES_PATH).read_text(encoding="utf-8"))
     cases = [Case(**row) for row in raw["cases"]]
     ids = [c.id for c in cases]
     if len(set(ids)) != len(ids):
@@ -431,6 +431,8 @@ class Grade:
 
 
 _NUMBER = re.compile(r"\d")
+#: "18:00, белок..." - the opening the brief bans outright.
+_CLOCK_OPENING = re.compile(r"^\s*\d{1,2}[:.]\d{2}")
 
 
 def grade(outcome: RunOutcome) -> Grade:
@@ -527,4 +529,120 @@ def grade(outcome: RunOutcome) -> Grade:
         want = int(expect["max_rounds"])
         check("max_rounds", outcome.rounds <= want, f"{outcome.rounds} rounds, allowed {want}")
 
+    return Grade(passed=not failures, failures=failures, checks=checks)
+
+
+# --------------------------------------------------------------------------------- proactive
+
+
+PROACTIVE_CASES_PATH = Path(__file__).resolve().parent / "proactive_cases.json"
+
+
+@dataclass
+class ProactiveOutcome:
+    case: Case
+    sent: bool
+    text: str
+    reason: str
+    step: int
+    latency_s: float
+    model: str
+    usage: LLMUsage
+    cost_usd: float
+    facts: dict[str, Any]
+
+
+async def run_proactive_case(case: Case, llm: LLMClient, settings: Settings) -> ProactiveOutcome:
+    """One check-in written by the real decider against a seeded day.
+
+    The trigger's precondition is not re-run here: the case states the facts the precondition
+    would have produced, because what is being graded is the message, not the timer.
+    """
+    import time as _time
+
+    from strikt.agent.client import FakeLLMFactory
+    from strikt.agent.proactive_decide import LLMDecider
+    from strikt.db.engine import make_session_factory
+    from strikt.memory.daystate import DayStateBuilder
+    from strikt.proactive.types import LadderState, TriggerFire
+
+    engine = make_engine(SQLITE_MEMORY_URL)
+    await init_sqlite_for_tests(engine)
+    factory = make_session_factory(engine)
+    recorder = RecordingLLM(llm)
+    started = _time.perf_counter()
+    fire_spec = dict(case.expect.get("fire", {}))
+    try:
+        async with factory() as session:
+            now = case.when.astimezone(UTC)
+            clock = FakeClock(now)
+            user = await seed_user(session, case, now)
+            await seed_day(session, user, case, now)
+            tz = user.timezone or DEFAULT_TZ
+            state = await DayStateBuilder(clock, settings).day_state(
+                session, user, to_local(now, tz).date()
+            )
+            fire = TriggerFire(
+                name=str(fire_spec.get("trigger", "no_dinner")),  # type: ignore[arg-type]
+                klass=str(fire_spec.get("klass", "time")),  # type: ignore[arg-type]
+                window_key=f"{fire_spec.get('trigger', 'no_dinner')}:{to_local(now, tz).date()}",
+                local_now=to_local(now, tz),
+                day=to_local(now, tz).date(),
+                facts=dict(fire_spec.get("facts", {})),
+            )
+            ladder = LadderState(
+                step=int(fire_spec.get("step", 1)),
+                sends_today=int(fire_spec.get("sends_today", 0)),
+                cap_today=6,
+                intensity=str(fire_spec.get("intensity", "pushy")),
+                response_rate=None,
+            )
+            decider = LLMDecider(FakeLLMFactory(recorder), settings, clock=clock)
+            decision = await decider.decide(session, user, fire, ladder, state)
+    finally:
+        await engine.dispose()
+    return ProactiveOutcome(
+        case=case,
+        sent=decision.send,
+        text=decision.text,
+        reason=decision.reason,
+        step=decision.step,
+        latency_s=round(_time.perf_counter() - started, 2),
+        model=recorder.model,
+        usage=recorder.usage,
+        cost_usd=recorder.cost_usd,
+        facts=fire.facts,
+    )
+
+
+def grade_proactive(outcome: ProactiveOutcome) -> Grade:
+    """What a check-in must and must not do (brief §7.4, and the failures of 22 September)."""
+    expect = outcome.case.expect
+    failures: list[str] = []
+    checks = 0
+    text = outcome.text
+
+    def check(name: str, ok: bool, detail: str) -> None:
+        nonlocal checks
+        checks += 1
+        if not ok:
+            failures.append(f"{name}: {detail}")
+
+    if "sends" in expect:
+        check(
+            "sends",
+            outcome.sent == bool(expect["sends"]),
+            f"expected send={expect['sends']}, got {outcome.sent} ({outcome.reason})",
+        )
+    if not outcome.sent:
+        return Grade(passed=not failures, failures=failures, checks=checks)
+
+    check("no_clock_opening", not _CLOCK_OPENING.match(text), f"opens with a clock: {text[:40]!r}")
+    lines = [line for line in text.splitlines() if line.strip()]
+    check("length", len(lines) <= int(expect.get("max_lines", 3)), f"{len(lines)} lines")
+    check("one_question", text.count("?") <= 1, f"{text.count('?')} questions")
+    for pattern in expect.get("text_not_matches", []):
+        check("text_not_matches", not re.search(pattern, text, re.IGNORECASE), f"/{pattern}/ in it")
+    for pattern in expect.get("text_matches", []):
+        check("text_matches", bool(re.search(pattern, text, re.IGNORECASE)), f"/{pattern}/ missing")
     return Grade(passed=not failures, failures=failures, checks=checks)

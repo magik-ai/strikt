@@ -1,0 +1,164 @@
+{
+  "flow": "proactive",
+  "about": [
+    "The messages the bot sends first. Graded on the text, because that is all the user sees:",
+    "does it open like a person, say one thing, quote only facts it was given, and never claim",
+    "a schedule nobody told it. The trigger's precondition is not re-run: each case states the",
+    "facts the precondition would have produced. Times are Asia/Dubai."
+  ],
+  "cases": [
+    {
+      "id": "no_first_meal_without_a_known_wake_time",
+      "tags": ["silence", "assumed-facts"],
+      "note": "Real: 'три часа как встал' at 11:00, to a user who gets up at 9:30 and was never asked.",
+      "now": "2026-09-22T11:00:00+04:00",
+      "message": "",
+      "expect": {
+        "fire": {
+          "trigger": "no_first_meal",
+          "step": 1,
+          "facts": { "wake_time": "08:00", "wake_time_assumed": true, "meals": 0, "kcal": 0 }
+        },
+        "sends": true,
+        "text_not_matches": ["час.{0,12}как встал", "с (?:восьми|8)", "три часа"],
+        "max_lines": 2
+      }
+    },
+    {
+      "id": "no_dinner_says_one_thing",
+      "tags": ["silence"],
+      "note": "Real: 'последний раз ел в 16:17, до тренировки после неё уже 4 часа' - two facts glued into a relation the data did not state.",
+      "now": "2026-09-22T21:00:00+04:00",
+      "seed": {
+        "meals": [
+          { "at": "16:13", "slot": "lunch", "items": [{ "name": "salmon plate", "kcal": 905, "protein_g": 88, "carbs_g": 24, "fat_g": 32, "fiber_g": 7 }] }
+        ]
+      },
+      "message": "",
+      "expect": {
+        "fire": {
+          "trigger": "no_dinner",
+          "step": 1,
+          "facts": { "last_meal_at": "16:13", "kcal": 905, "protein_g": 88, "protein_target": 210 }
+        },
+        "sends": true,
+        "text_not_matches": ["тренировк", "трен[ыи]", "workout"],
+        "max_lines": 2
+      }
+    },
+    {
+      "id": "protein_check_names_the_fix",
+      "tags": ["pressure"],
+      "now": "2026-09-22T18:00:00+04:00",
+      "seed": {
+        "profile": { "wake_time": "09:30" },
+        "meals": [
+          { "at": "14:39", "slot": "breakfast", "items": [{ "name": "omelette", "kcal": 474, "protein_g": 24, "carbs_g": 12, "fat_g": 38, "fiber_g": 7 }] }
+        ]
+      },
+      "message": "",
+      "expect": {
+        "fire": {
+          "trigger": "protein_check",
+          "step": 2,
+          "facts": { "protein_threshold": 147, "dinner_protein_needed": 186, "likes": ["курица", "творог"] }
+        },
+        "sends": true,
+        "text_matches": ["куриц|творог|шейк|рыб|мяс"],
+        "max_lines": 3
+      }
+    },
+    {
+      "id": "nothing_to_say_stays_silent",
+      "tags": ["silence", "restraint"],
+      "note": "The day is already covered: a check-in here is spam.",
+      "now": "2026-09-22T21:00:00+04:00",
+      "seed": {
+        "meals": [
+          { "at": "14:39", "slot": "breakfast", "items": [{ "name": "omelette", "kcal": 474, "protein_g": 24, "carbs_g": 12, "fat_g": 38, "fiber_g": 7 }] },
+          { "at": "19:30", "slot": "dinner", "items": [{ "name": "chicken and vegetables", "kcal": 700, "protein_g": 95, "carbs_g": 30, "fat_g": 20, "fiber_g": 12 }] }
+        ]
+      },
+      "message": "",
+      "expect": {
+        "fire": {
+          "trigger": "no_dinner",
+          "step": 1,
+          "facts": { "last_meal_at": "19:30", "kcal": 1174, "protein_g": 119 }
+        },
+        "sends": false
+      }
+    },
+    {
+      "id": "fiber_check_is_one_cheap_fix",
+      "tags": ["pressure"],
+      "now": "2026-09-22T13:30:00+04:00",
+      "seed": {
+        "meals": [
+          { "at": "11:30", "slot": "breakfast", "items": [{ "name": "eggs and cheese", "kcal": 400, "protein_g": 30, "carbs_g": 4, "fat_g": 30, "fiber_g": 0 }] }
+        ]
+      },
+      "message": "",
+      "expect": {
+        "fire": {
+          "trigger": "fiber_check",
+          "step": 1,
+          "facts": { "fiber_threshold": 8, "fiber_gap_to_target": 25, "meal_sources": ["Deliveroo", "Talabat"] }
+        },
+        "sends": true,
+        "max_lines": 2,
+        "text_not_matches": ["^\\d"]
+      }
+    },
+    {
+      "id": "morning_line_does_not_reopen_yesterday",
+      "tags": ["morning"],
+      "note": "The brief: the night closes the day, never ask the user to close it.",
+      "now": "2026-09-22T09:45:00+04:00",
+      "seed": { "profile": { "wake_time": "09:30" } },
+      "message": "",
+      "expect": {
+        "fire": {
+          "trigger": "morning_line",
+          "step": 1,
+          "facts": { "wake_time": "09:30", "yesterday_closed": false, "recovery": 61 }
+        },
+        "sends": true,
+        "max_lines": 2,
+        "text_not_matches": ["закрыт|закрой день|не закрыл"]
+      }
+    },
+    {
+      "id": "reminder_is_delivered_as_written",
+      "tags": ["reminder"],
+      "now": "2026-09-23T08:00:00+04:00",
+      "message": "",
+      "expect": {
+        "fire": {
+          "trigger": "reminder_due",
+          "step": 1,
+          "facts": { "reminder_text": "замерить талию натощак", "kind": "measurement" }
+        },
+        "sends": true,
+        "max_lines": 2,
+        "text_matches": ["тали"]
+      }
+    },
+    {
+      "id": "weekend_risk_asks_for_one_choice",
+      "tags": ["pressure"],
+      "now": "2026-09-26T11:00:00+04:00",
+      "seed": { "profile": { "wake_time": "09:30" } },
+      "message": "",
+      "expect": {
+        "fire": {
+          "trigger": "weekend_risk",
+          "step": 1,
+          "facts": { "weekend_pattern": "2 of the last 3 weekends ended in delivery", "kcal_avg_weekend": 2900 }
+        },
+        "sends": true,
+        "max_lines": 3
+      }
+    }
+  ]
+}

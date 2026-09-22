@@ -21,7 +21,18 @@ from dataclasses import asdict
 from pathlib import Path
 from typing import Any
 
-from evals.harness import Case, Grade, RunOutcome, grade, load_cases, run_case
+from evals.harness import (
+    PROACTIVE_CASES_PATH,
+    Case,
+    Grade,
+    ProactiveOutcome,
+    RunOutcome,
+    grade,
+    grade_proactive,
+    load_cases,
+    run_case,
+    run_proactive_case,
+)
 from strikt.agent.client import LLM
 from strikt.config import Settings
 
@@ -80,6 +91,12 @@ async def main() -> int:
     parser.add_argument("--reps", type=int, default=1, help="Repetitions per case.")
     parser.add_argument("--judge", action="store_true", help="Also ask the rubric question.")
     parser.add_argument("--concurrency", type=int, default=4)
+    parser.add_argument(
+        "--flow",
+        default="turn",
+        choices=("turn", "proactive"),
+        help="turn: one user message in, one reply out. proactive: the check-ins the bot sends first.",
+    )
     args = parser.parse_args()
 
     key = os.environ.get("ANTHROPIC_API_KEY") or os.environ.get("SERVER_API_KEY")
@@ -92,7 +109,7 @@ async def main() -> int:
     # The judge is a second, cheaper model, and never the model under test (it would grade its
     # own habits as correct).
     judge = LLM(settings.model_copy(update={"anthropic_model": JUDGE_MODEL}), api_key=key)
-    cases = load_cases()
+    cases = load_cases(PROACTIVE_CASES_PATH if args.flow == "proactive" else None)
     wanted = {w.strip() for w in args.only.split(",") if w.strip()}
     if wanted:
         cases = [c for c in cases if c.id in wanted or wanted & set(c.tags)]
@@ -100,7 +117,7 @@ async def main() -> int:
         print("no cases matched --only", file=sys.stderr)
         return 2
 
-    out = ROOT / ".claude" / "hillclimb" / "turn" / args.variant
+    out = ROOT / ".claude" / "hillclimb" / args.flow / args.variant
     (out / "traces").mkdir(parents=True, exist_ok=True)
     results_path, errors_path = out / "results.jsonl", out / "errors.jsonl"
     for path in (results_path, errors_path):
@@ -112,8 +129,9 @@ async def main() -> int:
 
     async def one(case: Case, rep: int) -> None:
         async with gate:
+            runner = run_proactive_case if args.flow == "proactive" else run_case
             try:
-                outcome = await asyncio.wait_for(run_case(case, llm, settings), timeout=300)
+                outcome = await asyncio.wait_for(runner(case, llm, settings), timeout=300)
             except Exception as exc:
                 write_row(
                     errors_path,
@@ -126,11 +144,20 @@ async def main() -> int:
                 )
                 print(f"  ERROR {case.id}: {exc!r}")
                 return
-            result = grade(outcome)
-            verdict, why = (await judge_case(judge, case, outcome)) if args.judge else (None, "")
+            result = grade_proactive(outcome) if args.flow == "proactive" else grade(outcome)
+            verdict, why = (
+                (await judge_case(judge, case, outcome))
+                if args.judge and not isinstance(outcome, ProactiveOutcome)
+                else (None, "")
+            )
             graded.append((case, result, outcome, verdict))
+            trace = (
+                [{"role": "assistant", "content": outcome.text}]
+                if isinstance(outcome, ProactiveOutcome)
+                else outcome.trace
+            )
             (out / "traces" / f"{case.id}_rep{rep}.json").write_text(
-                json.dumps(outcome.trace, ensure_ascii=False, indent=2), encoding="utf-8"
+                json.dumps(trace, ensure_ascii=False, indent=2), encoding="utf-8"
             )
             row: dict[str, Any] = {
                 "prompt_id": case.id,
@@ -141,12 +168,12 @@ async def main() -> int:
                 "model": outcome.model,
                 "grade": {"correct": 1.0 if result.passed else 0.0},
                 "latency_s": outcome.latency_s,
-                "tool_calls": len(outcome.tools_used),
+                "tool_calls": len(getattr(outcome, "tools_used", [])),
                 "usage": asdict(outcome.usage),
                 "meta": {
-                    "tools": outcome.tools_used,
+                    "tools": list(getattr(outcome, "tools_used", [])),
                     "failures": result.failures,
-                    "reply": outcome.reply,
+                    "reply": getattr(outcome, "reply", None) or outcome.text,
                 },
             }
             if verdict is not None:
@@ -154,11 +181,16 @@ async def main() -> int:
                 row["explanation"] = {"judge": why}
             write_row(results_path, row)
             mark = "ok  " if result.passed else "FAIL"
-            print(f"  {mark} {case.id} ({outcome.latency_s}s, {len(outcome.tools_used)} tools)")
+            detail = (
+                f"{len(outcome.tools_used)} tools"
+                if not isinstance(outcome, ProactiveOutcome)
+                else ("sent" if outcome.sent else "silent")
+            )
+            print(f"  {mark} {case.id} ({outcome.latency_s}s, {detail})")
             for failure in result.failures:
                 print(f"       - {failure}")
 
-    print(f"running {len(cases)} cases x {args.reps} rep(s) on {settings.model}\n")
+    print(f"running {len(cases)} {args.flow} cases x {args.reps} rep(s) on {settings.model}\n")
     await asyncio.gather(*(one(c, r) for c in cases for r in range(args.reps)))
 
     passed = sum(1 for _, g, _, _ in graded if g.passed)

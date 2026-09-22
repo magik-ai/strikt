@@ -6,6 +6,7 @@ from pathlib import Path
 from typing import get_args
 
 from strikt.agent.context import PLAYBOOK_NAMES, load_prompt
+from strikt.agent.proactive_decide import guidance_for
 from strikt.proactive.types import TriggerName
 
 PROMPTS = Path(__file__).resolve().parent.parent / "src" / "strikt" / "agent" / "prompts"
@@ -100,10 +101,13 @@ def test_proactive_prompt_covers_every_trigger_and_the_ladder() -> None:
     assert "Never beyond step 4" in text
     assert '"reason"' in text
     assert "No emoji" in text
+    # Per-trigger guidance travels with the fire, not in the cached system block: every trigger
+    # still needs an entry, and every entry must actually parse out of the file.
     for trigger in get_args(TriggerName):
         if trigger == "escalation_followup":
             continue  # an internal re-fire of another trigger; it carries that trigger's name
-        assert f"`{trigger}`" in text, trigger
+        assert guidance_for(trigger), trigger
+    assert len(load_prompt("proactive").split()) < 900  # the hot part stays small
 
 
 def test_verify_prompt_asks_for_the_work_on_recalculation() -> None:

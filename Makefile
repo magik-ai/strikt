@@ -1,4 +1,4 @@
-.PHONY: sync lint fmt type test check run migrate revision prompts keygen preflight eval eval-judge clean
+.PHONY: sync lint fmt type test check run migrate revision prompts keygen preflight eval eval-judge eval-proactive clean
 
 UV ?= uv
 
@@ -47,6 +47,9 @@ eval:            ## Run the turn eval: 21 real turns, graded on the database (AN
 
 eval-judge:      ## The same, plus one rubric question per case answered by Haiku
 	$(UV) run python -m evals.run --judge
+
+eval-proactive:  ## Grade the check-ins the bot sends first (evals/proactive_cases.json)
+	$(UV) run python -m evals.run --flow proactive
 
 clean:
 	rm -rf .mypy_cache .ruff_cache .pytest_cache dist build

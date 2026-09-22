@@ -1,17 +1,20 @@
-# The turn eval
+# The evals
 
-Twenty-one real turns, run against a real model, graded on what ends up in the database.
+Two flows, both run against a real model: **the turn** (21 cases, `cases.json`) - one user message
+in, one reply and its database writes out - and **the proactive check-in** (8 cases,
+`proactive_cases.json`) - the messages the bot sends first, graded on the text, because the text
+is all the user sees.
 
 Everything in `docs/AGENT.md` before this was a measurement of the *request*: tokens, tool counts,
-prompt size. None of it says whether the bot answers well. This does, for the one flow that
-matters most: the user sends one message and the coach logs, answers, or stores a fact.
+prompt size. None of it says whether the bot answers well. This does.
 
 ## Running it
 
 ```bash
 export ANTHROPIC_API_KEY=sk-ant-...      # the eval calls the real model; it costs real money
-make eval                                # every case, programmatic grading only
+make eval                                # the turn flow, programmatic grading only
 make eval-judge                          # also asks each case's rubric question (Haiku)
+make eval-proactive                      # the check-ins the bot sends first
 uv run python -m evals.run --only log,fibre        # one tag or a list of case ids
 uv run python -m evals.run --variant v1 --reps 2   # a second variant, two runs per case
 ```
@@ -54,9 +57,17 @@ deletion, a weight, a workout, a reminder, a sick day, an acknowledgement that m
 They are not sacred. If a case does not match what the product should do, change it in
 `cases.json` and say why in the commit; an eval nobody argues with is an eval nobody reads.
 
+## The proactive flow
+
+`--flow proactive` seeds the same kind of day, hands the decider a trigger fire with the facts its
+precondition would have produced, and grades the message: does it send at all (a covered day must
+stay silent), does it open like a person rather than with a clock, is it at most two or three
+lines with one question, does it avoid facts it was never given. The two failures from the real
+chat are cases: the wake time the bot assumed and quoted, and the training session it invented in
+a dinner nudge.
+
 ## What it does not cover
 
-Photos and voice (the harness sends text only), the proactive engine (a different flow, its own
-eval when it gets one), onboarding, and anything requiring several turns in a row. The judge is a
-single yes/no per case, not a quality score. With 21 cases, a difference smaller than about ten
-points is noise: run `--reps 3` before believing a small win.
+Photos and voice (the harness sends text only), onboarding, and anything requiring several turns
+in a row. The judge is a single yes/no per case, not a quality score. With 21 cases, a difference
+smaller than about ten points is noise: run `--reps 3` before believing a small win.

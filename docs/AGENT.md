@@ -102,11 +102,12 @@ fails the call. An id carried over from an earlier day used to rewrite a closed 
 
 ## Proving it: the eval
 
-`evals/` holds 21 real turns, most of them from the chat that produced this file, and grades what
-ends up in the database: which tools ran, what was written, what the reply says. `make eval` runs
-them against a real model (`ANTHROPIC_API_KEY`), `make eval-judge` adds one rubric question per
-case. Every case also checks the invariant that started this work: a turn may not change a row
-from an earlier day.
+`evals/` holds two flows. The turn eval (21 cases) grades what ends up in the database: which
+tools ran, what was written, what the reply says, plus the invariant that started this work - a
+turn may not change a row from an earlier day. The proactive eval (8 cases) grades the check-ins
+the bot sends first: silence on a covered day, no clock opening, one thing per message, and no
+fact the decider was never given. `make eval`, `make eval-judge`, `make eval-proactive`, all
+against a real model (`ANTHROPIC_API_KEY`).
 
 Numbers in this file that describe the *request* (tokens, tool counts) come from
 `context_built`; anything about the *answers* has to come from an eval run, and a claim without
@@ -117,9 +118,9 @@ noise: `--reps 3` before believing a small win.
 
 - `log_meal`, `update_meal` and `log_workout` are still 931 / 698 / 666 tokens of schema, which
   is most of what an ordinary turn now carries.
-- The proactive decider gets its own 2 044 token prompt and the whole ladder state, and it does
-  not carry the three-kinds discipline the coach has. The eval does not cover that flow either:
-  it is a different entry point and needs its own cases.
+- The proactive decider's per-trigger guidance moved out of its cached prompt (2 044 tokens for
+  twenty-five triggers, of which a fire needs one) into `prompts/triggers.md`: the firing
+  trigger's entry now travels with its facts. The prompt itself is 1 205 tokens.
 - Photos and voice are not in the eval: the harness sends text only.
 - `context_max_turns` went from 30 to 60 rows when the fixed part dropped to 9k tokens, because
   the window is where "he does not remember anything" comes from and proactive check-ins are rows
