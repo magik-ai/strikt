@@ -113,3 +113,16 @@ async def render_day_card(ctx: ToolContext, args: schemas.RenderDayCardInput) ->
 
     state = await build_state(ctx)
     return ToolResult(content=render_card(state, ctx.lang, tz=ctx.tz))
+
+
+async def load_tools(ctx: ToolContext, args: schemas.LoadToolsInput) -> ToolResult:
+    """Escalate this turn to the full catalogue (the turn loop re-sends with every tool).
+
+    The handler itself does nothing: the loop sees the call in the round's tool uses and swaps
+    the tool set for the next model call. It answers with the names so the model knows what it
+    now has, and so a stray second call is cheap.
+    """
+    from strikt.agent.tools import schemas as all_schemas
+
+    log.info("tools_escalated", user_id=ctx.user_id, need=args.need)
+    return ok({"loaded": list(all_schemas.TOOL_NAMES), "note": "every tool is available now"})

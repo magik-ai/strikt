@@ -488,3 +488,54 @@ async def test_restored_pictures_are_counted_against_the_turn_budget(
         session, user, settings, media=FakeRehydrator({"AgAC1": "AAA"})
     )
     assert without and with_image == plain_tokens + IMAGE_TOKENS
+
+
+async def test_playbooks_arrive_only_when_the_message_is_about_them(
+    session: AsyncSession, user: User, clock: FakeClock, settings: Settings, registry: Registry
+) -> None:
+    """Sleep, the scale and illness are not part of a food day, so they cost nothing on one."""
+    _, messages, _, _ = await build(
+        session, user, clock, settings, registry, incoming(user, "взвесился, 104.2")
+    )
+    ctx = messages[-1]["content"][0]["text"]
+    assert "<playbook body>" in ctx and "<playbook sleep>" not in ctx
+
+    _, messages, _, _ = await build(
+        session, user, clock, settings, registry, incoming(user, "съел творог")
+    )
+    assert "<playbook" not in messages[-1]["content"][0]["text"]
+
+
+async def test_a_turn_carries_the_daily_loop_not_the_whole_catalogue(
+    session: AsyncSession,
+    user: User,
+    profile: Profile,
+    clock: FakeClock,
+    settings: Settings,
+    registry: Registry,
+) -> None:
+    bundle = await build_context(
+        session,
+        user,
+        incoming(user, "съел творог"),
+        clock=clock,
+        settings=settings,
+        state_provider=None,
+        registry=registry,
+        profile=profile,
+    )
+    names = {t["name"] for t in bundle.tools}
+    assert "log_meal" in names and "load_tools" in names
+    assert "ingest_lab_report" not in names
+    full = await build_context(
+        session,
+        user,
+        incoming(user, "съел творог"),
+        clock=clock,
+        settings=settings,
+        state_provider=None,
+        registry=registry,
+        profile=profile,
+        full_tools=True,
+    )
+    assert len(full.tools) > len(bundle.tools)

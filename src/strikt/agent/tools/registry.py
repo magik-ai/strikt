@@ -7,7 +7,7 @@ block never invalidates the prompt cache (see shared/prompt-caching.md).
 from __future__ import annotations
 
 import inspect
-from collections.abc import Awaitable, Callable, Mapping
+from collections.abc import Awaitable, Callable, Mapping, Sequence
 from dataclasses import dataclass, field
 from typing import TYPE_CHECKING, Any
 
@@ -119,10 +119,14 @@ class Tool:
         return cls(name=name, description=doc, input_model=input_model, handler=handler)
 
     def definition(self) -> dict[str, Any]:
+        schema = strict_schema(self.input_model)
+        # The model's docstring is already the tool description; pydantic copies it into the
+        # schema root as well, so every tool used to ship its own description twice.
+        schema.pop("description", None)
         return {
             "name": self.name,
             "description": self.description,
-            "input_schema": strict_schema(self.input_model),
+            "input_schema": schema,
         }
 
 
@@ -221,11 +225,19 @@ class Registry:
     def __len__(self) -> int:
         return len(self._tools)
 
-    def definitions(self) -> list[dict[str, Any]]:
-        """Anthropic tool dicts sorted by name; cached because the bytes must never change."""
+    def definitions(self, names: Sequence[str] | None = None) -> list[dict[str, Any]]:
+        """Anthropic tool dicts sorted by name; cached because the bytes must never change.
+
+        ``names`` restricts the set to one tier (see ``tools.tool_names_for``). Unknown names are
+        ignored rather than raising: a tier is configuration, and a typo there must not take the
+        bot down mid-turn.
+        """
         if self._definitions is None:
             self._definitions = [self._tools[name].definition() for name in self.names()]
-        return [dict(d) for d in self._definitions]
+        if names is None:
+            return [dict(d) for d in self._definitions]
+        wanted = set(names)
+        return [dict(d) for d in self._definitions if d["name"] in wanted]
 
     async def dispatch(
         self, ctx: ToolContext, name: str, tool_input: Mapping[str, Any]

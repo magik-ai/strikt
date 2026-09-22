@@ -6,7 +6,8 @@ Order of operations in ``run_turn``:
 2. build the context (``agent/context.py``) - before the ladder is reset, so the block can say
    which proactive message the user is answering;
 3. publish ``UserReplied`` and mark open proactive sends as answered;
-4. call the model with tools until ``end_turn``: tool calls of one round are executed and their
+4. call the model with the turn's tool set until ``end_turn`` (the set starts as the daily
+   loop; a ``load_tools`` call swaps in the full catalogue for the rest of the turn): tool calls of one round are executed and their
    results returned in **one** user message (``is_error`` on failure); ``pause_turn`` is re-sent
    as is; ``max_tokens`` gets one continuation (or, when the cut fell inside a tool call, one
    retry with a doubled output cap - a half-written ``tool_use`` cannot be re-sent); a
@@ -78,6 +79,9 @@ KEYBOARD_MEAL_TOOLS: tuple[str, ...] = ("log_meal", "update_meal")
 CONTINUE_TEXT = "Continue exactly where you stopped. Do not repeat what you already wrote."
 #: A response cut off inside a tool call is retried once with this multiple of the output cap.
 TRUNCATED_TOOL_RETRY_FACTOR = 2
+#: The tool the model calls when the turn's core tool set does not carry what it needs; the next
+#: model call of the same turn is sent with every tool (agent/tools/__init__).
+ESCALATE_TOOL = "load_tools"
 
 # Code-rendered fallbacks the model cannot write for us (wish: move to telegram/copy.py).
 _COPY: dict[str, dict[str, str]] = {
@@ -334,6 +338,7 @@ async def _model_loop(
     deps: TurnDeps, user: User, bundle: ContextBundle, ctx: ToolContext
 ) -> _LoopOutcome:
     messages: list[dict[str, Any]] = [dict(m) for m in bundle.messages]
+    tools: list[dict[str, Any]] = [dict(t) for t in bundle.tools]
     tools_used: list[str] = []
     traces: list[ToolTrace] = []
     usage = LLMUsage()
@@ -356,7 +361,7 @@ async def _model_loop(
             purpose="turn",
             system=bundle.system,
             messages=messages,
-            tools=bundle.tools,
+            tools=tools,
             user_id=user.id,
             max_tokens=max_tokens,
         )
@@ -390,6 +395,11 @@ async def _model_loop(
             messages.append(result.assistant_message())
             results = await execute_tools(deps, ctx, uses, traces)
             tools_used += [use.name for use in uses]
+            if any(use.name == ESCALATE_TOOL for use in uses):
+                # The model asked for a tool the daily loop does not carry: the next call in this
+                # same turn gets the whole catalogue (agent/tools/__init__ explains the tiers).
+                tools = deps.registry.definitions()
+                log.info("turn_tools_escalated", user_id=user.id, tools=len(tools))
             messages.append({"role": "user", "content": results})
             continue
 

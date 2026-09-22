@@ -5,7 +5,7 @@ from __future__ import annotations
 from pathlib import Path
 from typing import get_args
 
-from strikt.agent.context import load_prompt
+from strikt.agent.context import PLAYBOOK_NAMES, load_prompt
 from strikt.proactive.types import TriggerName
 
 PROMPTS = Path(__file__).resolve().parent.parent / "src" / "strikt" / "agent" / "prompts"
@@ -22,7 +22,8 @@ def test_coach_prompt_is_under_3500_words_and_static() -> None:
 
 
 def test_coach_prompt_covers_the_brief() -> None:
-    coach = _flat("coach")
+    """The coach prompt plus the playbooks it defers to: together they carry the brief."""
+    coach = " ".join([_flat("coach"), *(_flat(f"play/{n}") for n in PLAYBOOK_NAMES)])
     for phrase in (
         # voice
         '"genuinely"',
@@ -56,7 +57,7 @@ def test_coach_prompt_covers_the_brief() -> None:
         "Heavy strength work legitimately shows low strain",
         "Fixed wake time is the anchor",
         "Weight weekly, not daily",
-        "it's water",
+        "это вода",
         # edge cases
         "food poisoning",
         "Hot climate",

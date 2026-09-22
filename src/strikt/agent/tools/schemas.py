@@ -53,8 +53,9 @@ TOOL_NAMES: tuple[str, ...] = (
     "set_coaching_intensity",
     "finish_onboarding",
     "import_history",
+    "load_tools",
 )
-"""Every tool from PLAN §6.4; ``build_registry`` must register exactly this set."""
+"""Every tool from PLAN §6.4 plus ``load_tools``; ``build_registry`` registers exactly this set."""
 
 
 class ToolInput(BaseModel):
@@ -569,6 +570,16 @@ class ImportHistoryInput(ToolInput):
     )
 
 
+class LoadToolsInput(ToolInput):
+    """Load the rest of the tool catalogue for this turn. The turn starts with the tools of the
+    daily loop (food, the day, training, history, research). Call this once, before answering,
+    when what the user asks for needs something else: the profile or the protocol, targets,
+    reminders, notes to retire, day flags or a day plan, weight or a lab report, an integration
+    or a key, the coaching intensity, onboarding or an import of past weeks."""
+
+    need: str = Field(description="What you need to do, in four or five words.")
+
+
 SCHEMAS: dict[str, type[ToolInput]] = {
     "search_food": SearchFoodInput,
     "log_meal": LogMealInput,
@@ -598,4 +609,5 @@ SCHEMAS: dict[str, type[ToolInput]] = {
     "set_coaching_intensity": SetCoachingIntensityInput,
     "finish_onboarding": FinishOnboardingInput,
     "import_history": ImportHistoryInput,
+    "load_tools": LoadToolsInput,
 }

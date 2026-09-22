@@ -31,6 +31,7 @@ import json
 import math
 import re
 import typing
+from collections.abc import Sequence
 from dataclasses import dataclass, field
 from datetime import datetime, time
 from enum import Enum
@@ -40,6 +41,7 @@ from typing import TYPE_CHECKING, Any
 
 import structlog
 
+from strikt.agent.tools import tool_names_for
 from strikt.core.clock import coaching_today, ensure_utc, local_day_bounds, to_local
 from strikt.db import repo
 from strikt.db.models import (
@@ -104,9 +106,47 @@ _PAST_QUESTION = re.compile(
 )
 
 
+#: Playbooks: the parts of the method a food day does not need. They live in
+#: ``prompts/play/<name>.md`` and enter the turn's context block only when the message is about
+#: them, which keeps the cached coach prompt to what every turn actually uses (Anthropic,
+#: *Effective context engineering for AI agents*: just-in-time context over a bigger prompt).
+PLAYBOOK_NAMES: tuple[str, ...] = ("sleep", "body", "edge")
+#: What pulls a playbook in. Matched against the user's text, lowercased, ru + en.
+PLAYBOOK_TRIGGERS: dict[str, re.Pattern[str]] = {
+    "sleep": re.compile(
+        r"(?i)(\bsleep|slept|bedtime|wake up|insomnia|recovery|hrv|whoop"
+        r"|сон\b|спал|спать|сплю|высып|бессонн|ложусь|подъ[её]м|восстановл)"
+    ),
+    "body": re.compile(
+        r"(?i)(\bweigh|weight|scale\b|waist|measure|lab\b|labs\b|blood test|ldl|cholesterol"
+        r"|вес\b|весы|взвес|талия|обхват|замер|анализ|холестерин|ферритин|глюкоз)"
+    ),
+    "edge": re.compile(
+        r"(?i)(\bsick|ill\b|poison|food poisoning|fever|vomit|diarrh|travel|flight|vacation"
+        r"|hotel|weekend|hangover|отравил|болею|болен|температур|тошн|рвот|понос|перел[её]т"
+        r"|поездк|команд(?:ировк)|отпуск|отель|выходн|похмель|праздник)"
+    ),
+}
+#: Playbooks that also come in on a day the flag says so, whatever the message says.
+PLAYBOOK_DAY_FLAGS: dict[str, tuple[str, ...]] = {"edge": ("sick", "travel")}
+
+
+def playbooks_for(text: str | None, flags: Sequence[str] = ()) -> list[str]:
+    """Which playbooks this turn gets, in a stable order (the block is part of the prompt)."""
+    haystack = text or ""
+    active = {
+        name for name, flag_names in PLAYBOOK_DAY_FLAGS.items() if set(flag_names) & set(flags)
+    }
+    active |= {name for name, pattern in PLAYBOOK_TRIGGERS.items() if pattern.search(haystack)}
+    return [name for name in PLAYBOOK_NAMES if name in active]
+
+
 @lru_cache(maxsize=8)
 def load_prompt(name: str) -> str:
-    """A prompt file from ``agent/prompts`` (cached: the bytes must never vary per request)."""
+    """A prompt file from ``agent/prompts`` (cached: the bytes must never vary per request).
+
+    ``name`` may be a playbook path, ``play/<name>``.
+    """
     return (PROMPTS_DIR / f"{name}.md").read_text(encoding="utf-8").strip()
 
 
@@ -561,6 +601,11 @@ async def render_context_block(
         )
         parts.append("</reminders>")
 
+    parts.extend(
+        f"<playbook {name}>\n{load_prompt(f'play/{name}')}\n</playbook>"
+        for name in playbooks_for(incoming.text, state.flags)
+    )
+
     if answered_send is not None:
         parts.append(
             f"<proactive>the user is answering your message of "
@@ -589,6 +634,7 @@ async def build_context(
     state: DayState | None = None,
     exclude_turn_id: int | None = None,
     media: MediaRehydrator | None = None,
+    full_tools: bool = False,
 ) -> ContextBundle:
     """Assemble system, messages and tools for one turn (see the module docstring).
 
@@ -645,18 +691,23 @@ async def build_context(
         "content": [{"type": "text", "text": context_text}, *own_blocks],
     }
     messages = _merge_same_role([*history, current])
-    tools = registry.definitions()
+    # Two tiers (see agent/tools/__init__): the daily loop on every turn, the whole catalogue
+    # only when the model asks for it with load_tools. ``full_tools`` is set when the turn loop
+    # re-sends after that call.
+    tool_names = None if full_tools else tool_names_for(onboarding_done=not onboarding)
+    tools = registry.definitions(tool_names)
 
     budget = {
         "system_static": estimate_tokens(system[0]["text"]),
         "system_profile": estimate_tokens(profile_text),
         "tools": estimate_tokens(tools),
+        "tool_count": len(tools),
         "history": history_tokens,
         "context": estimate_tokens(context_text),
         "user": estimate_tokens([b for b in own_blocks if b.get("type") == "text"]),
         "images": sum(1 for b in own_blocks if b.get("type") in {"image", "document"}),
     }
-    budget["total"] = sum(v for k, v in budget.items() if k != "images")
+    budget["total"] = sum(v for k, v in budget.items() if k not in {"images", "tool_count"})
     if budget["total"] > TURN_BUDGET_WARN_TOKENS:
         log.warning("context_over_budget", user_id=user.id, **budget)
     else:

@@ -45,7 +45,22 @@ def _walk(node: Any) -> list[dict[str, Any]]:
 def test_every_plan_tool_is_registered(registry: Registry) -> None:
     assert registry.names() == sorted(TOOL_NAMES)
     assert set(SCHEMAS) == set(TOOL_NAMES)
-    assert len(registry) == 28
+    assert len(registry) == 29  # PLAN §6.4 plus load_tools (the tier escalation)
+
+
+def test_core_tier_is_the_daily_loop_and_much_smaller(registry: Registry) -> None:
+    """A turn carries the daily loop; the cold half of the catalogue costs a load_tools call."""
+    from strikt.agent.context import estimate_tokens
+    from strikt.agent.tools import tool_names_for
+
+    core = registry.definitions(tool_names_for(onboarding_done=True))
+    names = [d["name"] for d in core]
+    assert "log_meal" in names and "load_tools" in names
+    assert "update_profile" not in names and "ingest_lab_report" not in names
+    assert estimate_tokens(core) < 0.6 * estimate_tokens(registry.definitions())
+
+    onboarding = [d["name"] for d in registry.definitions(tool_names_for(onboarding_done=False))]
+    assert "update_profile" in onboarding and "finish_onboarding" in onboarding
 
 
 def test_definitions_are_sorted_strict_and_closed(registry: Registry) -> None:

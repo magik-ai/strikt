@@ -1,0 +1,112 @@
+# The agent: how the turn is built, and why
+
+`docs/PLAN.md` says what the modules are. This file says how the agent inside them is shaped, what
+was measured, and which rule each decision comes from. It is engineering law like PLAN, and it
+exists because the first shape was wrong in a way the owner felt every day: the bot lost the
+thread, mixed up ids, argued with its own messages and gave no advice.
+
+Sources this follows: Anthropic, [Effective context engineering for AI
+agents](https://www.anthropic.com/engineering/effective-context-engineering-for-ai-agents);
+[Writing effective tools for AI
+agents](https://www.anthropic.com/engineering/writing-tools-for-agents); [Effective harnesses for
+long-running agents](https://www.anthropic.com/engineering/effective-harnesses-for-long-running-agents);
+the [tool search](https://platform.claude.com/docs/en/agents-and-tools/tool-use/tool-search-tool)
+docs (tool-selection accuracy falls off between 30 and 50 tools).
+
+## What was measured (2026-09-22, before the change)
+
+One ordinary turn, empty day, one line of user text:
+
+| Block | Tokens | Share |
+| --- | --- | --- |
+| tool schemas (28 tools) | 9 793 | 65 % |
+| coach system prompt | 5 109 | 34 % |
+| profile block | 149 | 1 % |
+| the user's day and message | 98 | 0.6 % |
+| **total** | **15 149** | |
+
+The agent's attention budget was spent almost entirely on rules and schemas, and 0.6 % of it on
+the user. `update_profile` alone cost 1 644 tokens on every turn and is used about once a week.
+Every tool also shipped its description twice: once as the tool description, once as the schema
+root's `description` (pydantic copies the docstring).
+
+## The five decisions
+
+### 1. Two tool tiers, not one catalogue
+
+A turn starts with the daily loop (`agent/tools/__init__.CORE_TOOL_NAMES`: food, the day,
+training, history, research, notes) plus `load_tools`. Everything cold (profile, protocol,
+reminders, flags, plans, weight, labs, integrations, keys, intensity, onboarding, import) is one
+`load_tools` call away; the turn loop then re-sends the same turn with the full catalogue.
+
+- 12 tools and 4 542 tokens on an ordinary turn instead of 28 and 9 793.
+- Two stable tool sets, so two cache entries, not a new prefix per turn: the core set is
+  byte-identical on every ordinary turn.
+- While onboarding is unfinished, the checklist tools join the core set, because then they *are*
+  the daily loop.
+
+Server-side tool search (`tool_search_tool_bm25_20251119`) would do this for us, but it is not
+available on `claude-sonnet-5`, which is the model the brief runs on. `load_tools` is the same
+idea done client side, and it costs one round trip only on the turns that need a cold tool.
+
+### 2. The turn's job is decided before a tool is chosen
+
+The coach prompt opens with three kinds of message: a report of what was eaten (log it), a
+question (answer it, log nothing), a fact about the user or the day (store it). A question logged
+as a meal is the single most annoying failure this product has, and it came from a prompt whose
+first instruction was "intent clear, act". Ambiguity resolves toward answering, not logging: a
+wrong guess toward logging costs a correction, a wrong guess toward asking costs one word.
+
+Paired with it: every reply carries the advice. A logging reply ends with the one thing that
+changes the rest of the day; a question gets a recommendation with a number and a name, never a
+counter-question.
+
+### 3. Playbooks instead of a bigger prompt
+
+Sleep tactics, the scale and labs, illness and travel are not part of a food day. They live in
+`agent/prompts/play/*.md` and enter the turn's context block only when the message is about them
+(`context.playbooks_for`, keyword matched in ru and en, plus the day's `sick` / `travel` flags).
+Just-in-time context beats a prompt that carries every domain on every turn. Photo triage stays in
+the core prompt, because a photo carries no keywords.
+
+### 4. The coach can see what the coach sent
+
+Proactive check-ins are written to `conversation_turns` as assistant rows, not only to
+`proactive_sends`. Before that, an answered check-in vanished from the model's world and the coach
+told the owner it had never written the message on his screen.
+
+### 5. Ids are read, never remembered
+
+The day block carries `meal#<id>` and `item#<id>`. `update_meal` / `delete_meal` take
+`expect_name`, required for a row older than yesterday, and a name that does not match the row
+fails the call. An id carried over from an earlier day used to rewrite a closed day silently.
+
+## Standing rules for anyone changing this
+
+1. **Measure the turn before and after.** `context_built` logs `tools`, `tool_count`,
+   `system_static`, `context`, `history`, `total`. A change that grows the fixed part needs a
+   reason in the commit message.
+2. **A new tool needs a tier.** Add it to `CORE_TOOL_NAMES` only if an ordinary day needs it;
+   otherwise it is discovered through `load_tools`, and its description carries the words a user
+   would use, because that is what the model matches against.
+3. **No two tools with overlapping purposes.** If a human cannot say which of two tools applies,
+   the model cannot either. Prefer one tool with a clear argument over two near-synonyms.
+4. **Tool results are the reply's ground truth**, and a result that hides a hole (fibre silently
+   0, an id that points elsewhere) is worse than an error: say the hole in the result.
+5. **The system prompt is hot content only.** A rule that applies on fewer than one turn in ten
+   belongs in a playbook.
+6. **Nothing volatile in `system`.** `system[0]` (coach) and `system[1]` (profile block) must
+   render the same bytes for the same inputs; everything that changes per turn goes in the
+   `<context>` block of the user message.
+
+## Known gaps, in the order they are worth fixing
+
+- `log_meal`, `update_meal` and `log_workout` are still 1 059 / 838 / 804 tokens of schema.
+  Trimming field descriptions is the next measurable win.
+- The proactive decider gets its own 2 044 token prompt and the whole ladder state. It should
+  carry the same three-kinds discipline the coach has.
+- `context_max_turns` is 30 rows. Now that proactive sends are rows too, a busy day pushes the
+  morning out of the window sooner; worth raising once the fixed part is smaller.
+- There is no eval. Every claim in this file is a measurement of the request, not of the answers.
+  A small graded set of real turns (log, question, correction, photo) is what would make the next
+  round of changes provable.

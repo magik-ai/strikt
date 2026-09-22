@@ -19,7 +19,7 @@ from strikt.config import Settings
 from strikt.core.clock import FakeClock
 from strikt.core.types import Attachment, FoodItemIn, Incoming, Macros
 from strikt.db import repo
-from strikt.db.models import MealSlot, TurnRole, User
+from strikt.db.models import MealSlot, Profile, TurnRole, User
 from strikt.events import DayStateChanged, Event, EventBus, UserReplied
 from strikt.memory.daystate import DayStateBuilder
 from strikt.telegram.copy import t
@@ -876,3 +876,34 @@ def test_stub_media_blocks_keeps_the_file_id_for_later_turns() -> None:
             "media_mime": "image/jpeg",
         }
     ]
+
+
+async def test_load_tools_escalates_the_turn_to_the_full_catalogue(
+    session: AsyncSession,
+    user: User,
+    profile: Profile,
+    fake_llm: FakeLLM,
+    registry: Registry,
+    clock: FakeClock,
+    settings: Settings,
+) -> None:
+    """A turn starts on the daily loop; load_tools swaps in the rest for the same turn."""
+    fake_llm.queue(
+        FakeLLM.tool_use("load_tools", {"need": "store the wake time"}),
+        FakeLLM.tool_use(
+            "update_profile", {"fields": {"wake_time": "09:30"}}, id="toolu_fake_2", text="Понял."
+        ),
+        FakeLLM.text("Записал подъём в 9:30."),
+    )
+    deps = make_deps(session, user, fake_llm, registry, clock, settings)
+    result = await run_turn(deps, incoming(user, "я встаю в 9-30"))
+
+    first, second = fake_llm.calls[0], fake_llm.calls[1]
+    names_first = {t["name"] for t in first["tools"] or []}
+    names_second = {t["name"] for t in second["tools"] or []}
+    assert "log_meal" in names_first and "update_profile" not in names_first
+    assert "update_profile" in names_second
+    assert len(names_second) > len(names_first)
+    assert "load_tools" in result.tools_used
+    await session.refresh(profile)
+    assert profile.wake_time is not None and profile.wake_time.hour == 9
