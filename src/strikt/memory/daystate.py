@@ -284,7 +284,10 @@ def _meal_line(meal: MealView, tz: str, *, detailed: bool) -> str:
     when = _local_hhmm(meal.eaten_at or meal.logged_at, tz)
     parts: list[str] = []
     for item in meal.items:
-        text = _short(item.name)
+        # The item id is what ``update_meal`` needs to change a portion or add fibre. It used to
+        # be missing here, so the model had to remember ids from an earlier log_meal result and
+        # edited an item from another day.
+        text = f"item#{item.id} {_short(item.name)}" if item.id else _short(item.name)
         if detailed:
             m = item.macros
             text += f" {_n(m.kcal)} kcal ({_n(m.protein_g)}P/{_n(m.carbs_g)}C/{_n(m.fat_g)}F"
@@ -296,7 +299,7 @@ def _meal_line(meal: MealView, tz: str, *, detailed: bool) -> str:
             if item.flags:
                 text += " [" + ",".join(item.flags) + "]"
         parts.append(text)
-    line = f"- {when} {meal.slot} #{meal.id}: " + (", ".join(parts) or "-")
+    line = f"- {when} {meal.slot} meal#{meal.id}: " + (", ".join(parts) or "-")
     line += f" = {_n(meal.macros.kcal)} kcal, P {_n(meal.macros.protein_g)}"
     if meal.note and detailed:
         line += f" - {_short(meal.note, 60)}"
@@ -329,8 +332,8 @@ def _hm(minutes: float) -> str:
 def render_context(state: DayState, lang: str | None, *, tz: str = "UTC") -> str:
     """Compact plain-text block (< 600 tokens) describing one day for the model.
 
-    Not the Telegram card: no HTML, no bars, every number present, ids on meals so the
-    model can call ``update_meal``/``delete_meal`` without guessing.
+    Not the Telegram card: no HTML, no bars, every number present, ids on meals *and on
+    items* so the model can call ``update_meal``/``delete_meal`` without guessing an id.
     """
     lang = resolve_lang(lang)
     labels = _LABELS[lang]

@@ -189,12 +189,27 @@ class UpdateMealInput(ToolInput):
     reason: str | None = Field(
         default=None, description="One line on why, kept as the user's correction record."
     )
+    expect_name: str | None = Field(
+        default=None,
+        description=(
+            "The name of the item or meal you believe this id points at, as it is written in "
+            "the day state. Checked before anything changes; required for a row older than "
+            "yesterday. Give it whenever the id did not come from this turn's day state."
+        ),
+    )
 
 
 class DeleteMealInput(ToolInput):
     """Remove a logged meal (soft delete; totals are recomputed)."""
 
     meal_id: int = Field(description="Meal id from log_meal or get_day_state.")
+    expect_name: str | None = Field(
+        default=None,
+        description=(
+            "An item name or the slot of the meal you believe this id points at. Checked "
+            "before the delete; required for a meal older than yesterday."
+        ),
+    )
 
 
 class UndoLastInput(ToolInput):

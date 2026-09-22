@@ -130,6 +130,22 @@ async def test_no_first_meal_sends_records_and_schedules_followup(
     assert call.fire.facts["wake_time"] == "08:00"
 
 
+async def test_a_send_is_also_a_turn_in_the_history(
+    engine_: ProactiveEngine,
+    user: User,
+    clock: FakeClock,
+    session: AsyncSession,
+) -> None:
+    """The coach must find its own check-in in the history, or it denies having written it."""
+    clock.set(_at("11:05"))
+    outcome = await engine_.fire(user.id, "no_first_meal")
+    assert outcome.sent
+    turns = await repo.last_n_turns(session, user.id, 5)
+    assert [t.role.value for t in turns] == ["assistant"]
+    assert turns[0].text == outcome.text
+    assert turns[0].telegram_message_id == outcome.message_id
+
+
 async def test_window_is_idempotent_then_escalates_to_four(
     engine_: ProactiveEngine,
     user: User,

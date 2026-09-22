@@ -95,6 +95,26 @@ class TriggerContext:
         return checkin_deadlines(self.profile).get(trigger, default)
 
 
+def _wake_facts(ctx: TriggerContext) -> dict[str, Any]:
+    """The wake time plus whether it is the user's or the 08:00 default.
+
+    A default stated as a fact is how a check-in went out at 11:00 saying "three hours since you
+    got up" to a user who gets up at 9:30 and had never been asked. The decider is told which it
+    is and must not quote an assumed one.
+    """
+    facts: dict[str, Any] = {"wake_time": _hhmm(ctx.wake_time)}
+    if ctx.profile.wake_time is None:
+        facts["wake_time_assumed"] = True
+    return facts
+
+
+def _bed_facts(ctx: TriggerContext) -> dict[str, Any]:
+    facts: dict[str, Any] = {"bed_time": _hhmm(ctx.bed_time)}
+    if ctx.profile.bed_time is None:
+        facts["bed_time_assumed"] = True
+    return facts
+
+
 Precondition = Callable[[DayState | None, TriggerContext], TriggerFire | None]
 
 #: Silence triggers a user's check-in time can move, by the local-time window a time falls in:
@@ -263,7 +283,7 @@ def check_morning_line(state: DayState | None, ctx: TriggerContext) -> TriggerFi
         return None
     h = ctx.history
     facts: dict[str, Any] = {
-        "wake_time": _hhmm(ctx.wake_time),
+        **_wake_facts(ctx),
         "yesterday": h.recent_days[-1].as_facts() if h.recent_days else None,
         "yesterday_verdict": h.yesterday_verdict,
         "yesterday_summary": h.yesterday_summary,
@@ -301,11 +321,13 @@ def check_no_first_meal(state: DayState | None, ctx: TriggerContext) -> TriggerF
         return None
     since_wake = ctx.local_now - _combine(ctx.day, ctx.wake_time, ctx)
     facts: dict[str, Any] = {
-        "wake_time": _hhmm(ctx.wake_time),
-        "hours_since_wake": round(since_wake.total_seconds() / 3600, 1),
+        **_wake_facts(ctx),
         **_totals(day, ctx),
         **_skipped_lunch_facts(ctx),
     }
+    # Hours since wake is a real number only when the wake time is the user's own.
+    if ctx.profile.wake_time is not None:
+        facts["hours_since_wake"] = round(since_wake.total_seconds() / 3600, 1)
     return _fire("no_first_meal", "time", ctx, facts=facts)
 
 
@@ -392,7 +414,7 @@ def check_day_not_closed(state: DayState | None, ctx: TriggerContext) -> Trigger
         return None
     facts = {
         "meals_logged": 0,
-        "bed_time": _hhmm(ctx.bed_time),
+        **_bed_facts(ctx),
         **_totals(day, ctx),
         **_skipped_lunch_facts(ctx),
     }
@@ -408,8 +430,8 @@ def check_bedtime_minus_30(state: DayState | None, ctx: TriggerContext) -> Trigg
     nights = ctx.history.sleep_nights
     asleep = [n.asleep_min for n in nights if n.asleep_min is not None]
     facts: dict[str, Any] = {
-        "bed_time": _hhmm(ctx.bed_time),
-        "wake_time": _hhmm(ctx.wake_time),
+        **_bed_facts(ctx),
+        **_wake_facts(ctx),
         "sleep_target_min": ctx.history.sleep_target_min,
         "last_nights": [n.as_facts() for n in nights],
         "avg_asleep_min_3n": round(sum(asleep) / len(asleep)) if asleep else None,
@@ -452,11 +474,11 @@ def check_wake_check(state: DayState | None, ctx: TriggerContext) -> TriggerFire
         else:
             break
     facts = {
-        "wake_time": _hhmm(ctx.wake_time),
+        **_wake_facts(ctx),
         "got_up": ended.strftime("%H:%M"),
         "minutes_late": late,
         "late_days_in_a_row": max(late_days, 1),
-        "bed_time": _hhmm(ctx.bed_time),
+        **_bed_facts(ctx),
         "proposed_bed_time": _shift(ctx.bed_time, -min(late, 60)),
     }
     return _fire("wake_check", "time", ctx, facts=facts)
@@ -478,7 +500,7 @@ def check_measurement_overdue(state: DayState | None, ctx: TriggerContext) -> Tr
         "unit": worst.last_unit,
         "kpi": str(ctx.profile.primary_kpi) if ctx.profile.primary_kpi else None,
         "kpi_target": ctx.profile.kpi_target_low,
-        "wake_time": _hhmm(ctx.wake_time),
+        **_wake_facts(ctx),
     }
     return _fire("measurement_overdue", "time", ctx, facts=facts)
 
@@ -619,7 +641,7 @@ def check_whoop_recovery_high(state: DayState | None, ctx: TriggerContext) -> Tr
     facts = {
         "score": round(score),
         "prior_scores": [round(s) for s in prior[-3:]],
-        "bed_time": _hhmm(ctx.bed_time),
+        **_bed_facts(ctx),
         "last_night": ctx.history.sleep_nights[0].as_facts() if ctx.history.sleep_nights else None,
     }
     return _fire("whoop_recovery_high", "data", ctx, facts=facts)
@@ -690,8 +712,8 @@ def check_sleep_debt_accumulating(
         "nights": [n.as_facts() for n in nights],
         "sleep_target_min": target,
         "total_deficit_min": round(deficit),
-        "bed_time": _hhmm(ctx.bed_time),
-        "wake_time": _hhmm(ctx.wake_time),
+        **_bed_facts(ctx),
+        **_wake_facts(ctx),
         "proposed_bed_time": _shift(ctx.bed_time, -30),
     }
     return _fire("sleep_debt_accumulating", "data", ctx, facts=facts)
@@ -709,7 +731,7 @@ def check_sleep_onset_late(state: DayState | None, ctx: TriggerContext) -> Trigg
     if late <= ONSET_LATE_MIN:
         return None
     facts = {
-        "bed_time": _hhmm(ctx.bed_time),
+        **_bed_facts(ctx),
         "onset": started.strftime("%H:%M"),
         "minutes_late": late,
         "last_workout": (ctx.history.last_workout.as_facts() if ctx.history.last_workout else None),
@@ -753,7 +775,7 @@ def check_two_off_days(state: DayState | None, ctx: TriggerContext) -> TriggerFi
         "off_days": [d.as_facts() for d in last_two],
         "over_by_kcal": [round(d.kcal - ctx.targets.kcal) for d in last_two],
         "kcal_target": round(ctx.targets.kcal),
-        "wake_time": _hhmm(ctx.wake_time),
+        **_wake_facts(ctx),
         "kpi": str(ctx.profile.primary_kpi) if ctx.profile.primary_kpi else None,
         "kpi_target": ctx.profile.kpi_target_low,
     }
@@ -816,7 +838,7 @@ def check_post_travel_reentry(state: DayState | None, ctx: TriggerContext) -> Tr
         "travel_days": travel_days,
         "kcal_target": round(ctx.targets.kcal),
         "protein_target": round(ctx.targets.protein_g),
-        "wake_time": _hhmm(ctx.wake_time),
+        **_wake_facts(ctx),
         "last_weight": weight[0].as_facts() if weight else None,
     }
     return _fire("post_travel_reentry", "pattern", ctx, facts=facts)

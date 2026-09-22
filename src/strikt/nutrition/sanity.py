@@ -384,6 +384,37 @@ FIBER_CEILING_G: Final[Mapping[str, float]] = {
     "sourdough": 5.0,
     "cereal": 8.0,
     "хлопья": 8.0,
+    # Plain vegetables and greens. Without them a plate of cabbage or mushrooms carried no
+    # fibre keyword at all, so neither the ceiling nor the missing-fibre check saw it.
+    "sprout": 8.0,
+    "cabbage": 6.0,
+    "капуст": 6.0,
+    "slaw": 5.0,
+    "kale": 5.0,
+    "кейл": 5.0,
+    "spinach": 4.0,
+    "шпинат": 4.0,
+    "mushroom": 4.0,
+    " гриб": 4.0,
+    "шампиньон": 4.0,
+    "carrot": 4.0,
+    "морков": 4.0,
+    "pepper": 3.0,
+    " перец": 3.0,
+    "zucchini": 3.0,
+    "кабач": 3.0,
+    "onion": 3.0,
+    " лук": 3.0,
+    "asparagus": 4.0,
+    "спарж": 4.0,
+    "celery": 3.0,
+    "сельдер": 3.0,
+    "olive": 4.0,
+    "оливк": 4.0,
+    "маслин": 4.0,
+    "seeds": 8.0,
+    "семеч": 8.0,
+    "семена": 8.0,
 }
 """Maximum plausible fibre for one dish serving containing this ingredient (used when the item
 names no legume/bran source). The ceiling for a dish is the maximum over matched keywords."""
@@ -407,7 +438,7 @@ FIBER_RICH: Final[tuple[str, ...]] = _kw(
     " oats",
     "oatmeal",
     "avocado",
-    "brussels",
+    "brussel",  # "brussels sprouts" and the menu spelling "Brussel Sprouts"
     "broccoli",
     "artichoke",
     "quinoa",
@@ -1065,6 +1096,17 @@ def _is_single_ingredient(name: str, key: str) -> bool:
 
 
 # --------------------------------------------------------------------------------- rules
+
+
+def carries_fiber(name: str) -> bool:
+    """True when the dish names a plant that has fibre in it, so a logged 0 g is a hole.
+
+    The counterpart of the fibre ceiling below: the ceiling catches fibre that is too high, this
+    catches fibre that is silently absent. Brussels sprouts and an avocado toast logged at 0 g
+    each is what put a day at 7 g of fibre when it held 14.
+    """
+    text = _norm(name)
+    return _has(text, FIBER_RICH) or bool(_matches(text, FIBER_CEILING_G))
 
 
 def _rule_fiber(name: str, item: FoodItemIn, macros: Macros) -> tuple[Macros, Flag | None]:

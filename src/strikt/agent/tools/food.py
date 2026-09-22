@@ -8,6 +8,7 @@ commits.
 
 from __future__ import annotations
 
+from datetime import date, timedelta
 from typing import TYPE_CHECKING, Any
 
 import structlog
@@ -31,7 +32,7 @@ from strikt.db.models import ItemSource, Meal, MealItem, MealSlot, MealSource, S
 from strikt.nutrition import store
 from strikt.nutrition.math import kcal_from_macros, round_macros, scale_per_100g
 from strikt.nutrition.resolve import resolve_food
-from strikt.nutrition.sanity import check_item
+from strikt.nutrition.sanity import carries_fiber, check_item
 from strikt.nutrition.units import to_grams
 
 if TYPE_CHECKING:
@@ -169,6 +170,94 @@ async def _resolve_missing(ctx: ToolContext, item: FoodItemIn) -> FoodItemIn:
     )
 
 
+async def _fill_fiber(ctx: ToolContext, item: FoodItemIn) -> tuple[FoodItemIn, str | None]:
+    """Fibre for a plant food the model logged with 0 g: looked up, never invented.
+
+    The model writes kcal/P/C/F confidently and leaves fibre at 0, which the old pipeline took
+    at face value because ``_resolve_missing`` only runs when *every* macro is missing. A day
+    of sprouts and avocado then showed 7 g of fibre against a 25 g target, and the coach chased
+    the user for vegetables they had already eaten. Fibre is a target here, so a plant food
+    without it gets one lookup; when the lookup finds nothing the hole is named in the flags
+    instead of passing as a zero.
+    """
+    macros = item.macros
+    if macros.fiber_g > 0 or _macros_missing(item) or not carries_fiber(item.name):
+        return item, None
+    hit = await resolve_food(
+        ctx.session,
+        item.name,
+        brand=item.brand,
+        restaurant=item.restaurant,
+        http=ctx.services.get("http"),
+        settings=ctx.settings,
+        usda_key=await _usda_key(ctx),
+        now=ctx.clock.now(),
+    )
+    grams = item.grams
+    if hit is not None and grams is None and item.quantity is not None:
+        grams = to_grams(item.quantity, item.unit, food=item.name, serving_g=hit.serving_g)
+    if hit is not None and grams is None:
+        grams = hit.serving_g
+    if hit is None or grams is None or hit.per_100g.fiber_g <= 0:
+        return item, f"{item.name}: fibre missing; estimate it from the ingredients"
+    fiber = round(hit.per_100g.fiber_g * grams / 100.0, 1)
+    if fiber < 0.5:
+        return item, None
+    filled = item.model_copy(update={"macros": macros.model_copy(update={"fiber_g": fiber})})
+    return (
+        filled,
+        f"{item.name}: fibre {fiber:g} g added from {getattr(hit.source, 'value', hit.source)}",
+    )
+
+
+# ---------------------------------------------------------------------------- id guards
+
+
+def _name_key(value: str) -> str:
+    """Lowercased letters and digits only, so "Grilled Salmon" matches "grilled salmon 150g"."""
+    return "".join(ch for ch in value.lower() if ch.isalnum() or ch.isspace()).strip()
+
+
+def _name_matches(expected: str, actual: str) -> bool:
+    a, b = _name_key(expected), _name_key(actual)
+    if not a or not b:
+        return False
+    if a in b or b in a:
+        return True
+    words = {w for w in a.split() if len(w) > 2}
+    return bool(words) and bool(words & {w for w in b.split() if len(w) > 2})
+
+
+def _wrong_row(what: str, row_id: int, name: str, day: date, expected: str | None) -> ToolResult:
+    """The message the model gets instead of silently editing the wrong row."""
+    seen = f"it is '{name}' from {day.isoformat()}"
+    if expected:
+        return fail(
+            f"{what} {row_id} is not '{expected}': {seen}. Nothing changed. Take the id from "
+            f"the day state (item#... / meal#...) and call again."
+        )
+    return fail(
+        f"{what} {row_id} is older than yesterday ({seen}). Nothing changed. If you really "
+        f"mean that row, call again with expect_name set to its name; otherwise take the id "
+        f"from the day state."
+    )
+
+
+def _guard_row(
+    ctx: ToolContext, *, what: str, row_id: int, name: str, day: date, expect_name: str | None
+) -> ToolResult | None:
+    """Refuse an id that points somewhere the model did not mean.
+
+    An id the model carried over from an earlier day (the watermelon of 11 September that a
+    fibre correction landed on) now fails loudly instead of rewriting a closed day.
+    """
+    if expect_name and not _name_matches(expect_name, name):
+        return _wrong_row(what, row_id, name, day, expect_name)
+    if expect_name is None and day < ctx.local_date - timedelta(days=1):
+        return _wrong_row(what, row_id, name, day, None)
+    return None
+
+
 # ---------------------------------------------------------------------------------- handlers
 
 
@@ -223,12 +312,16 @@ async def log_meal(ctx: ToolContext, args: schemas.LogMealInput) -> ToolResult:
     flag_codes: dict[int, list[str]] = {}
     flag_text: list[list[str]] = []
     unresolved: list[str] = []
+    fiber_notes: list[str] = []
     for position, raw in enumerate(args.items):
         item = raw.to_food_item()
         if _macros_missing(item):
             item = await _resolve_missing(ctx, item)
             if _macros_missing(item):
                 unresolved.append(item.name)
+        item, fiber_note = await _fill_fiber(ctx, item)
+        if fiber_note:
+            fiber_notes.append(fiber_note)
         originals.append(item)
         checked, flags = check_item(item, health_context=context, buffer=buffer)
         corrected.append(checked)
@@ -261,6 +354,7 @@ async def log_meal(ctx: ToolContext, args: schemas.LogMealInput) -> ToolResult:
         for row, lines in zip(meal.items, flag_text, strict=True)
         for line in lines
     ]
+    all_flags += fiber_notes
     result: dict[str, Any] = {
         "meal_id": meal.id,
         "slot": meal.slot.value,
@@ -290,11 +384,28 @@ def _scaled(item: MealItem, changes: schemas.MealItemChanges) -> tuple[Macros, f
 
 
 async def _update_item(
-    ctx: ToolContext, item_id: int, changes: schemas.MealItemChanges, reason: str | None
+    ctx: ToolContext,
+    item_id: int,
+    changes: schemas.MealItemChanges,
+    reason: str | None,
+    expect_name: str | None = None,
 ) -> ToolResult:
     item = await repo.get_meal_item(ctx.session, ctx.user_id, item_id)
     if item is None:
         return fail(f"item {item_id} not found")
+    owner = await repo.get_meal(ctx.session, ctx.user_id, item.meal_id, include_deleted=True)
+    if owner is None:
+        return fail(f"meal {item.meal_id} not found")
+    wrong = _guard_row(
+        ctx,
+        what="item",
+        row_id=item_id,
+        name=item.name,
+        day=owner.day_date,
+        expect_name=expect_name,
+    )
+    if wrong is not None:
+        return wrong
     before = repo.item_macros(item)
     macros, factor = _scaled(item, changes)
     explicit = {
@@ -391,12 +502,22 @@ async def _apply_meal_changes(
 async def update_meal(ctx: ToolContext, args: schemas.UpdateMealInput) -> ToolResult:
     """Corrections: an item's portion/macros (item_id) or a meal's slot/time/note (meal_id)."""
     if args.item_id is not None:
-        return await _update_item(ctx, args.item_id, args.changes, args.reason)
+        return await _update_item(ctx, args.item_id, args.changes, args.reason, args.expect_name)
     if args.meal_id is None:
         return fail("update_meal: give item_id (portion/macros) or meal_id (slot/time/note)")
     meal = await repo.get_meal(ctx.session, ctx.user_id, args.meal_id)
     if meal is None:
         return fail(f"meal {args.meal_id} not found (deleted or not yours)")
+    wrong = _guard_row(
+        ctx,
+        what="meal",
+        row_id=meal.id,
+        name=", ".join(i.name for i in meal.items) or meal.slot.value,
+        day=meal.day_date,
+        expect_name=args.expect_name,
+    )
+    if wrong is not None:
+        return wrong
     changes = args.changes
     if len(meal.items) == 1 and any(
         v is not None
@@ -439,6 +560,16 @@ async def delete_meal(ctx: ToolContext, args: schemas.DeleteMealInput) -> ToolRe
     meal = await repo.get_meal(ctx.session, ctx.user_id, args.meal_id)
     if meal is None:
         return fail(f"meal {args.meal_id} not found or already deleted")
+    wrong = _guard_row(
+        ctx,
+        what="meal",
+        row_id=meal.id,
+        name=", ".join(i.name for i in meal.items) or meal.slot.value,
+        day=meal.day_date,
+        expect_name=args.expect_name,
+    )
+    if wrong is not None:
+        return wrong
     await repo.soft_delete_meal(ctx.session, ctx.user_id, args.meal_id, now=ctx.clock.now())
     state = await build_state(ctx, meal.day_date)
     return ok(

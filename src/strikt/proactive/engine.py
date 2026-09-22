@@ -12,8 +12,9 @@ and a later escalation step in the same window is a new send only after the foll
    (class A pressure backs off, the meal-silence triggers still fire: "pressure returns on the
    first missed meal");
 5. the decider writes the text or stays silent (never a template);
-6. send, record in ``proactive_sends``, schedule the 45-minute follow-up when the trigger
-   escalates.
+6. send, record in ``proactive_sends`` **and in ``conversation_turns``** (a proactive message
+   is a message the coach sent: the next turn must see it in the history like any reply),
+   schedule the 45-minute follow-up when the trigger escalates.
 
 Bus subscriptions: ``UserReplied`` resets every open ladder and cancels pending follow-ups;
 ``WorkoutEvent`` / ``RecoveryEvent`` / ``SleepEvent`` / ``MeasurementEvent`` feed the class B
@@ -35,7 +36,7 @@ from strikt.config import Settings
 from strikt.core.clock import Clock, coaching_day, ensure_utc, local_day_bounds, to_local
 from strikt.core.types import DayState
 from strikt.db import repo
-from strikt.db.models import Profile, Protocol as ProtocolRow, User, UserStatus
+from strikt.db.models import Profile, Protocol as ProtocolRow, TurnRole, User, UserStatus
 from strikt.events import (
     DayStateChanged,
     EventBus,
@@ -333,6 +334,18 @@ class ProactiveEngine:
                 step=step,
                 sent_at=now,
                 text=decision.text,
+                telegram_message_id=message_id,
+            )
+            # The message the user sees is a message the coach sent, so it goes into the same
+            # history as a reply written in the turn loop. Without this row the next turn had no
+            # trace of it (``proactive_sends`` feeds the context only while the send is still
+            # unanswered) and the coach denied having written what is on the user's screen.
+            await repo.add_turn(
+                session,
+                user_id,
+                role=TurnRole.assistant,
+                content=[{"type": "text", "text": decision.text}],
+                now=now,
                 telegram_message_id=message_id,
             )
             await self._after_send(session, user_id, fire, now)

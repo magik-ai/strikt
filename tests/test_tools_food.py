@@ -312,6 +312,70 @@ async def test_update_meal_ignores_other_users_items(
     assert result.is_error
 
 
+async def test_update_meal_refuses_an_item_from_another_day(
+    tool_ctx: ToolContext, session: AsyncSession
+) -> None:
+    """The watermelon of 11 September: an id carried over from an old day is not editable blind."""
+    logged = await _log_plate(tool_ctx)
+    item_id = logged["items"][0]["id"]
+    meal = await repo.get_meal(session, tool_ctx.user_id, logged["meal_id"])
+    assert meal is not None
+    meal.day_date = date(2026, 8, 20)
+    await session.flush()
+
+    blind = await food_tools.update_meal(
+        tool_ctx,
+        schemas.UpdateMealInput(item_id=item_id, changes=schemas.MealItemChanges(fiber_g=4)),
+    )
+    assert blind.is_error and "older than yesterday" in str(blind.content)
+    row = await repo.get_meal_item(session, tool_ctx.user_id, item_id)
+    assert row is not None and row.fiber_g == 0
+
+    named = parsed(
+        await food_tools.update_meal(
+            tool_ctx,
+            schemas.UpdateMealInput(
+                item_id=item_id,
+                changes=schemas.MealItemChanges(fiber_g=4),
+                expect_name="beef bowl",
+            ),
+        )
+    )
+    assert named["item"]["fiber"] == 4
+
+
+async def test_update_meal_refuses_an_id_that_is_a_different_item(tool_ctx: ToolContext) -> None:
+    logged = await _log_plate(tool_ctx)
+    wrong = await food_tools.update_meal(
+        tool_ctx,
+        schemas.UpdateMealInput(
+            item_id=logged["items"][0]["id"],
+            changes=schemas.MealItemChanges(fiber_g=9),
+            expect_name="арбуз",
+        ),
+    )
+    assert wrong.is_error and "beef bowl" in str(wrong.content)
+
+
+async def test_log_meal_flags_a_plant_item_logged_without_fiber(tool_ctx: ToolContext) -> None:
+    """Sprouts at 0 g fibre is a hole in a tracked number, not a neutral zero."""
+    result = parsed(
+        await food_tools.log_meal(
+            tool_ctx,
+            schemas.LogMealInput(
+                items=[
+                    item("Brussel Sprouts", 144, 4, 6, 9, grams=150, source="web"),
+                    item("Chicken Breast 150g", 308, 44, 2, 7, grams=150, source="web"),
+                ],
+                slot="lunch",
+            ),
+        )
+    )
+    flags = " | ".join(result["flags"])
+    assert "Brussel Sprouts: fibre missing" in flags
+    assert "Chicken Breast 150g: fibre missing" not in flags
+
+
 # --------------------------------------------------------------------- delete_meal / undo_last
 
 
