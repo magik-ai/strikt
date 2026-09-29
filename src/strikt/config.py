@@ -107,8 +107,9 @@ class Settings(BaseSettings):
     context_max_turns: int = 30
     context_max_tokens: int = 40_000
     #: Pictures from earlier turns re-attached to the prompt, so a menu sent two messages ago is
-    #: still visible. 0 turns it off; every one of them costs input tokens on the user's key.
-    context_recent_images: int = 3
+    #: still visible. Whole messages only: the newest photo message always comes back complete.
+    #: 0 turns it off; every one of them costs input tokens on the user's key.
+    context_recent_images: int = 10
     llm_timeout_s: float = 120.0
 
     # --- OpenAI (voice transcription only) ----------------------------------------------------

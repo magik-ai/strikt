@@ -29,6 +29,7 @@ def offline_http() -> httpx.AsyncClient:
 
 
 def item(name: str, kcal: float, p: float, c: float, f: float, **kw: Any) -> schemas.MealItemInput:
+    kw.setdefault("fiber_g", 0)
     return schemas.MealItemInput(name=name, kcal=kcal, protein_g=p, carbs_g=c, fat_g=f, **kw)
 
 

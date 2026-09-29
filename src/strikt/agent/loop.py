@@ -44,6 +44,7 @@ from typing import TYPE_CHECKING, Any, Protocol
 
 import structlog
 
+from strikt.agent.actions import action_line, actions_block, strip_actions
 from strikt.agent.client import LLMAuthError, LLMCreditError, LLMError, LLMResult, ToolUse
 from strikt.agent.context import ContextBundle, MediaRehydrator, build_context, user_blocks
 from strikt.agent.tools.registry import ToolContext
@@ -76,6 +77,21 @@ MEAL_TOOLS: frozenset[str] = frozenset({"log_meal", "update_meal", "delete_meal"
 #: Tools whose result names the meal the reply keyboard should act on (in priority order).
 KEYBOARD_MEAL_TOOLS: tuple[str, ...] = ("log_meal", "update_meal")
 CONTINUE_TEXT = "Continue exactly where you stopped. Do not repeat what you already wrote."
+#: Sent once when a reply says something was saved but no tool ran in the whole turn.
+UNSAVED_CLAIM_TEXT = (
+    "Your reply says you logged, added, changed or removed something, but no tool ran in this"
+    " turn, so nothing was saved. If the user's food, correction or deletion should be saved,"
+    " call the tool now and then answer from its result. If it was already saved in an earlier"
+    " turn (the <actions> lines of your earlier replies), do not save it twice: say it is already"
+    " in. If nothing needed saving, answer again without saying that you saved anything."
+)
+#: First-person write claims ("записал", "добавил", "logged", "I've updated"...).
+_WRITE_CLAIM = re.compile(
+    r"(?i)(?<![\w])(запис[ау]л\w*|внёс|внес(?:ла|ено)?|занёс|занес(?:ла)?|добавил\w*|поправил\w*"
+    r"|исправил\w*|удалил\w*|убрал\w*|обнулил\w*|откатил\w*|пересчитал\w*|обновил\w*"
+    r"|i(?:'ve| have)? (?:logged|added|updated|removed|deleted|corrected|changed|saved)"
+    r"|(?:logged|saved|updated) (?:it|that|this|your))(?![\w])"
+)
 #: A response cut off inside a tool call is retried once with this multiple of the output cap.
 TRUNCATED_TOOL_RETRY_FACTOR = 2
 
@@ -156,6 +172,11 @@ def to_telegram_html(text: str) -> str:
     escaped = _HEADER.sub("", escaped)
     escaped = _BOLD.sub(r"<b>\1</b>", escaped)
     return _CODE.sub(r"<code>\1</code>", escaped)
+
+
+def claims_a_write(text: str | None) -> bool:
+    """True when the reply says, in the first person, that something was saved or changed."""
+    return bool(text) and _WRITE_CLAIM.search(text or "") is not None
 
 
 def stub_media_blocks(
@@ -328,6 +349,8 @@ class _LoopOutcome:
     rounds: int
     refused: bool = False
     traces: list[ToolTrace] = field(default_factory=list)
+    #: One line per state-changing call (``agent/actions.py``), kept in the stored turn.
+    actions: list[str] = field(default_factory=list)
 
 
 async def _model_loop(
@@ -336,12 +359,14 @@ async def _model_loop(
     messages: list[dict[str, Any]] = [dict(m) for m in bundle.messages]
     tools_used: list[str] = []
     traces: list[ToolTrace] = []
+    actions: list[str] = []
     usage = LLMUsage()
     cost = 0.0
     rounds = 0
     calls = 0
     continued = False
     max_tokens: int | None = None
+    nudged = False
     text_parts: list[str] = []
     max_rounds = int(getattr(deps.settings, "max_tool_rounds", 12))
     max_calls = max_rounds * 2 + 2  # pause_turn / continuation re-sends never loop forever
@@ -371,7 +396,14 @@ async def _model_loop(
                 explanation=result.refusal and result.refusal.explanation,
             )
             return _LoopOutcome(
-                _copy(user.language, "refused"), tools_used, usage, cost, rounds, True, traces
+                _copy(user.language, "refused"),
+                tools_used,
+                usage,
+                cost,
+                rounds,
+                True,
+                traces,
+                actions,
             )
 
         if result.paused:
@@ -390,6 +422,10 @@ async def _model_loop(
             messages.append(result.assistant_message())
             results = await execute_tools(deps, ctx, uses, traces)
             tools_used += [use.name for use in uses]
+            for use, block in zip(uses, results, strict=True):
+                line = action_line(use.name, block.get("content"), bool(block.get("is_error")))
+                if line is not None:
+                    actions.append(line)
             messages.append({"role": "user", "content": results})
             continue
 
@@ -416,11 +452,23 @@ async def _model_loop(
             messages.append({"role": "user", "content": [{"type": "text", "text": CONTINUE_TEXT}]})
             continue
 
+        if not tools_used and not nudged and claims_a_write(result.text):
+            # "Added to breakfast" with no log_meal behind it: the user believes it is saved
+            nudged = True
+            log.warning("turn_unsaved_claim", user_id=user.id)
+            messages.append(result.assistant_message())
+            messages.append(
+                {"role": "user", "content": [{"type": "text", "text": UNSAVED_CLAIM_TEXT}]}
+            )
+            continue
+
         text_parts.append(result.text)
         break
 
     text = "\n".join(part.strip() for part in text_parts if part and part.strip()).strip()
-    return _LoopOutcome(text, tools_used, usage, cost, rounds, traces=traces)
+    return _LoopOutcome(
+        strip_actions(text), tools_used, usage, cost, rounds, traces=traces, actions=actions
+    )
 
 
 # ------------------------------------------------------------------------------------ run
@@ -547,17 +595,24 @@ async def run_turn(deps: TurnDeps, incoming: Incoming) -> TurnResult:
                 days=sorted(map(str, verified_dates)),
             )
         else:
-            text = await verify_reply(deps, user, text, tools_used, incoming, state=verify_state)
+            text = strip_actions(
+                await verify_reply(deps, user, text, tools_used, incoming, state=verify_state)
+            )
     if not text.strip():
         text = t(lang, "err.unknown")
 
     assistant_turn_id: int | None = None
     if error is None:
+        stored: list[dict[str, Any]] = [{"type": "text", "text": text}]
+        record = actions_block(outcome.actions)
+        if record is not None:
+            stored.append(record)
         assistant_turn = await repo.add_turn(
             session,
             user.id,
             role=TurnRole.assistant,
-            content=[{"type": "text", "text": text}],
+            content=stored,
+            text=text,
             now=ensure_utc(deps.clock.now()),
             input_tokens=outcome.usage.input_tokens,
             output_tokens=outcome.usage.output_tokens,

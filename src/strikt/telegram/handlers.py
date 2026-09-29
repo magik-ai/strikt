@@ -315,6 +315,32 @@ def merge_album(parts: Sequence[InboundMessage]) -> InboundMessage:
     )
 
 
+def merge_burst(parts: Sequence[InboundMessage]) -> InboundMessage:
+    """Messages sent one after another while the coach was busy, as one message.
+
+    Four quick lines ("I couldn't eat the fish" / "they understate the calories" / "show me what
+    you logged" / "where is the omelette") used to become four turns, each answered alone and
+    each undoing the one before. Texts are joined in order; media are kept in order; the reply
+    answers the last message.
+    """
+    if len(parts) == 1:
+        return parts[0]
+    first, last = parts[0], parts[-1]
+    texts = [p.text.strip() for p in parts if p.text and p.text.strip()]
+    return InboundMessage(
+        telegram_id=first.telegram_id,
+        chat_id=first.chat_id,
+        message_id=last.message_id,
+        received_at=first.received_at,
+        text="\n\n".join(texts) or None,
+        language_code=first.language_code,
+        media=[ref for part in parts for ref in part.media],
+        media_group_id=None,
+        forwarded_from=next((p.forwarded_from for p in parts if p.forwarded_from), None),
+        chat_type=first.chat_type,
+    )
+
+
 # ------------------------------------------------------------------------------------- deps
 
 
@@ -359,6 +385,9 @@ class AppDeps:
     #: Re-reads the pictures of the last few turns so the coach still sees them; built from
     #: ``downloader`` on first use.
     images: ImageCache | None = None
+    #: Plain messages waiting behind a running turn, per chat. The first queued runner takes
+    #: them all as one message (``merge_burst``); the others find nothing and stop.
+    pending: dict[int, list[InboundMessage]] = field(default_factory=dict)
 
     def image_cache(self) -> ImageCache:
         if self.images is None:
@@ -448,16 +477,43 @@ async def handle_message(deps: AppDeps, inbound: InboundMessage) -> None:
         if parts is None:
             return
         inbound = merge_album(parts)
+    chat_id = inbound.chat_id
+    alone = (
+        inbound.command is not None
+        # a pasted key is deleted from the chat by its message id: it never joins a burst
+        or extract_key(inbound.text) is not None
+        or extract_openai_key(inbound.text) is not None
+    )
+    if not alone:
+        # joins whatever else is waiting behind a running turn; the first runner takes it all
+        deps.pending.setdefault(chat_id, []).append(inbound)
+
+    async def runner() -> None:
+        if alone:
+            await _dispatch_message(deps, inbound)
+        else:
+            await _dispatch_pending(deps, chat_id)
+
     try:
         await deps.queue.run(
             inbound.chat_id,
-            lambda: _dispatch_message(deps, inbound),
+            runner,
             heartbeat=_typing(deps, inbound.chat_id),
             heartbeat_interval=HEARTBEAT_S,
         )
     except Exception:
         log.exception("handle_message_failed", chat_id=inbound.chat_id)
         await _send(deps, inbound.chat_id, t(inbound.lang, "err.unknown"))
+
+
+async def _dispatch_pending(deps: AppDeps, chat_id: int) -> None:
+    """Take every plain message queued for the chat and run them as one."""
+    batch = deps.pending.pop(chat_id, [])
+    if not batch:
+        return
+    if len(batch) > 1:
+        log.info("messages_merged", chat_id=chat_id, count=len(batch))
+    await _dispatch_message(deps, merge_burst(batch))
 
 
 async def _dispatch_message(deps: AppDeps, inbound: InboundMessage) -> None:

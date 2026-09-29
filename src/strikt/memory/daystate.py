@@ -284,8 +284,12 @@ def _meal_line(meal: MealView, tz: str, *, detailed: bool) -> str:
     when = _local_hhmm(meal.eaten_at or meal.logged_at, tz)
     parts: list[str] = []
     for item in meal.items:
-        text = _short(item.name)
+        # the item id is what update_meal takes: without it the coach guessed one and edited a
+        # cheeseburger from two weeks earlier instead of this morning's wrap
+        text = f"{_short(item.name)} (item {item.id})"
         if detailed:
+            if item.grams:
+                text += f" {_n(item.grams)} g"
             m = item.macros
             text += f" {_n(m.kcal)} kcal ({_n(m.protein_g)}P/{_n(m.carbs_g)}C/{_n(m.fat_g)}F"
             if m.fiber_g:
