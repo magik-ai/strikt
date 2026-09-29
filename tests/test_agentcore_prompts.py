@@ -39,7 +39,7 @@ def test_coach_prompt_covers_the_brief() -> None:
         "≥ 600 mg per serving",
         "soluble corn fiber",
         "per-100 g → per-serving",
-        "update_meal",
+        "set_day_food",
         "Recalculate",
         "**pick**",
         "**okay**",

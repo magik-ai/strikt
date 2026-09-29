@@ -17,6 +17,7 @@ import pytest
 from PIL import Image
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncEngine, AsyncSession
+from sqlalchemy.orm import selectinload
 
 from strikt.agent.client import FakeKeyValidator, FakeLLM, FakeLLMFactory
 from strikt.agent.tools import build_registry
@@ -800,3 +801,53 @@ async def test_a_command_never_joins_a_burst(
     await asyncio.gather(*tasks)
     assert len(fake_llm.calls) == 1
     assert "/today" not in last_user_text(fake_llm)
+
+
+async def test_set_day_food_through_the_whole_turn(
+    deps: AppDeps, messenger: FakeMessenger, fake_llm: FakeLLM, user: User, session: AsyncSession
+) -> None:
+    """The coach's only food write, end to end: raw JSON from the model, the list stored as
+    given, the card refreshed, and the next turn sees the list and the <actions> record."""
+    fake_llm.queue(
+        FakeLLM.tool_use(
+            "set_day_food",
+            {
+                "eaten": [
+                    {
+                        "name": "омлет",
+                        "portion": "2 яйца",
+                        "slot": "breakfast",
+                        "time": "10:00",
+                        "kcal": 205,
+                        "protein_g": 20,
+                        "carbs_g": 0.4,
+                        "fat_g": 14,
+                        "fiber_g": 2,
+                        "source": "web",
+                    }
+                ],
+                "planned": ["обед: курица 300 г"],
+                "change": "breakfast from the photo",
+            },
+        ),
+        FakeLLM.text("записал омлет, 205."),
+        FakeLLM.text("ок"),
+    )
+    await handle_message(deps, msg("омлет съел", message_id=400))
+    meals = list(
+        (
+            await session.scalars(
+                select(Meal).where(Meal.user_id == user.id).options(selectinload(Meal.items))
+            )
+        ).all()
+    )
+    assert [(i.name, i.kcal, i.unit) for m in meals for i in m.items] == [("омлет", 205, "2 яйца")]
+    assert messenger.texts(user.chat_id)[-1].startswith("записал омлет")
+    await handle_message(deps, msg("что записано?", message_id=401))
+    context = last_user_text(fake_llm)
+    assert "омлет (2 яйца) 205 kcal" in context
+    assert "planned food (not eaten yet, NOT counted): обед: курица 300 г" in context
+    history = "\n".join(
+        str(b.get("text", "")) for m in fake_llm.calls[-1]["messages"] for b in m["content"]
+    )
+    assert "<actions>" in history and "set_day_food" in history

@@ -24,8 +24,15 @@ from strikt.core.types import (
     MeasurementTypeName,
 )
 
+#: Registered (the Undo button and old callbacks dispatch them) but never offered to the model:
+#: the coach writes food only through ``set_day_food``. Editing single items by id is what put
+#: this morning's wrap onto a cheeseburger from two weeks earlier, nineteen times in a month.
+HIDDEN_TOOLS: frozenset[str] = frozenset({"log_meal", "update_meal", "delete_meal", "undo_last"})
+
 TOOL_NAMES: tuple[str, ...] = (
     "search_food",
+    "set_day_food",
+    "save_my_food",
     "log_meal",
     "update_meal",
     "delete_meal",
@@ -142,6 +149,93 @@ class MealItemInput(ToolInput):
             source_url=self.source_url,
             countable=self.countable,
         )
+
+
+class DayFoodItem(ToolInput):
+    """One line of the day's food list: what was eaten and its final numbers."""
+
+    name: str = Field(description="What was eaten, in the user's words, e.g. 'творог Svalya 0.5%'.")
+    portion: str | None = Field(
+        default=None, description="Portion as eaten: '200 г', '2 шт', 'половина', '330 мл'."
+    )
+    grams: float | None = Field(default=None, description="Weight in grams, when known.")
+    slot: MealSlotName = Field(description="breakfast/lunch/dinner/snack (unknown if unclear).")
+    time: str | None = Field(
+        default=None, description="Local time it was eaten, 'HH:MM', when known."
+    )
+    kcal: float = Field(description="Energy for this portion, kcal. Stored exactly as given.")
+    protein_g: float = Field(description="Protein for this portion, g.")
+    carbs_g: float = Field(description="Carbohydrates for this portion, g.")
+    fat_g: float = Field(description="Fat for this portion, g.")
+    fiber_g: float = Field(
+        description=(
+            "Fiber for this portion, g. Estimate it when a label or menu leaves it out: avocado,"
+            " vegetables, beans, berries, greens and psyllium all carry fiber. 0 only for meat,"
+            " fish, eggs, dairy, oil, sugar, alcohol."
+        )
+    )
+    alcohol_g: float = Field(default=0, description="Pure alcohol, g (7 kcal/g), if any.")
+    source: FoodSource = Field(
+        description=(
+            "Where the numbers came from: label (a label or card the user showed), web (a menu,"
+            " a delivery app or a page), user (the user stated them, or they come from"
+            " <my_foods>), off/usda (search_food), model (your own estimate)."
+        )
+    )
+
+
+class SetDayFoodInput(ToolInput):
+    """Write the COMPLETE list of what was eaten on one day. It replaces the day's whole list:
+    every line you send is stored exactly as given (no number is changed by the system), and
+    every line you leave out is removed. So always send the full list: everything already in
+    the <day> block for that day plus the change, never just the new item. The result shows what
+    was added, removed and changed against the previous list, and the day's totals; say any
+    removal the user did not ask for and fix it at once. Food the user only intends to eat goes
+    in `planned`, never in `eaten`."""
+
+    date: date_ | None = Field(
+        default=None,
+        description=(
+            "The day (YYYY-MM-DD). Omit for the current day as shown in <day>. For another day,"
+            " read its list first (get_day_state with that date)."
+        ),
+    )
+    eaten: list[DayFoodItem] = Field(
+        description="Everything eaten that day, in order. The whole list, not the change."
+    )
+    planned: list[str] | None = Field(
+        default=None,
+        description=(
+            "Food the user intends to eat later that day, one short line each, e.g. 'обед:"
+            " курица 300 г + салат (~550 ккал)'. Not counted. Omit to keep the current plan;"
+            " [] clears it."
+        ),
+    )
+    change: str = Field(
+        description="One line: what changed and why, e.g. 'added the omelette from photo 1'."
+    )
+    clear_day: bool = Field(
+        default=False,
+        description="True only when the user asked to wipe the whole day and `eaten` is empty.",
+    )
+
+
+class SaveMyFoodInput(ToolInput):
+    """Remember a food the user eats regularly, with fixed numbers per portion, so it is never
+    re-estimated: their usual shake, cottage cheese, bread, cream cheese, psyllium, a dish they
+    cook. Save it when the user gives numbers, shows a label, or corrects your estimate of a
+    food they repeat. Saved foods appear in <my_foods> every turn; use those numbers."""
+
+    name: str = Field(description="Name as the user says it, e.g. 'шейк на миндальном'.")
+    portion: str = Field(description="The portion the numbers are for, e.g. '1 шейк', '100 г'.")
+    kcal: float = Field(description="kcal per portion.")
+    protein_g: float = Field(description="Protein per portion, g.")
+    carbs_g: float = Field(description="Carbs per portion, g.")
+    fat_g: float = Field(description="Fat per portion, g.")
+    fiber_g: float = Field(description="Fiber per portion, g.")
+    replaces_id: int | None = Field(
+        default=None, description="Id of the saved food this one replaces (from <my_foods>)."
+    )
 
 
 class LogMealInput(ToolInput):
@@ -566,6 +660,8 @@ class ImportHistoryInput(ToolInput):
 
 SCHEMAS: dict[str, type[ToolInput]] = {
     "search_food": SearchFoodInput,
+    "set_day_food": SetDayFoodInput,
+    "save_my_food": SaveMyFoodInput,
     "log_meal": LogMealInput,
     "update_meal": UpdateMealInput,
     "delete_meal": DeleteMealInput,

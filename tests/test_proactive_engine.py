@@ -12,6 +12,7 @@ from sqlalchemy.ext.asyncio import AsyncEngine, AsyncSession
 from strikt.config import Settings
 from strikt.core.clock import FakeClock
 from strikt.db import repo
+from strikt.db.crypto import generate_key
 from strikt.db.engine import make_session_factory
 from strikt.db.models import CoachingIntensity, Profile, ReminderStatus, User, UserStatus
 from strikt.events import (
@@ -55,6 +56,19 @@ class FakePlanner:
     def cancel_followups(self, user_id: int, *, window_prefixes: Any = None) -> int:
         self.cancelled.append((user_id, list(window_prefixes) if window_prefixes else None))
         return 1
+
+
+@pytest.fixture
+def settings() -> Settings:
+    """The ladder mechanics under test: escalation on, no gap between sends, no wait for the
+    user's first message. The calmer defaults are covered in tests/test_proactive_calm.py."""
+    return Settings(  # type: ignore[call-arg]
+        _env_file=None,
+        token_encryption_key=generate_key(),
+        proactive_escalate=True,
+        proactive_min_gap_minutes=0,
+        proactive_wait_for_user=False,
+    )
 
 
 @pytest.fixture

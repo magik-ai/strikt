@@ -108,6 +108,8 @@ class NoteKind(StrEnum):
     event = "event"
     answer = "answer"
     commitment = "commitment"
+    #: A food the user eats regularly, with fixed numbers per portion (``save_my_food``).
+    food = "food"
 
 
 class SecretService(StrEnum):

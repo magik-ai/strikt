@@ -277,7 +277,7 @@ async def test_parallel_tool_calls_return_in_one_message_with_is_error(
     assert all(b["type"] == "tool_result" for b in blocks)
     assert blocks[1]["is_error"] is True and "kaboom" in blocks[1]["content"]
     assert "is_error" not in blocks[0] and "is_error" not in blocks[2]
-    assert result.text.startswith("Logging.")  # text before the tool calls is kept
+    assert result.text == "Done."  # text written before the tool calls never reaches the user
 
 
 async def test_parallel_flag_runs_tools_concurrently_with_same_order(

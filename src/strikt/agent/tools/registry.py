@@ -196,7 +196,13 @@ def strict_schema(model: type[BaseModel]) -> dict[str, Any]:
 class Registry:
     def __init__(self) -> None:
         self._tools: dict[str, Tool] = {}
+        self._hidden: set[str] = set()
         self._definitions: list[dict[str, Any]] | None = None
+
+    def hide(self, *names: str) -> None:
+        """Keep these tools dispatchable (buttons, callbacks) but out of ``definitions``."""
+        self._hidden.update(names)
+        self._definitions = None
 
     def register(self, tool: Tool) -> Tool:
         if tool.name in self._tools:
@@ -224,7 +230,9 @@ class Registry:
     def definitions(self) -> list[dict[str, Any]]:
         """Anthropic tool dicts sorted by name; cached because the bytes must never change."""
         if self._definitions is None:
-            self._definitions = [self._tools[name].definition() for name in self.names()]
+            self._definitions = [
+                self._tools[name].definition() for name in self.names() if name not in self._hidden
+            ]
         return [dict(d) for d in self._definitions]
 
     async def dispatch(

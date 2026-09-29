@@ -131,3 +131,38 @@ def test_parse_range_defaults_and_limits() -> None:
     with pytest.raises(ExportError):
         parse_range("2026-01-01", "2026-09-29", today=today)
     assert MAX_DAYS == 31
+
+
+async def test_repair_fixes_named_fields_and_reopens_the_day(
+    engine: AsyncEngine, session: AsyncSession, clock: FakeClock, user: User
+) -> None:
+    day = await _seed(session, user, clock)
+    await repo.close_day(session, user.id, day, verdict="old", now=clock.now())
+    await session.commit()
+    meals = await repo.list_meals_for_date(session, user.id, day)
+    item_id = meals[0].items[0].id
+    body = {
+        "user": user.id,
+        "items": [{"id": item_id, "fields": {"name": "salmon", "kcal": 360}, "reason": "x"}],
+        "reopen_days": [day.isoformat()],
+    }
+    headers = {"Authorization": f"Bearer {TOKEN}"}
+    async with _client(engine, clock, TOKEN) as client:
+        assert (await client.post("/admin/repair", json=body)).status == 401
+        bad = await client.post(
+            "/admin/repair",
+            json={"user": user.id, "items": [{"id": item_id, "fields": {"user_id": 9}}]},
+            headers=headers,
+        )
+        assert bad.status == 400
+        response = await client.post("/admin/repair", json=body, headers=headers)
+        assert response.status == 200
+        payload = await response.json()
+    assert payload["reopened"] == [day.isoformat()]
+    assert payload["items"][0]["before"] == {"name": "chicken", "kcal": 250}
+    session.expunge_all()
+    row = await repo.get_meal_item(session, user.id, item_id)
+    assert row is not None and row.name == "salmon" and row.kcal == 360
+    assert row.user_correction is not None and row.user_correction["reason"] == "admin repair: x"
+    day_row = await repo.get_day(session, user.id, day)
+    assert day_row is not None and day_row.closed_at is None and day_row.verdict is None

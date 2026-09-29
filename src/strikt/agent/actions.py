@@ -21,11 +21,13 @@ from typing import Any
 
 from strikt.agent.verify import STATE_CHANGING_TOOLS
 
+#: Writes that change no day but are worth remembering turn to turn.
+EXTRA_ACTION_TOOLS = frozenset({"save_my_food"})
 ACTIONS_OPEN = "<actions>"
 ACTIONS_CLOSE = "</actions>"
 #: Key on the stored block; ``context._stored_content`` strips it before the API sees it.
 INTERNAL_KEY = "internal"
-MAX_LINE = 600
+MAX_LINE = 1500
 MAX_ERROR = 200
 
 _ACTIONS_RE = re.compile(r"\s*<actions>.*?(?:</actions>|$)", re.DOTALL)
@@ -58,7 +60,7 @@ def _clip(text: str, limit: int) -> str:
 
 def action_line(name: str, content: Any, is_error: bool) -> str | None:
     """One line for a state-changing call, ``None`` for a read-only one."""
-    if name not in STATE_CHANGING_TOOLS:
+    if name not in STATE_CHANGING_TOOLS and name not in EXTRA_ACTION_TOOLS:
         return None
     raw = content if isinstance(content, str) else json.dumps(content, ensure_ascii=False)
     if is_error:
@@ -69,7 +71,18 @@ def action_line(name: str, content: Any, is_error: bool) -> str | None:
         return _clip(f"{name}: {raw}", MAX_LINE)
     if not isinstance(payload, dict):
         return _clip(f"{name}: {raw}", MAX_LINE)
-    if name == "log_meal":
+    if name == "set_day_food":
+        parts = [f"set_day_food {payload.get('date')}: {payload.get('change') or ''}".rstrip()]
+        for key in ("added", "removed", "changed"):
+            values = payload.get(key) or []
+            if values:
+                parts.append(f"{key}: " + "; ".join(str(v) for v in values))
+        if payload.get("unchanged"):
+            parts.append(f"{payload['unchanged']} unchanged")
+        line = " | ".join(parts)
+    elif name == "save_my_food":
+        line = f"save_my_food #{payload.get('saved_food_id')}: {payload.get('text')}"
+    elif name == "log_meal":
         items = "; ".join(_item(i) for i in payload.get("items") or [])
         line = (
             f"log_meal: meal #{payload.get('meal_id')} {payload.get('date')} "

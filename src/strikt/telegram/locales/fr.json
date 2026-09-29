@@ -94,6 +94,9 @@
     "cmd.today": "Renvoyer la carte du jour",
     "cmd.forget_me": "Tout supprimer sur toi",
     "bot.short": "Un coach dans un seul chat. Envoie ton repas, reçois le chiffre. La journée finit par un verdict.",
-    "bot.description": "Strikt enregistre repas, entraînement, sommeil et mesures depuis un seul chat Telegram. Envoie une photo, une capture, un vocal ou du texte : la réponse donne kcal, protéines, glucides, lipides et fibres par élément, la journée et ce qu'il reste. La carte du jour reste épinglée et s'actualise sur place. Si tu te tais, il écrit le premier : le fait, puis le schéma dans tes données, puis une consigne avec une échéance. La journée finit par un verdict. Sans emoji, sans flatterie."
+    "bot.description": "Strikt enregistre repas, entraînement, sommeil et mesures depuis un seul chat Telegram. Envoie une photo, une capture, un vocal ou du texte : la réponse donne kcal, protéines, glucides, lipides et fibres par élément, la journée et ce qu'il reste. La carte du jour reste épinglée et s'actualise sur place. Si tu te tais, il écrit le premier : le fait, puis le schéma dans tes données, puis une consigne avec une échéance. La journée finit par un verdict. Sans emoji, sans flatterie.",
+    "check.head": "Ce qui est noté pour hier :",
+    "check.tail": "Total : {total}. C'est juste ? S'il manque quelque chose ou s'il y a une erreur, dis-le-moi et je corrige.",
+    "check.macros": "{kcal} kcal · P {p} · G {c} · L {f} · fibres {fib}"
   }
 }

@@ -140,7 +140,9 @@ class Outgoing(BaseModel): text (HTML); keyboard: list[list[Button]] | None; rep
 
 - `math.py`: `kcal_from_macros(p, c, f, alcohol=0)` (4/4/9/7), `scale(per_100g, grams)`, `sum_macros`,
   `per_serving(label, serving_g)`, `mismatch_ratio(stated_kcal, computed)`.
-- `sanity.py`: pure functions returning `list[Flag]` (`Flag(code, severity, message, corrected: Macros | None)`):
+- `sanity.py` (used by the legacy `log_meal` path only; the coach writes through `set_day_food`,
+  whose checks only report and never change a number - owner's decision, 29 Sep 2026):
+  pure functions returning `list[Flag]` (`Flag(code, severity, message, corrected: Macros | None)`):
   - `kcal_mismatch` when |stated - 4/4/9| > 10% → corrected kcal from macros.
   - `implausible_fiber` (eggs/meat/dairy claiming fiber; any single dish > 20 g unless legumes/bran).
   - `implausible_fat` (avocado/nut/oil dishes claiming < what the ingredient alone carries; a table of
@@ -200,7 +202,7 @@ Token budget per turn ≤ ~60k input. Never dump whole tables.
 - persist the user turn; build context; loop `messages.create` until `end_turn`; execute tool calls
   through the registry (parallel calls executed concurrently, results returned in one user message);
   `is_error` results on exceptions; max 12 tool rounds.
-- Reflexion verify (`verify.py`): if any tool of {log_meal, update_meal, delete_meal, get_day_state}
+- Reflexion verify (`verify.py`): if any tool of {set_day_food, log_meal, update_meal, delete_meal, get_day_state}
   ran, or the user asked to recalculate, re-derive `DayState` from the DB and compare with the numbers
   in the draft reply (regex over "kcal", "P", "protein", totals). On mismatch: one extra call with
   `prompts/verify.md` ("the log says X, your text says Y, rewrite the numbers") using effort low.
@@ -214,8 +216,15 @@ Token budget per turn ≤ ~60k input. Never dump whole tables.
 ### 6.4 Tools (`tools/`), each a pydantic input model in `schemas.py` and a handler
 `parse_food_image` is NOT a tool: images go into the model's context directly (vision). Tools:
 - `search_food(name, brand?, restaurant?, barcode?) -> hits with per-100g macros + source url`
-- `log_meal(items[], slot?, eaten_at?, note?) -> meal id, per-item macros after sanity, day totals, remaining`
-- `update_meal(meal_id?, item_id?, changes) / delete_meal(meal_id) / undo_last()`
+- `set_day_food(date?, eaten[], planned?, change, clear_day?)`: the COMPLETE list of what was eaten
+  that day replaces the stored list (numbers stored as given; the result lists added / removed /
+  changed lines, advisory checks and the day totals). Plans go to `planned` (kept in `days.plan`,
+  never counted). A changed closed day is reopened so the nightly job writes a fresh verdict.
+- `save_my_food(name, portion, kcal, P, C, F, fiber, replaces_id?)`: the user's regular foods with
+  fixed numbers (a `food` note), shown in `<my_foods>` every turn.
+- `log_meal` / `update_meal` / `delete_meal` / `undo_last`: still registered for the Undo button
+  and old callbacks, hidden from the model (per-item edits by id hit the wrong item 19 times in a
+  month).
 - `log_workout(sport, started_at, ended_at?, duration_min?, strain?, kcal?, avg_hr?, max_hr?, zones_min?, source, note?)`
 - `log_sleep(started_at, ended_at, performance_pct?, ...)`, `log_measurement(type, value, unit, measured_at?)`
 - `ingest_lab_report(markers[])` (the model reads the image; the tool stores structured rows)

@@ -94,6 +94,9 @@
     "cmd.today": "Reenviar la tarjeta de hoy",
     "cmd.forget_me": "Borrar todo sobre ti",
     "bot.short": "Un entrenador en un chat. Manda comida, recibe el número. El día acaba con un veredicto.",
-    "bot.description": "Strikt registra comida, entrenamiento, sueño y medidas desde un solo chat de Telegram. Manda una foto, una captura, un audio o texto: la respuesta trae kcal, proteína, carbohidratos, grasa y fibra por cada cosa, el día hasta ahora y lo que queda. La tarjeta de hoy queda fijada y se edita en su sitio. Si te callas, escribe primero: el hecho, luego el patrón de tus propios datos, luego una instrucción con plazo. El día cierra con un veredicto. Sin saludos, sin emoji, sin halagos."
+    "bot.description": "Strikt registra comida, entrenamiento, sueño y medidas desde un solo chat de Telegram. Manda una foto, una captura, un audio o texto: la respuesta trae kcal, proteína, carbohidratos, grasa y fibra por cada cosa, el día hasta ahora y lo que queda. La tarjeta de hoy queda fijada y se edita en su sitio. Si te callas, escribe primero: el hecho, luego el patrón de tus propios datos, luego una instrucción con plazo. El día cierra con un veredicto. Sin saludos, sin emoji, sin halagos.",
+    "check.head": "Lo registrado ayer:",
+    "check.tail": "Total: {total}. ¿Está bien? Si falta algo o hay un error, dímelo y lo corrijo.",
+    "check.macros": "{kcal} kcal · P {p} · C {c} · G {f} · fibra {fib}"
   }
 }

@@ -163,9 +163,7 @@ async def test_render_context_compact_and_under_budget(
     assert lines[3].startswith("remaining: 1700 kcal | P 193 | C 44 | F 93 | fiber 27")
     assert "meals (1):" in lines
     meal_line = next(line for line in lines if line.startswith("- 09:10 breakfast #"))
-    assert (
-        "eggs (item 1) 140 kcal (12P/1C/10F)" in meal_line and "[loose_under_report]" in meal_line
-    )
+    assert "eggs 140 kcal (12P/1C/10F)" in meal_line and "[loose_under_report]" in meal_line
     assert meal_line.endswith("= 300 kcal, P 17")
     assert any(
         line.startswith("training: run 07:00 · 45 min · strain 12.3 · 406 kcal") for line in lines
@@ -209,10 +207,10 @@ def _big_state(meals: int, items_per_meal: int) -> DayState:
 
 
 def test_render_context_degrades_to_fit_budget() -> None:
-    text = render_context(_big_state(meals=14, items_per_meal=6), "en", tz=TZ)
+    text = render_context(_big_state(meals=40, items_per_meal=6), "en", tz=TZ)
     assert len(text) <= daystate.CONTEXT_MAX_CHARS
     assert "more meals" in text
-    assert "meals (14):" in text
+    assert "meals (40):" in text
     # a normal day keeps item macros
     small = render_context(_big_state(meals=2, items_per_meal=2), "en", tz=TZ)
     assert "120 kcal (10P/10C/5F/1fib)" in small

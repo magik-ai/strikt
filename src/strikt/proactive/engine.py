@@ -65,7 +65,10 @@ log = structlog.get_logger(__name__)
 
 FireStatus = Literal["sent", "silent", "skipped", "error"]
 
-#: Triggers whose unanswered send gets a sharper follow-up 45 minutes later (brief §7.1/§7.2).
+#: Triggers whose unanswered send gets a sharper follow-up 45 minutes later - only when
+#: ``settings.proactive_escalate`` is on. It is off by default: the ladder sent four escalating
+#: messages at 11:00, 11:45, 12:30 and 13:15 to a user who was asleep, each with a statistic the
+#: model made up ("четыре сообщения, ноль ответа"). One message per window; silence is an answer.
 ESCALATING: frozenset[TriggerName] = frozenset(
     {
         "no_first_meal",
@@ -78,6 +81,13 @@ ESCALATING: frozenset[TriggerName] = frozenset(
         "two_off_days",
     }
 )
+#: Triggers about today's eating that only make sense once the user is up and has written: a
+#: "no first meal" nudge to someone still asleep is noise.
+NEEDS_USER_TODAY: frozenset[TriggerName] = frozenset(
+    {"no_first_meal", "no_lunch", "no_dinner", "protein_check", "fiber_check"}
+)
+#: Exempt from ``MIN_GAP``.
+GAP_EXEMPT: frozenset[TriggerName] = frozenset({"bedtime_minus_30"})
 #: Follow-ups cancelled when today's numbers change (a meal was logged, the day closed…).
 MEAL_WINDOW_TRIGGERS: tuple[TriggerName, ...] = (
     "no_first_meal",
@@ -124,6 +134,16 @@ class FollowupPlanner(Protocol):
     def cancel_followups(
         self, user_id: int, *, window_prefixes: Sequence[str] | None = None
     ) -> int: ...
+
+
+def _wrote_today(ctx: TriggerContext, day: date, user: User) -> bool:
+    """The user has sent something since the start of coaching day ``day``."""
+    last = ctx.history.last_user_message_at
+    if last is None:
+        return False
+    start, _ = local_day_bounds(day, user.timezone)
+    # the coaching day starts at the rollover, not at midnight: a 01:30 message is last night's
+    return ensure_utc(last) >= start + timedelta(hours=4)
 
 
 def event_payload(event: Any) -> dict[str, Any]:
@@ -293,8 +313,27 @@ class ProactiveEngine:
                     return self._skip(fire, "daily_cap", ladder.step)
                 if ladder_mod.in_cooldown(ladder) and fire.name in COOLDOWN_SUPPRESSED:
                     return self._skip(fire, "clean_streak_cooldown", ladder.step)
+                gap = timedelta(minutes=self._settings.proactive_min_gap_minutes)
+                last_sent = max((ensure_utc(s.sent_at) for s in ctx.last_sends), default=None)
+                if (
+                    fire.name not in GAP_EXEMPT
+                    and last_sent is not None
+                    and timedelta(0) <= now - last_sent < gap
+                ):
+                    return self._skip(fire, "min_gap", ladder.step)
+                if (
+                    self._settings.proactive_wait_for_user
+                    and fire.name in NEEDS_USER_TODAY
+                    and not _wrote_today(ctx, fire.day, user)
+                ):
+                    return self._skip(fire, "user_not_up_yet", ladder.step)
 
-            decision = await self._decide(session, user, fire, ladder, state)
+            if fire.name == "morning_line":
+                decision = await self._food_check(session, user, fire.day - timedelta(days=1))
+                if decision is None:
+                    return self._skip(fire, "nothing_to_check", ladder.step)
+            else:
+                decision = await self._decide(session, user, fire, ladder, state)
             if decision is None:
                 return FireOutcome(
                     name=fire.name,
@@ -338,7 +377,11 @@ class ProactiveEngine:
             await self._after_send(session, user_id, fire, now)
             await session.commit()
 
-        if step < ladder_mod.MAX_STEP and fire.name in ESCALATING:
+        if (
+            self._settings.proactive_escalate
+            and step < ladder_mod.MAX_STEP
+            and fire.name in ESCALATING
+        ):
             self._schedule_followup(user_id, fire, now)
         return FireOutcome(
             name=fire.name,
@@ -396,6 +439,18 @@ class ProactiveEngine:
             last_sends=sends,
             payload=payload,
         )
+
+    async def _food_check(self, session: Any, user: User, day: date) -> ProactiveDecision | None:
+        """The morning check of yesterday's list, rendered by code (no model call): the list the
+        user confirms is exactly what the database holds. Their answer is an ordinary turn, and
+        a correction goes through ``set_day_food(date=yesterday)``."""
+        from strikt.memory.daystate import render_food_check
+
+        state = await self._day_state(session, user, day)
+        text = render_food_check(state, user.language) if state is not None else None
+        if not text:
+            return None
+        return ProactiveDecision(send=True, text=text, step=1, reason="food_check")
 
     async def _decide(
         self, session: Any, user: User, fire: TriggerFire, ladder: Any, state: DayState | None

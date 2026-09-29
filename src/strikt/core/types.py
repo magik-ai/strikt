@@ -155,6 +155,7 @@ class MealItemView(BaseModel):
     id: int
     name: str
     grams: float | None = None
+    portion: str | None = None
     macros: Macros
     countable: bool = True
     confidence: float = 0.7

@@ -31,7 +31,7 @@ from strikt.core.types import (
 from strikt.db import repo
 from strikt.db.models import Meal, MeasurementType, Profile, Sleep, User, Workout
 from strikt.memory import queries
-from strikt.telegram.copy import resolve_lang, weekday_name
+from strikt.telegram.copy import resolve_lang, t, weekday_name
 
 if TYPE_CHECKING:
     from strikt.config import Settings
@@ -41,9 +41,13 @@ log = structlog.get_logger(__name__)
 DEFAULT_TARGETS = Macros(kcal=2000, protein_g=150, carbs_g=200, fat_g=60, fiber_g=25)
 """Used only when the user has no active protocol yet (onboarding not finished)."""
 
-CONTEXT_MAX_CHARS = 2300  # ≈ 600 tokens at 4 chars/token (research/07 D3: today's rows ≤ 800)
+#: The whole day's list with every number: ``set_day_food`` rewrites the list from this block, so
+#: a compact form that drops per-item numbers would make the model re-invent them.
+CONTEXT_MAX_CHARS = 6000
+#: Where ``set_day_food`` keeps the food the user only plans to eat (``days.plan``).
+FOOD_PLAN_KEY = "food_plan"
 MAX_CONTEXT_ITEM_NAME = 28
-MAX_CONTEXT_MEALS = 10
+MAX_CONTEXT_MEALS = 24
 
 _CADENCE_ATTR: dict[str, str] = {
     "waist": "waist_cadence_days",
@@ -92,6 +96,7 @@ def meal_view(meal: Meal) -> MealView:
             id=item.id,
             name=item.name,
             grams=item.grams,
+            portion=item.unit,
             macros=repo.item_macros(item),
             countable=item.countable,
             confidence=item.confidence,
@@ -284,11 +289,11 @@ def _meal_line(meal: MealView, tz: str, *, detailed: bool) -> str:
     when = _local_hhmm(meal.eaten_at or meal.logged_at, tz)
     parts: list[str] = []
     for item in meal.items:
-        # the item id is what update_meal takes: without it the coach guessed one and edited a
-        # cheeseburger from two weeks earlier instead of this morning's wrap
-        text = f"{_short(item.name)} (item {item.id})"
+        text = _short(item.name)
         if detailed:
-            if item.grams:
+            if item.portion:
+                text += f" ({_short(item.portion, 32)})"
+            elif item.grams:
                 text += f" {_n(item.grams)} g"
             m = item.macros
             text += f" {_n(m.kcal)} kcal ({_n(m.protein_g)}P/{_n(m.carbs_g)}C/{_n(m.fat_g)}F"
@@ -379,8 +384,15 @@ def render_context(state: DayState, lang: str | None, *, tz: str = "UTC") -> str
         tail.append("measurements due: " + ", ".join(state.measurements_due))
     if state.flags:
         tail.append("flags: " + ", ".join(state.flags))
-    if state.plan:
-        plan = "; ".join(f"{k}: {_short(str(v), 40)}" for k, v in sorted(state.plan.items()))
+    plan_rest = {k: v for k, v in (state.plan or {}).items() if k != FOOD_PLAN_KEY}
+    food_plan = (state.plan or {}).get(FOOD_PLAN_KEY) or []
+    if food_plan:
+        tail.append(
+            "planned food (not eaten yet, NOT counted): "
+            + "; ".join(_short(str(p), 80) for p in food_plan)
+        )
+    if plan_rest:
+        plan = "; ".join(f"{k}: {_short(str(v), 40)}" for k, v in sorted(plan_rest.items()))
         tail.append("plan: " + _short(plan, 200))
     if state.verdict:
         tail.append("verdict: " + _short(state.verdict, 200))
@@ -433,3 +445,45 @@ async def yesterday_close_line(session: AsyncSession, user: User, day: date) -> 
     if row and row.verdict:
         line += f". {_short(row.verdict, 240)}"
     return line
+
+
+def render_food_check(state: DayState, lang: str | None) -> str | None:
+    """The morning check: every line logged for ``state``'s day and the total, then "is that
+    right?". Code-rendered, so the list the user confirms is exactly what the database holds.
+    ``None`` when nothing was logged (there is nothing to confirm)."""
+    lang = resolve_lang(lang)
+    lines = [t(lang, "check.head")]
+    count = 0
+    for meal in state.meals:
+        slot = t(lang, f"card.slot.{meal.slot}") if meal.slot != "unknown" else ""
+        for item in meal.items:
+            count += 1
+            name = _short(item.name, 60)
+            if item.portion:
+                name += f" ({_short(item.portion, 32)})"
+            m = item.macros
+            numbers = t(
+                lang,
+                "check.macros",
+                kcal=_n(m.kcal),
+                p=_n(m.protein_g),
+                c=_n(m.carbs_g),
+                f=_n(m.fat_g),
+                fib=_n(m.fiber_g),
+            )
+            lines.append(f"• {slot + ': ' if slot else ''}{name} - {numbers}")
+    if count == 0:
+        return None
+    m = state.totals.macros
+    total = t(
+        lang,
+        "check.macros",
+        kcal=_n(m.kcal),
+        p=_n(m.protein_g),
+        c=_n(m.carbs_g),
+        f=_n(m.fat_g),
+        fib=_n(m.fiber_g),
+    )
+    lines.append("")
+    lines.append(t(lang, "check.tail", total=total))
+    return "\n".join(lines)

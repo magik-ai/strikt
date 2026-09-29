@@ -38,7 +38,7 @@ from strikt.config import Settings
 from strikt.core.clock import FakeClock
 from strikt.db import repo
 from strikt.db.crypto import TokenCipher, generate_key
-from strikt.db.models import ConversationTurn, SummaryKind, User, UserStatus
+from strikt.db.models import ConversationTurn, SummaryKind, TurnRole, User, UserStatus
 from strikt.events import EventBus
 from strikt.memory.daystate import DayStateBuilder
 from strikt.proactive.engine import ProactiveEngine
@@ -393,6 +393,15 @@ async def test_proactive_engine_skips_a_keyless_user_before_deciding(
         llm_factory=byok.factory,
     )
     try:
+        # the user is up: meal nudges wait for the first message of the day
+        await repo.add_turn(
+            session,
+            user.id,
+            role=TurnRole.user,
+            content=[{"type": "text", "text": "доброе"}],
+            now=at_local(TODAY, "09:00"),
+        )
+        await session.commit()
         clock.set(at_local(TODAY, "11:05"))
         skipped = await eng.fire(user.id, "no_first_meal")
         assert skipped.status == "skipped" and skipped.reason == "llm_key_missing"
