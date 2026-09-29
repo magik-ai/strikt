@@ -9,7 +9,7 @@ again through ``escalation_followup``.
 
 The job table (local time; ``wake``/``bed`` from the profile, defaults 08:00 / 00:30):
 
-    morning_line           wake + 0:15     event_planned, post_travel_reentry  wake + 0:20
+    morning_line  max(wake+0:15, 10:00)    event_planned, post_travel_reentry  wake + 0:20
     sleep_debt_accumulating wake + 0:45    no_first_meal                       wake + 3:00
     measurement_overdue    08:05           clean_streak, two_off_days, intensity_restored 09:00
     whoop_no_workout       10:00           silence_check 12:00     same_meal_streak 12:05
@@ -84,6 +84,10 @@ def _plus(base: time, delta: timedelta) -> time:
     return anchor.time().replace(tzinfo=None)
 
 
+#: Earliest time for the morning check of yesterday's food (the owner asked for 10:00).
+MORNING_CHECK_AT = time(10, 0)
+
+
 def build_job_specs(profile: Profile | None) -> list[JobSpec]:
     """The per-user job table from the profile (pure; tested against a fixture profile)."""
     wake = (profile.wake_time if profile is not None else None) or DEFAULT_WAKE
@@ -95,7 +99,8 @@ def build_job_specs(profile: Profile | None) -> list[JobSpec]:
     plus3h = checkins.get("no_first_meal", _plus(wake, timedelta(hours=3)))
     bed30 = _plus(bed, timedelta(minutes=-30))
     specs: list[tuple[str, time, str | None]] = [
-        ("morning_line", plus15, None),
+        # the morning check of yesterday's list: when the user is up, not at the crack of dawn
+        ("morning_line", max(plus15, MORNING_CHECK_AT), None),
         ("event_planned", plus20, None),
         ("post_travel_reentry", plus20, None),
         ("sleep_debt_accumulating", plus45, None),

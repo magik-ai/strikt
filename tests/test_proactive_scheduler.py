@@ -13,6 +13,7 @@ from sqlalchemy.ext.asyncio import AsyncEngine, AsyncSession
 from strikt.config import Settings
 from strikt.core.clock import FakeClock, zone
 from strikt.db import repo
+from strikt.db.crypto import generate_key
 from strikt.db.engine import make_session_factory
 from strikt.db.models import Profile, ReminderStatus, User, UserStatus
 from strikt.proactive import engine as sched_engine, scheduler as sched
@@ -49,6 +50,19 @@ EXPECTED_TRIGGERS = {
     "bedtime_minus_30",
     "nightly_summary",
 }
+
+
+@pytest.fixture
+def settings() -> Settings:
+    """The ladder mechanics under test: escalation on, no gap between sends, no wait for the
+    user's first message. The calmer defaults are covered in tests/test_proactive_calm.py."""
+    return Settings(  # type: ignore[call-arg]
+        _env_file=None,
+        token_encryption_key=generate_key(),
+        proactive_escalate=True,
+        proactive_min_gap_minutes=0,
+        proactive_wait_for_user=False,
+    )
 
 
 @pytest.fixture
@@ -102,7 +116,7 @@ def test_build_job_specs_from_profile() -> None:
         for s in sched.build_job_specs(make_profile(wake_time=time(7, 30), bed_time=time(23, 45)))
     }
     assert set(specs) == EXPECTED_TRIGGERS
-    assert specs["morning_line"].at == "07:45" and specs["no_first_meal"].at == "10:30"
+    assert specs["morning_line"].at == "10:00" and specs["no_first_meal"].at == "10:30"
     assert specs["sleep_debt_accumulating"].at == "08:15" and specs["event_planned"].at == "07:50"
     assert specs["bedtime_minus_30"].at == "23:15" and specs["weekend_risk"].day_of_week == "fri"
     assert specs["weekly_review"].day_of_week == "sun" and specs["weekly_review"].at == "20:00"

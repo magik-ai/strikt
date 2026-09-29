@@ -44,6 +44,8 @@ from strikt.core.clock import coaching_today, ensure_utc, local_day_bounds, to_l
 from strikt.db import repo
 from strikt.db.models import (
     MeasurementType,
+    Note,
+    NoteKind,
     ProactiveSend,
     Profile,
     Protocol,
@@ -192,8 +194,10 @@ def render_profile_block(
     profile: Profile | None,
     protocol: Protocol | None,
     notes_block: str = "",
+    foods_block: str = "",
 ) -> str:
-    """Deterministic text: sorted profile keys, the active protocol, the notes. No clock."""
+    """Deterministic text: sorted profile keys, the active protocol, the notes, the user's own
+    foods. No clock."""
     lines: list[str] = [
         "<profile>",
         f"language: {user.language or 'en'}",
@@ -233,7 +237,19 @@ def render_profile_block(
     lines.append("<notes>")
     lines.append(notes_block if notes_block else "(none yet)")
     lines.append("</notes>")
+    lines.append(
+        "<my_foods>the user's regular foods with fixed numbers per portion - use exactly these,"
+        " scaled to the portion; replace one with save_my_food(replaces_id=...)"
+    )
+    lines.append(foods_block if foods_block else "(none saved yet)")
+    lines.append("</my_foods>")
     return "\n".join(lines)
+
+
+def render_foods_block(foods: list[Note]) -> str:
+    """``- #id name | portion | numbers``, sorted by name (static per note, cache-safe)."""
+    ordered = sorted(foods, key=lambda n: (" ".join(n.text.split()).casefold(), n.id))
+    return "\n".join(f"- #{n.id} {' '.join(n.text.split())}" for n in ordered)
 
 
 def is_onboarding(user: User, profile: Profile | None) -> bool:
@@ -575,8 +591,17 @@ async def render_context_block(
         parts.append(
             f"<proactive>the user is answering your message of "
             f"{to_local(answered_send.sent_at, tz):%H:%M} (trigger {answered_send.trigger}, "
-            f"ladder step {answered_send.step} of 4): {_short(answered_send.text, 300)}. "
-            "Their reply resets the ladder; log the reason if they explain a gap.</proactive>"
+            f"ladder step {answered_send.step} of 4): "
+            f"{_short(answered_send.text, 2000 if answered_send.trigger == 'morning_line' else 300)}"
+            ". Their reply resets the ladder; log the reason if they explain a gap."
+            + (
+                " This was the morning check of yesterday's list: a correction goes through"
+                " set_day_food with yesterday's date and the whole corrected list; 'да' needs"
+                " no tool."
+                if answered_send.trigger == "morning_line"
+                else ""
+            )
+            + "</proactive>"
         )
     parts.append("</context>")
     return "\n".join(parts)
@@ -619,8 +644,14 @@ async def build_context(
         provider: StateProvider = state_provider or DayStateBuilder(clock, settings)
         state = await provider.day_state(session, user, today)
 
-    notes = await active_notes(session, user, now=now)
-    profile_text = render_profile_block(user, profile, protocol, render_notes_block(notes))
+    # saved foods have their own block; they must not eat into the notes' limit
+    notes = await active_notes(
+        session, user, now=now, kinds=[k for k in NoteKind if k != NoteKind.food]
+    )
+    foods = await repo.list_active_notes(session, user.id, now=now, kinds=[NoteKind.food])
+    profile_text = render_profile_block(
+        user, profile, protocol, render_notes_block(notes), render_foods_block(foods)
+    )
     onboarding = is_onboarding(user, profile)
     if onboarding:
         weighed = await repo.latest_by_type(session, user.id, MeasurementType.weight)

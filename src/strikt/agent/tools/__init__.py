@@ -9,10 +9,12 @@ __all__ = ["Handler", "Registry", "Tool", "ToolContext", "ToolResult", "build_re
 
 
 def _handlers() -> dict[str, Handler]:
-    from strikt.agent.tools import body, food, memory, profile, research, state, training
+    from strikt.agent.tools import body, dayfood, food, memory, profile, research, state, training
 
     return {
         "search_food": food.search_food,
+        "set_day_food": dayfood.set_day_food,
+        "save_my_food": dayfood.save_my_food,
         "log_meal": food.log_meal,
         "update_meal": food.update_meal,
         "delete_meal": food.delete_meal,
@@ -53,4 +55,5 @@ def build_registry() -> Registry:
     registry = Registry()
     for name in schemas.TOOL_NAMES:
         registry.register(Tool.from_model(name, schemas.SCHEMAS[name], handlers[name]))
+    registry.hide(*schemas.HIDDEN_TOOLS)
     return registry

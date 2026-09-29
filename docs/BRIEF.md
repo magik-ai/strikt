@@ -43,7 +43,7 @@ Do this yourself with web search. Do not skip it - the bar for this product is "
 - **The number is the product.** Every food message gets an immediate, honest macro estimate and an updated remaining-budget line. This is the core loop and it must be fast.
 - **Universal, then personal.** The onboarding interview builds the profile. Nothing in the coaching logic should be hard-coded to Ilya's numbers.
 - **Infinite memory.** The bot must never say "I don't have context for that." If the DB has it, the bot knows it.
-- **Skeptical of restaurant data.** Delivery apps under-report; the bot corrects for it (see 3.2).
+- **Skeptical of restaurant data.** Delivery apps under-report; the bot says so and asks which number to log (see 3.2). It never changes a number behind the user's back.
 - **Honest coach, not a cheerleader.** Tone rules in 3.1 are as important as the code.
 
 ---
@@ -72,8 +72,9 @@ This section is the heart of the brief. It describes a month of real usage. Enco
 - **Immediate output per item:** kcal / protein / carbs / fat, plus fiber when relevant, then the day's running total, then the remaining budget against the user's targets, then a one-line recommendation if one is warranted.
 - **Sanity checks the bot must run on stated restaurant macros:**
   - Recompute kcal from macros (P×4 + C×4 + F×9). If it doesn't match within ~10%, flag it.
-  - Plausibility vs ingredients. Examples that came up: a chicken-avocado plate claiming 7 g fat (avocado alone is 15+); an egg-and-toast dish claiming 15 g fiber (impossible, eggs have none); a large pasta portion claiming 26 g carbs (a real portion is 60-80). The bot corrects the number and says why in one line.
-  - "Countable vs loose" rule: buns, tortillas, fillets are countable and their stated numbers are usually honest; pasta, rice, sauces, soups are loose and are typically under-reported by 20-40%. Apply a buffer.
+  - Plausibility vs ingredients. Examples that came up: a chicken-avocado plate claiming 7 g fat (avocado alone is 15+); an egg-and-toast dish claiming 15 g fiber (impossible, eggs have none); a large pasta portion claiming 26 g carbs (a real portion is 60-80). The bot says what looks wrong and why in one line, and asks or corrects in the open.
+  - "Countable vs loose" rule: buns, tortillas, fillets are countable and their stated numbers are usually honest; pasta, rice, sauces, soups are loose and are typically under-reported by 20-40%. The bot names this and asks which number to log; it never adds a buffer silently, and the user's own or weighed numbers are never inflated.
+  - **The number the bot says is the number in the log.** Owner's decision, 29 Sep 2026, after a month in which the code silently rewrote 72 logged items (+2,410 kcal) and every argument in the chat came from that gap: no layer changes a number after the coach has stated it.
   - Fat in vegetable sides: brussels sprouts at 9 g fat means they were roasted in oil - the bot points this out rather than trusting "vegetables = free."
 - **Correction loop:** the user often refines after the fact ("actually I only ate a quarter," "I tore the top crust off the bun," "salad was probably 200 kcal not 90"). The bot updates the logged item and the totals, and acknowledges when the user's estimate is better than its own.
 - **Ranking menus:** when sent several items or a whole menu, rank by protein-per-calorie and protein-to-fat, flag hidden carbs/fat (cream sauces, cheese, fritters), name a "take this" pick and a "skip this" list. Suggest customizations: breadless, sauce on the side, extra protein add-on, swap white rice → brown rice, remove the top half of a bun.

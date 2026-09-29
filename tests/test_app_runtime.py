@@ -39,7 +39,7 @@ from strikt.core.clock import FakeClock, ensure_utc
 from strikt.core.types import FoodItemIn, Macros
 from strikt.db import repo
 from strikt.db.crypto import TokenCipher
-from strikt.db.models import ProactiveSend, SummaryKind, User, Workout
+from strikt.db.models import ProactiveSend, SummaryKind, TurnRole, User, Workout
 from strikt.events import WorkoutEvent
 from strikt.integrations import whoop
 from strikt.logging import configure_logging
@@ -179,6 +179,15 @@ async def test_whoop_webhook_ends_in_a_workout_message(
 async def test_proactive_timer_fire_sends_and_records(
     harness: Harness, user: User, clock: FakeClock, messenger: FakeMessenger, session: AsyncSession
 ) -> None:
+    # the user is up: meal nudges wait for the first message of the day
+    await repo.add_turn(
+        session,
+        user.id,
+        role=TurnRole.user,
+        content=[{"type": "text", "text": "доброе"}],
+        now=at_local(TODAY, "09:00"),
+    )
+    await session.commit()
     clock.set(at_local(TODAY, "11:05"))
     outcome = await harness.runtime.proactive.fire(user.id, "no_first_meal")
     assert outcome.sent and outcome.step == 1

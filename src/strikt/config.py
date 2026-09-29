@@ -151,6 +151,13 @@ class Settings(BaseSettings):
     proactive_daily_cap: int = 5
     proactive_daily_cap_drill_sergeant: int = 8
     proactive_followup_minutes: int = 45
+    #: Escalate an unanswered nudge with sharper follow-ups (the old 4-step ladder). Off: it sent
+    #: four messages in two hours to a user who was asleep.
+    proactive_escalate: bool = False
+    #: No two unsolicited messages closer than this many minutes (0 = no gap).
+    proactive_min_gap_minutes: int = 60
+    #: Meal nudges wait until the user has written something today (they may still be asleep).
+    proactive_wait_for_user: bool = True
     quiet_start: time = time(0, 0)
     quiet_end: time = time(7, 30)
 

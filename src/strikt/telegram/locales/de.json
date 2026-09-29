@@ -94,6 +94,9 @@
     "cmd.today": "Die Heute-Karte neu schicken",
     "cmd.forget_me": "Alles über dich löschen",
     "bot.short": "Ein Coach in einem Chat. Schick dein Essen, bekomm die Zahl. Der Tag endet mit einem Urteil.",
-    "bot.description": "Strikt erfasst Essen, Training, Schlaf und Messwerte aus einem Telegram-Chat. Schick ein Foto, einen Screenshot, eine Sprachnachricht oder Text: die Antwort bringt kcal, Eiweiß, Kohlenhydrate, Fett und Ballaststoffe pro Position, den Tag bis jetzt und den Rest. Die Heute-Karte bleibt angepinnt und wird an Ort und Stelle aktualisiert. Wirst du still, schreibt er zuerst: die Tatsache, dann das Muster aus deinen Daten, dann eine Anweisung mit Frist. Ohne Emoji, ohne Lob."
+    "bot.description": "Strikt erfasst Essen, Training, Schlaf und Messwerte aus einem Telegram-Chat. Schick ein Foto, einen Screenshot, eine Sprachnachricht oder Text: die Antwort bringt kcal, Eiweiß, Kohlenhydrate, Fett und Ballaststoffe pro Position, den Tag bis jetzt und den Rest. Die Heute-Karte bleibt angepinnt und wird an Ort und Stelle aktualisiert. Wirst du still, schreibt er zuerst: die Tatsache, dann das Muster aus deinen Daten, dann eine Anweisung mit Frist. Ohne Emoji, ohne Lob.",
+    "check.head": "Gestern eingetragen:",
+    "check.tail": "Summe: {total}. Stimmt das? Wenn etwas fehlt oder falsch ist, sag es mir, dann korrigiere ich es.",
+    "check.macros": "{kcal} kcal · E {p} · KH {c} · F {f} · Ballaststoffe {fib}"
   }
 }

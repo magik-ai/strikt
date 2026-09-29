@@ -32,11 +32,20 @@ log = structlog.get_logger(__name__)
 
 #: Tools after which the draft's day totals are checked against the database.
 VERIFY_TOOLS: frozenset[str] = frozenset(
-    {"log_meal", "update_meal", "delete_meal", "undo_last", "get_day_state", "import_history"}
+    {
+        "set_day_food",
+        "log_meal",
+        "update_meal",
+        "delete_meal",
+        "undo_last",
+        "get_day_state",
+        "import_history",
+    }
 )
 #: Tools that change today's numbers or state (``DayStateChanged`` is published after them).
 STATE_CHANGING_TOOLS: frozenset[str] = frozenset(
     {
+        "set_day_food",
         "log_meal",
         "update_meal",
         "delete_meal",

@@ -412,8 +412,9 @@ async def _model_loop(
 
         uses = result.tool_uses
         if result.wants_tools and uses:
-            if result.text:
-                text_parts.append(result.text)
+            # Text written before a tool call is the model thinking aloud ("wrong id, rolling
+            # back", "let's estimate...", English mid-sentence). It is never the reply: only the
+            # final round speaks to the user, after the tools have run.
             if rounds >= max_rounds:
                 log.warning("turn_round_cap", user_id=user.id, rounds=rounds)
                 text_parts.append(_copy(user.language, "too_many_steps"))

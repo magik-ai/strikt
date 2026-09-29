@@ -93,6 +93,9 @@
     "cmd.today": "Wysłać kartę dnia jeszcze raz",
     "cmd.forget_me": "Usunąć o tobie wszystko",
     "bot.short": "Trener w jednym czacie. Wyślij jedzenie, dostaniesz liczbę. Dzień kończy się werdyktem.",
-    "bot.description": "Strikt zapisuje jedzenie, treningi, sen i pomiary z jednego czatu na Telegramie. Wyślij zdjęcie, zrzut ekranu, głosówkę albo tekst: w odpowiedzi kcal, białko, węglowodany, tłuszcz i błonnik dla każdej pozycji, dzień do tej pory i to, co zostało. Karta dnia wisi przypięta i zmienia się w miejscu. Kiedy milkniesz, pisze pierwszy: fakt, potem wzór z twoich danych, potem polecenie z terminem. Dzień kończy werdykt. Bez powitań, bez emoji, bez pochwał."
+    "bot.description": "Strikt zapisuje jedzenie, treningi, sen i pomiary z jednego czatu na Telegramie. Wyślij zdjęcie, zrzut ekranu, głosówkę albo tekst: w odpowiedzi kcal, białko, węglowodany, tłuszcz i błonnik dla każdej pozycji, dzień do tej pory i to, co zostało. Karta dnia wisi przypięta i zmienia się w miejscu. Kiedy milkniesz, pisze pierwszy: fakt, potem wzór z twoich danych, potem polecenie z terminem. Dzień kończy werdykt. Bez powitań, bez emoji, bez pochwał.",
+    "check.head": "Wczoraj zapisane:",
+    "check.tail": "Razem: {total}. Zgadza się? Jeśli czegoś brakuje albo jest błąd, napisz, poprawię.",
+    "check.macros": "{kcal} kcal · B {p} · W {c} · T {f} · błonnik {fib}"
   }
 }

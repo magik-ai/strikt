@@ -9,7 +9,7 @@ from pydantic import BaseModel, ConfigDict, Field
 
 from strikt.agent.tools import Registry, Tool, ToolContext, ToolResult, build_registry
 from strikt.agent.tools.registry import strict_schema
-from strikt.agent.tools.schemas import SCHEMAS, TOOL_NAMES
+from strikt.agent.tools.schemas import HIDDEN_TOOLS, SCHEMAS, TOOL_NAMES
 
 FORBIDDEN_KEYS = {
     "title",
@@ -45,7 +45,7 @@ def _walk(node: Any) -> list[dict[str, Any]]:
 def test_every_plan_tool_is_registered(registry: Registry) -> None:
     assert registry.names() == sorted(TOOL_NAMES)
     assert set(SCHEMAS) == set(TOOL_NAMES)
-    assert len(registry) == 28
+    assert len(registry) == 30
 
 
 def test_definitions_are_sorted_strict_and_closed(registry: Registry) -> None:
@@ -154,7 +154,8 @@ def test_definitions_carry_no_strict_flag_and_stay_closed() -> None:
     parameters - so turning it on returns a 400 for every single turn. The schema shaping stays,
     because that is what the model actually reads."""
     definitions = build_registry().definitions()
-    assert len(definitions) == len(TOOL_NAMES)
+    assert len(definitions) == len(TOOL_NAMES) - len(HIDDEN_TOOLS)
+    assert not HIDDEN_TOOLS & {d["name"] for d in definitions}
     optional = 0
     for definition in definitions:
         assert "strict" not in definition, definition["name"]
