@@ -124,6 +124,9 @@ class Settings(BaseSettings):
     public_base_url: str = "http://localhost:8080"
     web_host: str = "0.0.0.0"  # the container binds every interface
     web_port: int = 8080
+    #: Bearer token for ``GET /admin/export`` (one user's turns, meals and nudges as JSON, for
+    #: debugging a day). Unset means the route does not exist.
+    admin_export_token: SecretStr | None = None
 
     # --- Startup ------------------------------------------------------------------------------
     run_migrations: bool = True
