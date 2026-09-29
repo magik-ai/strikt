@@ -222,7 +222,14 @@ def log_meal_script(fake_llm: FakeLLM, reply: str = "Омлет: 420 ккал / 
             "log_meal",
             {
                 "items": [
-                    {"name": "omelette", "kcal": 420, "protein_g": 30, "carbs_g": 5, "fat_g": 30}
+                    {
+                        "name": "omelette",
+                        "kcal": 420,
+                        "protein_g": 30,
+                        "carbs_g": 5,
+                        "fat_g": 30,
+                        "fiber_g": 0,
+                    }
                 ]
             },
         ),
@@ -753,3 +760,43 @@ async def test_transcription_failure_has_its_own_copy(
     await handle_message(deps, msg(media=[MediaRef("voice", VOICE_ID, mime="audio/ogg")]))
     assert messenger.texts(CHAT_ID) == [t("ru", "err.transcribe_failed")]
     assert fake_llm.calls == []
+
+
+# ------------------------------------------------------------------------------ bursts
+
+
+async def test_messages_sent_while_a_turn_runs_become_one_turn(
+    deps: AppDeps, messenger: FakeMessenger, fake_llm: FakeLLM, user: User
+) -> None:
+    """Three quick lines behind a running turn get one answer, not three contradicting ones."""
+    fake_llm.queue(FakeLLM.text("first"), FakeLLM.text("all three"))
+    lock = deps.queue._lock(user.chat_id)
+    await lock.acquire()  # a turn is running
+    tasks = [
+        asyncio.create_task(handle_message(deps, msg(text, message_id=200 + i)))
+        for i, text in enumerate(["рыбу не смог съесть", "курицы было 300 г", "где омлет?"])
+    ]
+    await asyncio.sleep(0.05)
+    lock.release()
+    await asyncio.gather(*tasks)
+    assert len(fake_llm.calls) == 1
+    sent = last_user_text(fake_llm)
+    assert "рыбу не смог съесть\n\nкурицы было 300 г\n\nгде омлет?" in sent
+    assert deps.pending == {}
+
+
+async def test_a_command_never_joins_a_burst(
+    deps: AppDeps, messenger: FakeMessenger, fake_llm: FakeLLM, user: User
+) -> None:
+    fake_llm.queue(FakeLLM.text("ok"))
+    lock = deps.queue._lock(user.chat_id)
+    await lock.acquire()
+    tasks = [
+        asyncio.create_task(handle_message(deps, msg("обед", message_id=300))),
+        asyncio.create_task(handle_message(deps, msg("/today", message_id=301))),
+    ]
+    await asyncio.sleep(0.05)
+    lock.release()
+    await asyncio.gather(*tasks)
+    assert len(fake_llm.calls) == 1
+    assert "/today" not in last_user_text(fake_llm)

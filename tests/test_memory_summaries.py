@@ -122,7 +122,7 @@ async def test_write_day_summary_gathers_and_upserts(
     assert call["system"] == summaries.load_prompt()
     digest = call["messages"][0]["content"][0]["text"]
     assert f"<day date={day.isoformat()} tz=Asia/Dubai>" in digest
-    assert "chicken plate 900 kcal (150P/20C/30F/10fib)" in digest
+    assert "chicken plate (item " in digest and "900 kcal (150P/20C/30F/10fib)" in digest
     assert "training: strength 18:00" in digest
     assert "measurements: weight 104.2 kg" in digest
     assert "- [answer] was travelling, no lunch" in digest

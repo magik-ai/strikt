@@ -706,7 +706,14 @@ async def test_dinner_logged_after_midnight_is_checked_against_its_own_day(
             "log_meal",
             {
                 "items": [
-                    {"name": "творог", "kcal": 392, "protein_g": 40, "carbs_g": 12, "fat_g": 18}
+                    {
+                        "name": "творог",
+                        "kcal": 392,
+                        "protein_g": 40,
+                        "carbs_g": 12,
+                        "fat_g": 18,
+                        "fiber_g": 0,
+                    }
                 ],
                 "slot": "dinner",
             },
@@ -876,3 +883,105 @@ def test_stub_media_blocks_keeps_the_file_id_for_later_turns() -> None:
             "media_mime": "image/jpeg",
         }
     ]
+
+
+async def test_the_stored_turn_keeps_what_the_tools_wrote(
+    session: AsyncSession,
+    user: User,
+    fake_llm: FakeLLM,
+    test_registry: Registry,
+    clock: FakeClock,
+    settings: Settings,
+) -> None:
+    """The next turn sees which meal and item ids this one wrote, not just the reply."""
+    fake_llm.queue(
+        FakeLLM.tool_use("log_meal", {"name": "eggs", "kcal": 300, "slot": "breakfast"}),
+        FakeLLM.text("Записал завтрак."),
+    )
+    result = await run_turn(
+        make_deps(session, user, fake_llm, test_registry, clock, settings),
+        incoming(user, "яйца на завтрак"),
+    )
+    assert result.outgoings[0].text == "Записал завтрак."
+    turns = await repo.last_n_turns(session, user.id, 10)
+    stored = turns[-1].content
+    assert stored[0] == {"type": "text", "text": "Записал завтрак."}
+    assert stored[1]["internal"] is True
+    assert stored[1]["text"].startswith("<actions>") and "log_meal" in stored[1]["text"]
+    assert turns[-1].text == "Записал завтрак."  # the searchable text is the reply alone
+
+    fake_llm.queue(FakeLLM.text("ok"))
+    await run_turn(
+        make_deps(session, user, fake_llm, test_registry, clock, settings),
+        incoming(user, "что записал?"),
+    )
+    history = fake_llm.calls[-1]["messages"]
+    blocks = [b for m in history for b in m["content"]]
+    record = next(b for b in blocks if str(b.get("text", "")).startswith("<actions>"))
+    assert "internal" not in record  # our marker never reaches the API
+
+
+async def test_a_reply_that_copies_the_actions_block_is_cleaned(
+    session: AsyncSession,
+    user: User,
+    fake_llm: FakeLLM,
+    test_registry: Registry,
+    clock: FakeClock,
+    settings: Settings,
+) -> None:
+    fake_llm.queue(FakeLLM.text("Готово.\n<actions>\nlog_meal: meal #1\n</actions>"))
+    result = await run_turn(
+        make_deps(session, user, fake_llm, test_registry, clock, settings),
+        incoming(user, "привет"),
+    )
+    assert result.outgoings[0].text == "Готово."
+
+
+async def test_a_claimed_write_without_a_tool_gets_one_nudge(
+    session: AsyncSession,
+    user: User,
+    fake_llm: FakeLLM,
+    test_registry: Registry,
+    clock: FakeClock,
+    settings: Settings,
+) -> None:
+    """ "Added the omelette" with no log_meal behind it is sent back once; the tool then runs."""
+    fake_llm.queue(
+        FakeLLM.text("Вижу омлет. Добавил к завтраку."),
+        FakeLLM.tool_use("log_meal", {"name": "omelette", "kcal": 205, "slot": "breakfast"}),
+        FakeLLM.text("Омлет записан, 205 ккал."),
+    )
+    result = await run_turn(
+        make_deps(session, user, fake_llm, test_registry, clock, settings),
+        incoming(user, "ты видишь тут омлет?"),
+    )
+    assert result.tools_used == ["log_meal"]
+    assert result.outgoings[0].text == "Омлет записан, 205 ккал."
+    nudge = fake_llm.calls[1]["messages"][-1]["content"][0]["text"]
+    assert nudge.startswith("Your reply says you logged")
+
+
+async def test_the_nudge_is_sent_at_most_once(
+    session: AsyncSession,
+    user: User,
+    fake_llm: FakeLLM,
+    test_registry: Registry,
+    clock: FakeClock,
+    settings: Settings,
+) -> None:
+    fake_llm.queue(FakeLLM.text("Записал."), FakeLLM.text("Это уже записано раньше."))
+    result = await run_turn(
+        make_deps(session, user, fake_llm, test_registry, clock, settings),
+        incoming(user, "записал?"),
+    )
+    assert len(fake_llm.calls) == 2
+    assert result.outgoings[0].text == "Это уже записано раньше."
+
+
+def test_claims_a_write() -> None:
+    from strikt.agent.loop import claims_a_write
+
+    for text in ("Добавил к завтраку.", "Внёс, 624 ккал", "Поправил слот", "I've logged it"):
+        assert claims_a_write(text), text
+    for text in ("Сон важнее клетчатки.", "Скинь фото, занесу сразу.", "Норм завтрак", None):
+        assert not claims_a_write(text), text

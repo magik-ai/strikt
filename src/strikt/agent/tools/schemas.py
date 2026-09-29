@@ -90,7 +90,14 @@ class MealItemInput(ToolInput):
     protein_g: float = Field(description="Protein for this portion, g.")
     carbs_g: float = Field(description="Carbohydrates for this portion, g.")
     fat_g: float = Field(description="Fat for this portion, g.")
-    fiber_g: float = Field(default=0, description="Fiber for this portion, g (0 if none).")
+    fiber_g: float = Field(
+        description=(
+            "Fiber for this portion, g. Always your own estimate from the ingredients when the "
+            "label, menu or delivery card leaves it out (avocado, vegetables, beans, berries, "
+            "greens all carry fiber); 0 only for foods that truly have none (meat, fish, eggs, "
+            "oil, sugar)."
+        )
+    )
     sodium_mg: float | None = Field(default=None, description="Sodium, mg, when known.")
     alcohol_g: float = Field(default=0, description="Alcohol, g (7 kcal/g), if any.")
     confidence: float = Field(
@@ -141,7 +148,10 @@ class LogMealInput(ToolInput):
     """Log a meal with one or more items. Runs sanity checks (kcal vs 4/4/9, implausible fiber
     or fat, loose-food buffer, sodium) and returns the meal id, per-item macros after
     corrections with any flags, the day's totals and what remains against the protocol. Log
-    first, then reply with the numbers; the user corrects afterwards."""
+    first, then reply with the numbers; the user corrects afterwards. Only food already eaten
+    (or ordered and being eaten now): a plan ("I'll have...", "I'm going to take...") is not
+    logged. Every dish in the message goes in one call: count the photos and the dishes before
+    calling."""
 
     items: list[MealItemInput] = Field(description="Items eaten, in the order shown/described.")
     slot: MealSlotName | None = Field(

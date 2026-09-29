@@ -52,7 +52,7 @@ JPEG_QUALITY_STEPS = (85, 70, 55, 40)  # retried when the encoded image would ex
 ALBUM_DEBOUNCE_S = 1.2
 ALBUM_MAX_PARTS = 10  # sendMediaGroup allows 2-10 items
 #: Base64 the picture cache keeps in memory across every user of this process.
-MAX_CACHE_BYTES = 24 * 1024 * 1024
+MAX_CACHE_BYTES = 48 * 1024 * 1024
 #: How long a file_id that failed to download is left alone before trying it again.
 FAILURE_TTL_S = 600.0
 
@@ -354,7 +354,7 @@ class ImageCache:
         self,
         downloader: Downloader,
         *,
-        max_entries: int = 12,
+        max_entries: int = 24,
         max_bytes: int = MAX_CACHE_BYTES,
     ) -> None:
         self._downloader = downloader

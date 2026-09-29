@@ -82,7 +82,10 @@ CONTEXT_DAY_SUMMARY_CHARS = 280
 CONTEXT_DAY_SUMMARIES = 3
 MAX_REMINDERS = 8
 #: Pictures from earlier turns put back into the prompt when the settings say nothing else.
-DEFAULT_RECENT_IMAGES = 3
+DEFAULT_RECENT_IMAGES = 10
+#: The newest photo message comes back whole even over the budget, up to this many pictures
+#: (an album holds at most ten; two albums in a row stay under the API's 20-image comfort line).
+MAX_RESTORED_IMAGES = 20
 #: What one restored picture costs the prompt (a 2000 px JPEG lands near this; a budget, not a
 #: count - see ``estimate_tokens``).
 IMAGE_TOKENS = 1600
@@ -261,8 +264,9 @@ def _merge_same_role(messages: list[dict[str, Any]]) -> list[dict[str, Any]]:
     return merged
 
 
-#: Keys ``loop.stub_media_blocks`` adds to a stored stub. They are ours, not the API's.
-_MEDIA_KEYS = ("media_kind", "media_file_id", "media_mime")
+#: Keys ``loop.stub_media_blocks`` (and ``agent/actions.py``) add to stored blocks. They are
+#: ours, not the API's.
+_MEDIA_KEYS = ("media_kind", "media_file_id", "media_mime", "internal")
 
 
 class MediaRehydrator(typing.Protocol):
@@ -307,19 +311,25 @@ async def rehydrate_images(
     *,
     limit: int,
 ) -> int:
-    """Put the pictures back into the newest stored turns, newest first, at most ``limit``.
+    """Put the pictures back into the newest stored turns, a whole message at a time.
 
-    ``rows`` pairs each stored turn's raw content with the message built from it. A stub whose
-    file cannot be fetched keeps its ``[image: …]`` text, so the model sees that something was
-    sent and can ask for it again instead of denying it exists.
+    ``rows`` pairs each stored turn's raw content with the message built from it. Messages are
+    taken newest first and never split: six delivery screenshots sent together come back as
+    six, even over ``limit`` (up to ``MAX_RESTORED_IMAGES``). Splitting them is what made the
+    coach log three dishes of a four-dish breakfast: it saw only the newest three screenshots
+    and swore the omelette was never sent. An older message that does not fit whole stays
+    stubbed. A stub whose file cannot be fetched keeps its ``[image: …]`` text, so the model
+    sees that something was sent and can ask for it again instead of denying it exists.
     """
     restored = 0
     for raw, message in reversed(rows):
         stubs = media_stubs(raw)
         if not stubs:
             continue
-        for stub in reversed(stubs):
-            if restored >= limit:
+        if restored and restored + len(stubs) > limit:
+            return restored
+        for stub in stubs:
+            if restored >= MAX_RESTORED_IMAGES:
                 return restored
             # an iPhone HEIC arrives as a "document" and comes back as a JPEG, so the block
             # type follows the media type, not the stub's label

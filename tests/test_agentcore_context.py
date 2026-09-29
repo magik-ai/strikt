@@ -444,6 +444,41 @@ async def test_history_puts_the_recent_pictures_back(
     assert {"type": "text", "text": f"[image: {'a' * 8}]"} in blocks  # the older one stays a stub
 
 
+async def test_an_album_comes_back_whole_even_over_the_budget(
+    session: AsyncSession, user: User, clock: FakeClock, settings: Settings
+) -> None:
+    """Six delivery screenshots in one message: all six return, never the newest three."""
+    await _stubbed_photo_turn(session, user, clock, file_id="OLD", sha="o" * 8)
+    stubs: list[dict[str, object]] = [
+        {
+            "type": "text",
+            "text": f"[image: {n}{n}{n}]",
+            "media_kind": "image",
+            "media_file_id": f"F{n}",
+            "media_mime": "image/jpeg",
+        }
+        for n in range(6)
+    ]
+    await repo.add_turn(
+        session, user.id, role=TurnRole.user, content=stubs, now=clock.now(), text="breakfast"
+    )
+    await repo.add_turn(
+        session,
+        user.id,
+        role=TurnRole.assistant,
+        content=[{"type": "text", "text": "ok"}],
+        now=clock.now(),
+    )
+    media = FakeRehydrator({f"F{n}": f"D{n}" for n in range(6)} | {"OLD": "X"})
+
+    messages, _ = await history_messages(
+        session, user, settings.model_copy(update={"context_recent_images": 3}), media=media
+    )
+    images = [b["source"]["data"] for m in messages for b in m["content"] if b["type"] == "image"]
+    assert images == [f"D{n}" for n in range(6)]  # whole, in order
+    assert "OLD" not in media.asked  # the older message does not fit whole: it stays a stub
+
+
 async def test_a_picture_telegram_lost_stays_a_stub(
     session: AsyncSession, user: User, clock: FakeClock, settings: Settings
 ) -> None:
