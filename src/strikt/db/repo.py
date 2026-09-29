@@ -714,6 +714,19 @@ async def list_meals_range(
     return list((await session.scalars(stmt)).all())
 
 
+async def list_meals_range_with_deleted(
+    session: AsyncSession, user_id: int, date_from: date, date_to: date
+) -> list[Meal]:
+    """``list_meals_range`` plus the deleted meals: the admin export shows what was undone."""
+    stmt = (
+        select(Meal)
+        .where(Meal.user_id == user_id, Meal.day_date >= date_from, Meal.day_date <= date_to)
+        .options(selectinload(Meal.items))
+        .order_by(Meal.day_date, Meal.logged_at, Meal.id)
+    )
+    return list((await session.scalars(stmt)).all())
+
+
 async def search_meal_items(
     session: AsyncSession, user_id: int, query: str, *, limit: int = 20
 ) -> list[MealItem]:
@@ -1453,6 +1466,22 @@ async def last_n_turns(session: AsyncSession, user_id: int, n: int) -> list[Conv
     rows = list((await session.scalars(stmt)).all())
     rows.reverse()
     return rows
+
+
+async def turns_between(
+    session: AsyncSession, user_id: int, start: datetime, end: datetime
+) -> list[ConversationTurn]:
+    """Every turn with ``start <= created_at < end``, oldest first (the admin export)."""
+    stmt = (
+        select(ConversationTurn)
+        .where(
+            ConversationTurn.user_id == user_id,
+            ConversationTurn.created_at >= start,
+            ConversationTurn.created_at < end,
+        )
+        .order_by(ConversationTurn.created_at, ConversationTurn.id)
+    )
+    return list((await session.scalars(stmt)).all())
 
 
 async def mark_stub_images(

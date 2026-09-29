@@ -10,6 +10,7 @@ Routes:
   ``WebhookRequest``, calls the integration, publishes the returned events on the bus and
   answers inside the handler.
 - ``POST /telegram`` when a Telegram webhook handler is given.
+- ``GET  /admin/export`` when ``ADMIN_EXPORT_TOKEN`` is set (``web/export.py``).
 
 Everything runs in the bot's process; ``run_server`` starts an ``AppRunner`` and returns it so
 the caller can ``await runner.cleanup()`` on shutdown.
@@ -28,6 +29,7 @@ from strikt.core.clock import Clock, SystemClock
 from strikt.db import repo
 from strikt.integrations.base import Integration, ProviderName, WebhookRequest
 from strikt.integrations.oauth import LinkError, link_secret, provider_from_slug, verify_user
+from strikt.web.export import make_handler as make_export_handler
 
 if TYPE_CHECKING:
     from strikt.config import Settings
@@ -209,6 +211,14 @@ def make_app(
         app.router.add_head(path, webhook)
     if telegram_webhook_handler is not None:
         app.router.add_post("/telegram", telegram_webhook_handler)
+    export_token = settings.admin_export_token
+    if export_token is not None and export_token.get_secret_value().strip():
+        app.router.add_get(
+            "/admin/export",
+            make_export_handler(
+                export_token.get_secret_value().strip(), session_factory, app[CLOCK_KEY]
+            ),
+        )
     return app
 
 
