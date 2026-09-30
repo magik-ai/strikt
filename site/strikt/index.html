@@ -1,0 +1,551 @@
+<!doctype html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Strikt&nbsp;- тренер по питанию в одном чате Telegram</title>
+<meta name="description" content="Strikt&nbsp;- персональный тренер по питанию и здоровью в одном окне Telegram. Присылаешь фото еды, скриншоты и голос, получаешь честное число, остаток на день и тренера, который пишет первым.">
+<meta property="og:type" content="article">
+<meta property="og:title" content="Strikt: тренер, который живёт в одном чате">
+<meta property="og:description" content="Присылаешь еду&nbsp;- получаешь число. Одно окно Telegram, никаких настроек, память с первого дня.">
+<meta property="og:image" content="assets/og-1200x630.png">
+<meta name="twitter:card" content="summary_large_image">
+<meta name="theme-color" content="#F6F2E9" media="(prefers-color-scheme: light)">
+<meta name="theme-color" content="#161513" media="(prefers-color-scheme: dark)">
+<link rel="icon" href="assets/favicon.svg" type="image/svg+xml">
+<link rel="icon" href="assets/favicon-32.png" sizes="32x32" type="image/png">
+<link rel="apple-touch-icon" href="assets/favicon-180.png">
+<style>
+/* Fonts: bundled brand builds, SIL OFL 1.1 (assets/LICENSE.md). */
+@font-face{font-family:'Golos Text';font-weight:400 600;font-display:swap;src:url(assets/GolosText-400_600-cyrillic.woff2) format('woff2');unicode-range:U+0301,U+0400-045F,U+0490-0491,U+04B0-04B1,U+2116}
+@font-face{font-family:'Golos Text';font-weight:400 600;font-display:swap;src:url(assets/GolosText-400_600-latin.woff2) format('woff2');unicode-range:U+0000-00FF,U+0131,U+0152-0153,U+02BB-02BC,U+02C6,U+02DA,U+02DC,U+0304,U+0308,U+0329,U+2000-206F,U+20AC,U+2122,U+2191,U+2193,U+2215,U+FEFF,U+FFFD}
+@font-face{font-family:'JetBrains Mono';font-weight:400;font-display:swap;src:url(assets/JetBrainsMono-400.woff2) format('woff2')}
+@font-face{font-family:'JetBrains Mono';font-weight:500;font-display:swap;src:url(assets/JetBrainsMono-500.woff2) format('woff2')}
+@font-face{font-family:'Newsreader';font-weight:400 500;font-display:swap;src:url(assets/Newsreader-400_500-latin.woff2) format('woff2')}
+
+:root{
+  --paper:#F6F2E9; --card:#FFFCF5; --panel:#EEE8DC; --rule:#E3DDD1; --user:#E3DDD1;
+  --mute:#8A857A; --soft:#5E5A52; --ink:#1A1814; --strike:#D3392B; --strike-deep:#B32E22;
+  --btn-ink:#FFFCF5; --stamp:rgba(26,24,20,.55);
+  --sans:'Golos Text',ui-sans-serif,system-ui,-apple-system,'Segoe UI',sans-serif;
+  --mono:'JetBrains Mono',ui-monospace,'SF Mono',Menlo,monospace;
+  --serif:'Newsreader',Georgia,serif;
+  --ease:cubic-bezier(.2,0,0,1);
+  color-scheme:light;
+}
+@media (prefers-color-scheme:dark){
+  :root:not([data-theme="light"]){
+    --paper:#161513; --card:#201E1A; --panel:#1C1A17; --rule:#35322C; --user:#35322C;
+    --mute:#9B968A; --soft:#B9B3A7; --ink:#EFEAE0; --strike:#F0604E; --strike-deep:#F0604E;
+    --btn-ink:#161513; --stamp:rgba(0,0,0,.55); color-scheme:dark;
+  }
+}
+:root[data-theme="dark"]{
+  --paper:#161513; --card:#201E1A; --panel:#1C1A17; --rule:#35322C; --user:#35322C;
+  --mute:#9B968A; --soft:#B9B3A7; --ink:#EFEAE0; --strike:#F0604E; --strike-deep:#F0604E;
+  --btn-ink:#161513; --stamp:rgba(0,0,0,.55); color-scheme:dark;
+}
+
+*{box-sizing:border-box}
+html{-webkit-text-size-adjust:100%;text-size-adjust:100%}
+body{margin:0;background:var(--paper);color:var(--ink);font:400 18px/1.6 var(--sans);-webkit-font-smoothing:antialiased;overflow-x:hidden}
+a{color:inherit;text-decoration-thickness:1px;text-underline-offset:3px}
+a:hover{text-decoration-color:var(--strike)}
+::selection{background:var(--strike);color:var(--paper)}
+:focus-visible{outline:2px solid var(--strike);outline-offset:3px;border-radius:4px}
+
+/* ---------- top bar ---------- */
+.top{position:sticky;top:0;z-index:5;background:color-mix(in srgb,var(--paper) 88%,transparent);backdrop-filter:saturate(1.2) blur(12px);-webkit-backdrop-filter:saturate(1.2) blur(12px);border-bottom:1px solid transparent;transition:border-color .2s var(--ease)}
+.top.scrolled{border-bottom-color:var(--rule)}
+.top .in{max-width:1200px;margin:0 auto;padding:14px 24px;display:flex;align-items:center;justify-content:space-between;gap:16px}
+.home{font:500 15px/1 var(--sans);text-decoration:none;color:var(--ink);letter-spacing:-.01em}
+.home span{color:var(--mute)}
+.lock{display:inline-flex;align-items:center;gap:9px;text-decoration:none;color:var(--ink)}
+.lock .word{font:500 25px/1 var(--serif);letter-spacing:-.01em;transform:translateY(-2px)}
+.top .cta-s{font:500 14px/1 var(--sans);padding:10px 16px;border-radius:999px;background:var(--ink);color:var(--btn-ink);text-decoration:none;white-space:nowrap}
+
+/* ---------- article column ---------- */
+.wrap{max-width:1200px;margin:0 auto;padding:0 24px}
+.col{max-width:700px;margin:0 auto}
+header.hero{text-align:center;padding:88px 0 56px}
+.meta{font:400 13px/1 var(--mono);text-transform:uppercase;letter-spacing:.08em;color:var(--mute);display:flex;gap:14px;justify-content:center;flex-wrap:wrap}
+h1{font:500 clamp(44px,7.4vw,84px)/1.02 var(--sans);letter-spacing:-.035em;margin:28px auto 0;max-width:15ch;text-wrap:balance}
+.heromark{width:56px;height:56px;display:block;margin:0 auto 28px;color:var(--ink)}
+.heromark .s{stroke-dasharray:90;stroke-dashoffset:90;animation:strike .2s cubic-bezier(.2,0,0,1) .7s forwards}
+@keyframes strike{to{stroke-dashoffset:0}}
+@media (prefers-reduced-motion:reduce){.heromark .s{animation:none;stroke-dashoffset:0}}
+.lede{font-size:clamp(19px,2.2vw,23px);line-height:1.5;color:var(--soft);max-width:44ch;margin:28px auto 0;text-wrap:balance}
+.ctas{display:flex;gap:12px;justify-content:center;flex-wrap:wrap;margin-top:36px}
+.btn{display:inline-flex;align-items:center;gap:8px;font:500 16px/1 var(--sans);padding:15px 22px;border-radius:999px;text-decoration:none;transition:transform .15s var(--ease)}
+.btn:active{transform:scale(.98)}
+.btn.primary{background:var(--ink);color:var(--btn-ink)}
+.btn.ghost{border:1px solid var(--rule);background:var(--card)}
+.btn svg{width:14px;height:14px}
+
+article p{margin:0 0 22px}
+article h2{font:500 clamp(28px,3.6vw,38px)/1.15 var(--sans);letter-spacing:-.025em;margin:104px 0 22px;text-wrap:balance}
+article h3{font:600 19px/1.35 var(--sans);margin:40px 0 10px}
+article .col>p:first-child{margin-top:0}
+.big{font-size:clamp(20px,2.3vw,24px);line-height:1.5;letter-spacing:-.01em}
+.num{font-family:var(--mono);font-size:.92em}
+ul.plain{padding:0;margin:0 0 22px;list-style:none}
+ul.plain li{padding-left:22px;position:relative;margin:0 0 10px}
+ul.plain li::before{content:"";position:absolute;left:2px;top:.55em;width:3px;height:.8em;border-radius:2px;background:var(--ink)}
+blockquote{margin:40px 0;padding:0 0 0 24px;border-left:3px solid var(--strike);font:400 clamp(21px,2.5vw,26px)/1.45 var(--sans);letter-spacing:-.015em}
+blockquote cite{display:block;margin-top:12px;font:400 13px/1.4 var(--mono);text-transform:uppercase;letter-spacing:.08em;color:var(--mute);font-style:normal}
+
+/* ---------- figures ---------- */
+figure{margin:56px auto;max-width:1080px}
+.stage{background:var(--panel);border-radius:28px;padding:clamp(20px,5vw,64px);display:flex;gap:clamp(20px,4vw,48px);justify-content:center;align-items:flex-start;overflow:hidden}
+figcaption{max-width:700px;margin:16px auto 0;font:400 14px/1.5 var(--sans);color:var(--mute);text-align:center}
+figcaption b{font-weight:500;color:var(--soft)}
+.stage.wrapcol{flex-wrap:wrap}
+.label{font:400 12px/1 var(--mono);text-transform:uppercase;letter-spacing:.08em;color:var(--mute);margin:0 0 14px}
+
+/* chat pieces */
+.chat{display:flex;flex-direction:column;gap:10px;width:100%;max-width:470px;min-width:0}
+.row{display:flex;gap:10px;align-items:flex-end}
+.row.me{justify-content:flex-end}
+.av{flex:0 0 34px;width:34px;height:34px;border-radius:50%;background:var(--card);border:1px solid var(--rule);display:grid;place-items:center}
+.av svg{width:22px;height:22px}
+.row.me .av{display:none}
+.stack{display:flex;flex-direction:column;gap:6px;min-width:0;max-width:100%}
+.b{position:relative;background:var(--card);border:1px solid var(--rule);border-radius:16px 16px 16px 6px;padding:10px 14px 8px;font:400 15.5px/1.45 var(--sans);min-width:0;max-width:100%}
+.row.me .b{background:var(--user);border-color:var(--user);border-radius:16px 16px 6px 16px}
+.b p{margin:0 0 4px}
+.b .t{display:block;text-align:right;font:400 11px/1 var(--mono);color:var(--mute);margin-top:4px}
+.b pre,.b .code{font:400 13px/1.55 var(--mono);margin:4px 0;white-space:pre;overflow-x:auto;font-variant-numeric:tabular-nums}
+.b .code b{font-weight:500}
+.b.photo{padding:0;overflow:hidden;border-radius:16px 16px 6px 16px;background:var(--card);border-color:var(--rule)}
+.b.photo svg.plate{display:block;width:100%;height:auto;color:var(--ink)}
+.stamp{position:absolute;right:8px;bottom:8px;background:var(--stamp);color:#FFFCF5;font:400 11px/1 var(--mono);padding:4px 8px;border-radius:999px;display:flex;align-items:center;gap:4px}
+.kb{display:flex;gap:6px}
+.kb span{flex:1;text-align:center;background:var(--card);border:1px solid var(--rule);border-radius:10px;padding:9px 12px;font:500 14px/1 var(--sans)}
+.b.key{font-family:var(--mono);font-size:13px;color:var(--mute);font-style:italic}
+.pinhead{display:flex;align-items:center;gap:8px;font:400 12px/1 var(--mono);text-transform:uppercase;letter-spacing:.08em;color:var(--mute);margin:0 0 10px}
+.pinhead svg{width:14px;height:14px}
+
+/* the Today card */
+.cardwrap{width:100%;max-width:400px;min-width:0}
+.card{background:var(--card);border:1px solid var(--rule);border-radius:16px;padding:14px 16px 10px;font:400 15px/1.5 var(--sans)}
+.card .title{font-weight:600;margin:0 0 4px}
+.card pre{font:400 13px/1.6 var(--mono);margin:0;white-space:pre;overflow-x:auto;font-variant-numeric:tabular-nums}
+.card .left{margin:6px 0 10px}
+.card ul{list-style:none;margin:2px 0 6px;padding:0}
+.card li{margin:0 0 2px}
+.card b{font-weight:600}
+
+/* ladder */
+.ladder{display:grid;grid-template-columns:repeat(4,1fr);gap:18px;width:100%}
+.step .when{font:500 12px/1 var(--mono);letter-spacing:.06em;margin:0 0 6px}
+.step .what{font:400 11.5px/1.4 var(--mono);text-transform:uppercase;letter-spacing:.08em;color:var(--mute);margin:0 0 14px;min-height:2.8em}
+.step .b{font-size:15px}
+.stairs{grid-column:1/-1;height:64px;margin-top:6px;color:var(--ink)}
+.stairs svg{width:100%;height:100%;display:block}
+.ladder-foot{grid-column:1/-1;font:400 12px/1.6 var(--mono);text-transform:uppercase;letter-spacing:.08em;color:var(--mute);text-align:center}
+
+/* voice compare */
+.vs{display:grid;grid-template-columns:1fr 1fr;gap:clamp(16px,3vw,40px);width:100%;max-width:820px}
+.vs .no .b{color:var(--mute);background:transparent;border-style:dashed}
+.vs .no .b p{text-decoration:line-through;text-decoration-color:var(--strike);text-decoration-thickness:1.5px}
+
+/* menu screenshot, painted as somebody else's app */
+.app{background:#fff;color:#222;border-radius:12px;padding:14px;font:400 14px/1.35 ui-sans-serif,system-ui,-apple-system,sans-serif;width:260px;max-width:100%}
+.app .hd{display:flex;justify-content:space-between;font-weight:600;font-size:15px;margin-bottom:10px}
+.app .ph{width:100%;height:120px;border-radius:8px;background:#EDEDED;display:grid;place-items:center;margin-bottom:10px}
+.app .n{font-weight:600}
+.app .m{color:#666;font-size:13px;margin-top:4px}
+.app .price{display:inline-block;margin-top:10px;background:#1f8f4e;color:#fff;border-radius:6px;padding:6px 10px;font-weight:600;font-size:13px}
+.b.shot{padding:6px;background:var(--user);border-color:var(--user)}
+
+/* onboarding list */
+.steps10{list-style:none;counter-reset:s;margin:0;padding:0;display:grid;grid-template-columns:1fr 1fr;gap:0 40px;width:100%;max-width:820px}
+.steps10 li{counter-increment:s;display:flex;gap:16px;padding:14px 0;border-top:1px solid var(--rule);font-size:16px;line-height:1.4}
+.steps10 li::before{content:counter(s,decimal-leading-zero);font:400 13px/1.6 var(--mono);color:var(--mute);flex:0 0 auto}
+.steps10 li b{font-weight:500;display:block}
+.steps10 li span{color:var(--mute);font-size:14px}
+
+/* stats */
+.stats{display:grid;grid-template-columns:repeat(4,1fr);gap:1px;background:var(--rule);border:1px solid var(--rule);border-radius:20px;overflow:hidden;margin:40px 0}
+.stat{background:var(--paper);padding:24px 20px}
+.stat .v{font:500 clamp(30px,4vw,42px)/1 var(--mono);letter-spacing:-.03em}
+.stat .k{font:400 14px/1.4 var(--sans);color:var(--mute);margin-top:10px}
+
+.note{font-size:15px;color:var(--mute)}
+hr.rule{border:0;border-top:1px solid var(--rule);margin:104px 0 0}
+.end{text-align:center;padding:96px 0 40px}
+.end h2{margin-top:0}
+footer{border-top:1px solid var(--rule);margin-top:40px}
+footer .in{max-width:1200px;margin:0 auto;padding:28px 24px 40px;display:flex;justify-content:space-between;gap:16px;flex-wrap:wrap;font:400 13px/1.5 var(--mono);color:var(--mute);letter-spacing:.02em}
+footer a{color:var(--mute)}
+
+@media (max-width:860px){
+  .stage{flex-direction:column;align-items:center}
+  .ladder{grid-template-columns:1fr 1fr}
+  .stairs{display:none}
+  .stats{grid-template-columns:1fr 1fr}
+}
+@media (max-width:600px){
+  body{font-size:17px}
+  .top .in{padding:12px 16px}
+  .top .cta-s{display:none}
+  .wrap{padding:0 16px}
+  header.hero{padding:56px 0 32px}
+  article h2{margin-top:80px}
+  figure{margin:40px -16px}
+  .stage{border-radius:0;padding:28px 16px}
+  figcaption{padding:0 16px}
+  .ladder{grid-template-columns:1fr}
+  .step .what{min-height:0}
+  .vs{grid-template-columns:1fr}
+  .steps10{grid-template-columns:1fr}
+  .b pre,.b .code,.card pre{font-size:11.5px}
+}
+</style>
+</head>
+<body>
+
+<svg width="0" height="0" style="position:absolute" aria-hidden="true">
+  <defs>
+    <!-- the tally: four strokes in ink, the fifth in red, rising left to right -->
+    <symbol id="mark" viewBox="0 0 100 100">
+      <path fill="currentColor" d="M16.5 19.5L16.5 80.5A4.25 4.25 0 0 0 25 80.5L25 19.5A4.25 4.25 0 0 0 16.5 19.5Z"/>
+      <path fill="currentColor" d="M36 19.5L36 80.5A4.25 4.25 0 0 0 44.5 80.5L44.5 19.5A4.25 4.25 0 0 0 36 19.5Z"/>
+      <path fill="currentColor" d="M55.5 19.5L55.5 80.5A4.25 4.25 0 0 0 64 80.5L64 19.5A4.25 4.25 0 0 0 55.5 19.5Z"/>
+      <path fill="currentColor" d="M75 19.5L75 80.5A4.25 4.25 0 0 0 83.5 80.5L83.5 19.5A4.25 4.25 0 0 0 75 19.5Z"/>
+      <path fill="var(--strike)" d="M12.495 74.755L91.495 32.75A4.25 4.25 0 0 0 87.505 25.245L8.505 67.25A4.25 4.25 0 0 0 12.495 74.755Z"/>
+    </symbol>
+    <symbol id="pin" viewBox="0 0 24 24"><path fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" d="M9 4h6l-1 6 3 3H7l3-3-1-6zM12 13v7"/></symbol>
+    <symbol id="ticks" viewBox="0 0 17 11"><g fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M1 6.2 4.3 9.5 10.4 1.6"/><path d="M8.2 8.1 9.6 9.5 15.7 1.6"/></g></symbol>
+    <symbol id="arrow" viewBox="0 0 14 14"><path fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" d="M4 10 10 4M5 4h5v5"/></symbol>
+  </defs>
+</svg>
+
+<div class="top" id="top">
+  <div class="in">
+    <a class="home" href="/">chernyakov<span>.ai</span></a>
+    <a class="lock" href="#" aria-label="Strikt"><svg width="26" height="26" style="color:var(--ink)"><use href="#mark"/></svg><span class="word">strikt</span></a>
+    <a class="cta-s" href="https://github.com/magik-ai/strikt">GitHub</a>
+  </div>
+</div>
+
+<main class="wrap">
+  <header class="hero">
+    <svg class="heromark" viewBox="0 0 100 100" aria-hidden="true">
+      <g fill="currentColor"><rect x="16.5" y="15.25" width="8.5" height="69.5" rx="4.25"/><rect x="36" y="15.25" width="8.5" height="69.5" rx="4.25"/><rect x="55.5" y="15.25" width="8.5" height="69.5" rx="4.25"/><rect x="75" y="15.25" width="8.5" height="69.5" rx="4.25"/></g>
+      <path class="s" d="M10.5 71 89.5 29" fill="none" stroke="var(--strike)" stroke-width="8.5" stroke-linecap="round"/>
+    </svg>
+    <div class="meta"><span>30 сентября 2026</span><span>·</span><span>Продукт</span></div>
+    <h1>Тренер, который живёт в одном чате</h1>
+    <p class="lede">Strikt&nbsp;- персональный тренер по питанию и здоровью в одном окне Telegram. Присылаешь еду, получаешь честное число. Без приложений, без настроек, с памятью с первого дня.</p>
+    <div class="ctas">
+      <a class="btn primary" href="https://github.com/magik-ai/strikt">Код на GitHub <svg><use href="#arrow"/></svg></a>
+      <a class="btn ghost" href="#how">Как это работает</a>
+    </div>
+  </header>
+
+  <!-- HERO FIGURE: a photo in, one line back, the card pinned -->
+  <figure>
+    <div class="stage">
+      <div class="chat" aria-label="Переписка с Strikt">
+        <div class="label">Чат</div>
+        <div class="row me">
+          <div class="b photo" style="width:78%">
+            <svg class="plate" viewBox="0 0 400 300" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round" role="img" aria-label="Фото тарелки: куриное бедро, рис, огурцы">
+              <ellipse cx="200" cy="152" rx="168" ry="118"/><ellipse cx="200" cy="152" rx="138" ry="92"/>
+              <path d="M86 164c-4-34 22-62 54-62c32 0 58 28 54 62c-18 8-36-4-54 0c-18 4-36-4-54 0z"/>
+              <path d="M102 152l11-4M124 142l11-3M146 140l11 3M168 148l9 4M98 158l11-2M120 156l11 2M142 154l11-3M164 160l10 3M130 124l11 2M152 126l10 5M112 132l10 3"/>
+              <path d="M214 148c-6-22 10-42 36-46c30-5 58 6 64 24c6 18-8 38-32 46c-26 9-62 0-68-24z"/>
+              <path d="M234 142c13-12 34-17 54-13c11 2 20 8 24 15"/><path d="M240 158l14-12M264 163l14-13M288 160l12-12"/>
+              <circle cx="136" cy="204" r="19"/><circle cx="168" cy="214" r="19"/><circle cx="200" cy="205" r="19"/><circle cx="232" cy="215" r="19"/><circle cx="264" cy="203" r="19"/>
+            </svg>
+            <div class="stamp">13:20 <svg width="15" height="10"><use href="#ticks"/></svg></div>
+          </div>
+        </div>
+        <div class="row">
+          <div class="av"><svg style="color:var(--ink)"><use href="#mark"/></svg></div>
+          <div class="stack">
+            <div class="b"><p>Бедро, рис, огуречный салат&nbsp;- около 590. Белка за день 66 из 210, так что ужин строим вокруг мяса или творога.</p><span class="t">13:21</span></div>
+            <div class="kb"><span>Убрать</span></div>
+          </div>
+        </div>
+      </div>
+
+      <div class="cardwrap">
+        <div class="pinhead"><svg><use href="#pin"/></svg>Закреплено</div>
+        <div class="card" aria-label="Карточка дня">
+          <p class="title">Сегодня · чт 3 сен</p>
+<pre>kcal    917 / 2&#8199;000   ▓▓▓▓░░░░
+P        66 /   210g  ▓▓▓░░░░░
+C        53 /    75g  ▓▓▓▓▓▓░░
+F        48 /   105g  ▓▓▓▓░░░░
+fiber    11 /    30g  ▓▓▓░░░░░</pre>
+          <p class="left">Осталось: 1&nbsp;083 ккал · 144 Б · 57 Ж · 22 У</p>
+          <b>Еда</b>
+          <ul>
+            <li>• 09:10 завтрак&nbsp;- яйца ×3, авокадо ½ · 327</li>
+            <li>• 13:20 обед&nbsp;- куриное бедро, рис, огуречный салат · 590</li>
+          </ul>
+          <div><b>Сон</b>: 6h48 · 84% · восстановление 61%</div>
+        </div>
+      </div>
+    </div>
+    <figcaption><b>Фото тарелки&nbsp;- одна строка в ответ.</b> Весь счёт дня живёт в закреплённой карточке, которая переписывается после каждого приёма пищи.</figcaption>
+  </figure>
+
+  <article>
+    <div class="col">
+      <p class="big">Месяц я вёл питание в обычном чате с Claude: фото, скриншоты доставки, WHOOP, замеры талии. Это работало лучше любого трекера, в который я когда-либо пытался вбивать еду. Но у чата нет памяти между разговорами, он не видит мои тренировки и никогда не пишет первым.</p>
+      <p>Strikt&nbsp;- это тот же метод, перенесённый в бота. Одно окно Telegram, где тренер считает, помнит, спорит с цифрами из ресторанных меню и сам напоминает о себе, когда я пропадаю. Сегодня он открыт по приглашениям, а код целиком лежит на GitHub.</p>
+
+      <h2 id="how">Одно окно. Ноль настроек.</h2>
+      <p>У Strikt нет приложения, веб-кабинета и экрана настроек. Всего три команды&nbsp;- <span class="num">/start</span>, <span class="num">/today</span> и <span class="num">/forget_me</span>. Всё остальное&nbsp;- обычные сообщения:</p>
+      <ul class="plain">
+        <li>фото тарелки, этикетки или скриншот из приложения доставки;</li>
+        <li>голосовое «съел 200 грамм творога и горсть ежевики»;</li>
+        <li>скриншот тренировки из WHOOP или фото весов;</li>
+        <li>«сбавь обороты на неделю», «белок 180», «напомни в восемь про талию».</li>
+      </ul>
+      <p>Если хочется что-то поменять, это не настройка, а фраза в чате. Тренер сам решает, какой инструмент вызвать, и отвечает на языке, на котором ему написали.</p>
+
+      <h2>Число&nbsp;- это продукт</h2>
+      <p>Каждое сообщение с едой сразу превращается в оценку: калории, белки, жиры, углеводы и клетчатка по каждой позиции. Но в ответ приходит не таблица, а одна мысль&nbsp;- то, что меняет следующее решение. Полный расклад живёт в карточке дня: она закреплена вверху чата и переписывается на месте, так что посмотреть остаток можно, не листая переписку.</p>
+      <p>Спросишь подробности или усомнишься в итоге&nbsp;- тренер покажет всю работу. Не «всё верно, не переживай», а пересчёт по строкам из базы и сверка по формуле 4/4/9.</p>
+    </div>
+
+    <figure>
+      <div class="stage">
+        <div class="chat" style="max-width:560px">
+          <div class="row me"><div class="b"><p>пересчитай, что-то не сходится</p><span class="t">13:24 <svg width="13" height="9" style="vertical-align:-1px"><use href="#ticks"/></svg></span></div></div>
+          <div class="row">
+            <div class="av"><svg style="color:var(--ink)"><use href="#mark"/></svg></div>
+            <div class="b" style="flex:1">
+<pre class="code">                   ккал    Б    Ж    У
+яйца ×3             215   19   15    1
+авокадо ½           112    1   10    6
+куриное бедро 180 г 325   41   17    0
+рис 150 г           195    4    1   42
+огуречный салат      70    1    5    4
+<b>итого               917   66   48   53</b></pre>
+              <p>Сверка: 66×4 + 53×4 + 48×9 = 908, расхождение 1&nbsp;%. Итог верный, осталось 1&nbsp;083 ккал и 144 г белка.</p>
+              <span class="t">13:24</span>
+            </div>
+          </div>
+        </div>
+      </div>
+      <figcaption><b>«Пересчитай»&nbsp;- это полный пересчёт, а не утешение.</b> Итоги сверяются с базой; если модель ошиблась в сумме, ответ переписывается до отправки.</figcaption>
+    </figure>
+
+    <div class="col">
+      <p>Под этим стоит простое правило: число, которое назвал тренер,&nbsp;- это число в журнале. Никакой слой кода не поправляет его задним числом. Если после ответа модели сумма в тексте расходится с базой хотя бы на 2&nbsp;%, ответ переписывается ещё до того, как уходит в чат.</p>
+
+      <h2>Не верит ресторанам</h2>
+      <p>Приложения доставки занижают. Паста на 26 граммов углеводов, боул с курицей и авокадо на 7 граммов жира, яйца с тостом на 15 граммов клетчатки. Strikt пересчитывает калории из макросов, сверяет их с ингредиентами и говорит в одну строку, что выглядит неправдоподобно и почему.</p>
+      <p>Есть и правило «штучное против сыпучего»: булка, лепёшка или филе обычно посчитаны честно, а паста, рис, соусы и супы занижены на 20-40&nbsp;%. Тренер называет это вслух и спрашивает, какое число записать. Тихо добавить запас или раздуть твои собственные взвешенные граммы он не может.</p>
+    </div>
+
+    <figure>
+      <div class="stage">
+        <div class="chat" style="max-width:520px">
+          <div class="row me">
+            <div class="b shot">
+              <div class="app" role="img" aria-label="Скриншот приложения доставки">
+                <div class="hd"><span>Krave</span><span style="color:#999;font-weight:400">4.8</span></div>
+                <div class="ph"><svg width="64" height="64" viewBox="0 0 56 56"><circle cx="28" cy="28" r="22" fill="#E0E0E0"/><circle cx="28" cy="28" r="13" fill="#D0D0D0"/></svg></div>
+                <div class="n">Chicken Shawarma Bowl</div>
+                <div class="m">540 kcal · 48 g protein · 38 g carbs · 18 g fat</div>
+                <span class="price">AED 42</span>
+              </div>
+            </div>
+          </div>
+          <div class="row">
+            <div class="av"><svg style="color:var(--ink)"><use href="#mark"/></svg></div>
+            <div class="stack">
+              <div class="b"><p>Записал как в меню, 540. Но 18 г жира для шаурмы с чесночным соусом мало, обычно выходит 25+. Сказать «жир 26»&nbsp;- поправлю.</p><span class="t">13:41</span></div>
+              <div class="kb"><span>Убрать</span></div>
+            </div>
+          </div>
+        </div>
+      </div>
+      <figcaption><b>Скептицизм к меню.</b> Сомнительная цифра называется вслух, решение остаётся за тобой.</figcaption>
+    </figure>
+
+    <div class="col">
+      <h2>Говорит как человек, а не как дашборд</h2>
+      <p>Самая важная правка за время разработки была не про код, а про тон. Первая версия отвечала сводками: время, белок, остаток. Это правильно и совершенно невыносимо, когда приходит пятый раз за день.</p>
+    </div>
+
+    <figure>
+      <div class="stage">
+        <div class="vs">
+          <div class="no">
+            <div class="label">Так Strikt не пишет</div>
+            <div class="row"><div class="av"><svg style="color:var(--mute)"><use href="#mark"/></svg></div><div class="b"><p>18:00. Белок 88 из 210, на ужин нужно 122 г.</p></div></div>
+          </div>
+          <div class="yes">
+            <div class="label">А так пишет</div>
+            <div class="row"><div class="av"><svg style="color:var(--ink)"><use href="#mark"/></svg></div><div class="b"><p>скоро ужин, думал уже, что покушаешь? дома или в рестике?</p><span class="t">18:00</span></div></div>
+          </div>
+        </div>
+      </div>
+      <figcaption><b>Одна мысль на сообщение.</b> Цифры появляются, когда они меняют решение или когда их просят.</figcaption>
+    </figure>
+
+    <div class="col">
+      <p>Поэтому у тренера строгие правила голоса: без приветствий и похвалы, без «отличный вопрос» и восклицательных знаков. Сначала решение, потом причина. Спорит аргументами, а не чувством вины. А если ты выбрал худший вариант, записывает его и перестраивает остаток дня, без повторного нытья.</p>
+      <blockquote>Взять пиццу. 95 г белка на 620 ккал&nbsp;- вдвое лучше бургера по соотношению.<cite>Пример ответа из брифа</cite></blockquote>
+      <p>Приоритеты тоже зашиты явно: <b>сон &gt; дефицит калорий &gt; белок &gt; тренировки &gt; клетчатка</b>. Когда начинаешь зацикливаться на клетчатке, тренер напомнит, что сон&nbsp;- единственный параметр, который ты ещё ни разу не выполнил.</p>
+
+      <h2>Пишет первым</h2>
+      <p>Обычный чат-бот молчит, пока ты не напишешь. Strikt следит за днём и выходит на связь сам, но по строгой лестнице. Каждый шаг основан на реальных данных из базы, между шагами 45 минут, а любой ответ сбрасывает лестницу к началу.</p>
+    </div>
+
+    <figure>
+      <div class="stage">
+        <div class="ladder">
+          <div class="step">
+            <div class="when">10:10 · 1</div><div class="what">Напоминание,<br>одна строка</div>
+            <div class="row"><div class="av"><svg style="color:var(--ink)"><use href="#mark"/></svg></div><div class="b"><p>Завтрак был?</p><span class="t">10:10</span></div></div>
+          </div>
+          <div class="step">
+            <div class="when">10:55 · 2</div><div class="what">Паттерн<br>из истории</div>
+            <div class="row"><div class="av"><svg style="color:var(--ink)"><use href="#mark"/></svg></div><div class="b"><p>Два часа после твоего обычного завтрака. Дни без него у тебя заканчиваются вечером на 2&nbsp;600.</p><span class="t">10:55</span></div></div>
+          </div>
+          <div class="step">
+            <div class="when">11:40 · 3</div><div class="what">Действие<br>со сроком</div>
+            <div class="row"><div class="av"><svg style="color:var(--ink)"><use href="#mark"/></svg></div><div class="b"><p>Съешь что-нибудь с 40 г белка в ближайший час и пришли фото.</p><span class="t">11:40</span></div></div>
+          </div>
+          <div class="step">
+            <div class="when">12:25 · 4</div><div class="what">Цель<br>в цифрах</div>
+            <div class="row"><div class="av"><svg style="color:var(--ink)"><use href="#mark"/></svg></div><div class="b"><p>Цель по талии 90, сейчас 97. Такие дни стоят неделю каждый.</p><span class="t">12:25</span></div></div>
+          </div>
+          <div class="stairs" aria-hidden="true"><svg viewBox="0 0 1000 64" preserveAspectRatio="none"><path d="M0 60H250V44H500V28H750V12H1000" fill="none" stroke="currentColor" stroke-width="2" vector-effect="non-scaling-stroke"/></svg></div>
+          <div class="ladder-foot">Не выше четвёртой ступени · тихие часы 00:00-07:30 · не больше пяти сообщений в день</div>
+        </div>
+      </div>
+      <figcaption><b>Одно тихое утро.</b> Ограничения&nbsp;- это код, а не просьба в промпте: тихие часы, дневной лимит и потолок эскалации модель обойти не может.</figcaption>
+    </figure>
+
+    <div class="col">
+      <p>Кроме лестницы, тренер реагирует на события. Закончилась тренировка в WHOOP&nbsp;- через пару минут приходит сравнение с прошлой сессией того же типа и со средним за 30 дней. Весы показали новое значение&nbsp;- оно сравнивается с недельным средним, а не оценивается в одиночку. В дни, отмеченные как болезнь или поездка, напоминания про еду и белок встают на паузу.</p>
+    </div>
+
+    <figure>
+      <div class="stage">
+        <div class="chat" style="max-width:520px">
+          <div class="label">Webhook WHOOP, 19:05</div>
+          <div class="row">
+            <div class="av"><svg style="color:var(--ink)"><use href="#mark"/></svg></div>
+            <div class="b"><p>Бег 45 минут, 406 ккал. В прошлую субботу было 94 минуты и 361&nbsp;- сегодня вдвое плотнее. Закончил за пять часов до отбоя, сну не помешает. На ужин что и во сколько?</p><span class="t">19:05</span></div>
+          </div>
+          <div class="row me"><div class="b"><p>кофта в восемь</p><span class="t">19:07 <svg width="13" height="9" style="vertical-align:-1px"><use href="#ticks"/></svg></span></div></div>
+          <div class="row">
+            <div class="av"><svg style="color:var(--ink)"><use href="#mark"/></svg></div>
+            <div class="b"><p>Принял. 300 г кофты дадут около 55 г белка, добей творогом.</p><span class="t">19:07</span></div>
+          </div>
+        </div>
+      </div>
+      <figcaption><b>Тренировка пришла сама.</b> WHOOP, Withings и всё, что синхронизируется в Apple Health, подключаются одной ссылкой из чата.</figcaption>
+    </figure>
+
+    <div class="col">
+      <h2>Знакомство вместо экрана настроек</h2>
+      <p>Первое, что делает Strikt с новым человеком,&nbsp;- интервью из десяти шагов. Минут десять, можно прерываться на середине и присылать еду по ходу: она запишется. Ничего из моих цифр в коде нет&nbsp;- всё личное попадает в бота только через это знакомство или импорт истории.</p>
+    </div>
+
+    <figure>
+      <div class="stage">
+        <ol class="steps10">
+          <li><div><b>Кто ты</b><span>имя, город, часовой пояс</span></div></li>
+          <li><div><b>Цель своими словами</b><span>и одна метрика с целями «хорошо» и «отлично»</span></div></li>
+          <li><div><b>Тело</b><span>рост, вес, талия&nbsp;- первые замеры в журнал</span></div></li>
+          <li><div><b>Режим</b><span>подъём как якорь, отбой, работа, откуда еда</span></div></li>
+          <li><div><b>Тренировки</b><span>что и как часто, подключение WHOOP на месте</span></div></li>
+          <li><div><b>Еда</b><span>любишь, не ешь, аллергии, алкоголь, сладкое</span></div></li>
+          <li><div><b>Здоровье</b><span>диагнозы, анализы, лекарства, указания врача</span></div></li>
+          <li><div><b>Протокол</b><span>калории и макросы на выбор из двух-трёх вариантов</span></div></li>
+          <li><div><b>Стиль</b><span>насколько жёстко, насколько подробно, тихие часы</span></div></li>
+          <li><div><b>Итог</b><span>сводка профиля, правки, что прислать первым</span></div></li>
+        </ol>
+      </div>
+      <figcaption><b>Десять вопросов, один раз.</b> Потом всё меняется фразой в чате: «сбавь обороты», «белок 180», «я в отпуске до понедельника».</figcaption>
+    </figure>
+
+    <div class="col">
+      <h2>Помнит всё</h2>
+      <p>Сообщение на двухсотый день знает, что было в первый. Память Strikt&nbsp;- это не векторная база, а типизированные таблицы: приёмы пищи, тренировки, сон, замеры, анализы, заметки. Числа живут в строках, итоги дней и недель ссылаются на них. Когда спрашиваешь «как я ел в августе», тренер достаёт реальные дни, а не пересказ пересказа.</p>
+      <p>Из этой памяти тренер замечает закономерности и называет причину, а не симптом. «Дни с одним приёмом пищи до вечера заканчиваются перееданием, дни с нормальным обедом&nbsp;- нет»&nbsp;- и исправление структурное: пообедай, а не «соберись».</p>
+      <p>Историю из старого трекера или переписки с другим тренером можно просто вставить в чат: Strikt разберёт её в строки и отчитается, сколько приёмов пищи, тренировок и замеров импортировал.</p>
+
+      <h2>Твой ключ, твои данные</h2>
+      <p>Strikt работает на Claude Sonnet 5, и каждый вызов модели идёт на личный ключ Anthropic пользователя. Сам тренер бесплатный; платишь только Anthropic и только за то, что потратил. Ключ вставляется один раз прямо в чат&nbsp;- это сообщение, а не форма настроек.</p>
+    </div>
+
+    <figure>
+      <div class="stage">
+        <div class="chat" style="max-width:520px">
+          <div class="row me"><div class="b key"><p>Сообщение удалено</p></div></div>
+          <div class="row">
+            <div class="av"><svg style="color:var(--ink)"><use href="#mark"/></svg></div>
+            <div class="b"><p>Ключ сохранён, заканчивается на …7Q2f. Твоё сообщение с ключом удалено.</p><span class="t">08:31</span></div>
+          </div>
+          <div class="row">
+            <div class="av"><svg style="color:var(--ink)"><use href="#mark"/></svg></div>
+            <div class="b"><p>Десять вопросов, минут десять, можно прерываться&nbsp;- еду присылай по ходу. Имя и город?</p><span class="t">08:31</span></div>
+          </div>
+        </div>
+      </div>
+      <figcaption><b>Ключ проверяется одним запросом, шифруется и исчезает из чата.</b> В открытом виде хранятся только последние четыре символа.</figcaption>
+    </figure>
+
+    <div class="col">
+      <ul class="plain">
+        <li><b>Ничего не хранится в файлах.</b> Фото уходят модели и остаются в журнале только как хэш; голосовые расшифровываются и удаляются.</li>
+        <li><b>Никакого обучения на твоих данных.</b> Ни захвата экрана, ни геолокации, ни клавиатуры.</li>
+        <li><b><span class="num">/forget_me</span> удаляет всё.</b> Профиль, еду, тренировки, заметки, историю чата и ключ&nbsp;- одной транзакцией, с отчётом о количестве строк.</li>
+        <li><b>Пересланное&nbsp;- это данные, а не команды.</b> Текст из пересланных сообщений и найденных страниц никогда не исполняется как инструкция.</li>
+      </ul>
+
+      <h2>Под капотом</h2>
+      <p>Один процесс на Python: Telegram, HTTP-сервер для OAuth и вебхуков, планировщик и цикл модели живут в одном event loop, рядом только Postgres. Модель вызывает строго типизированные инструменты, так что её ответ никогда не парсится как свободный текст. Промпт тренера статичен и кэшируется, поэтому большая часть каждого хода оплачивается по цене чтения из кэша.</p>
+      <p>Идеи взяты у Reflexion и Instinct, но избирательно. Проверка «после каждого шага» отвергнута&nbsp;- она удваивает задержку и цену. Вместо неё дешёвый объективный оценщик: база данных. Модель переписывает ответ только когда цифры не сошлись, и не больше одного раза.</p>
+    </div>
+
+    <div class="col">
+      <div class="stats">
+        <div class="stat"><div class="v">3</div><div class="k">команды, всё остальное&nbsp;- сообщения</div></div>
+        <div class="stat"><div class="v">27</div><div class="k">инструментов со строгими схемами</div></div>
+        <div class="stat"><div class="v">20</div><div class="k">языков интерфейса</div></div>
+        <div class="stat"><div class="v">760</div><div class="k">тестов, без сети</div></div>
+      </div>
+      <p>Весь код написан Claude по одному подробному брифу: исследование, архитектура, дизайн, тесты и README. Бриф опубликован в репозитории как есть&nbsp;- это, пожалуй, самая честная документация того, каким должен быть продукт.</p>
+    </div>
+
+    <hr class="rule">
+    <div class="col end">
+      <h2>Попробовать</h2>
+      <p>Strikt сейчас работает по приглашениям. Если хочешь свой&nbsp;- разверни его сам: Docker Compose или Railway, пятнадцать минут по README, лицензия MIT.</p>
+      <div class="ctas">
+        <a class="btn primary" href="https://github.com/magik-ai/strikt">Код и инструкция <svg><use href="#arrow"/></svg></a>
+        <a class="btn ghost" href="https://github.com/magik-ai/strikt/blob/main/docs/BRIEF.md">Прочитать бриф</a>
+      </div>
+    </div>
+  </article>
+</main>
+
+<footer>
+  <div class="in">
+    <span>Илья Черняков · 2026</span>
+    <span><a href="/">chernyakov.ai</a> · <a href="https://github.com/magik-ai/strikt">github.com/magik-ai/strikt</a></span>
+  </div>
+</footer>
+
+<script>
+(function(){
+  var top=document.getElementById('top');
+  function on(){top.classList.toggle('scrolled',window.scrollY>8)}
+  window.addEventListener('scroll',on,{passive:true});on();
+})();
+</script>
+</body>
+</html>
