@@ -29,6 +29,7 @@ from strikt.db.engine import make_session_factory
 from strikt.db.models import Meal, MealSlot, Profile, User, UserStatus
 from strikt.events import EventBus
 from strikt.memory.daystate import DayStateBuilder
+from strikt.telegram.commands import COMMAND_NAMES
 from strikt.telegram.copy import t
 from strikt.telegram.daycard import DayCard
 from strikt.telegram.handlers import (
@@ -560,6 +561,17 @@ async def test_invite_is_admin_only(
     code = text.split("<code>")[1].split("</code>")[0]
     invite = await repo.get_invite(session, code)
     assert invite is not None and invite.created_by == admin.id and invite.used_at is None
+
+
+async def test_help_lists_every_command_in_the_users_language(
+    deps: AppDeps, messenger: FakeMessenger, user: User
+) -> None:
+    await handle_message(deps, msg("/help"))
+    lines = [t("ru", "help.header")] + [
+        f"/{name} - {t('ru', f'cmd.{name}')}" for name in COMMAND_NAMES
+    ]
+    assert messenger.texts(CHAT_ID)[-1] == "\n".join(lines)
+    assert "/help - " + t("ru", "cmd.help") in lines
 
 
 async def test_forget_me_flow_deletes_everything(

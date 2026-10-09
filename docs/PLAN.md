@@ -12,7 +12,7 @@ Bot runtime model: `claude-sonnet-5`. Voice transcription: OpenAI (best model pe
 ## 0. Non-negotiables
 
 - One window, zero settings. No menus, no `/settings`. Everything by message. The only slash commands
-  are `/start` (with optional invite code), `/today` (re-post the card), `/forget_me` (delete everything).
+  are `/start` (with optional invite code), `/today` (re-post the card), `/help` (list the commands), `/forget_me` (delete everything).
 - Act, then confirm. Food arrives → log → show totals → say what can be corrected, in words.
 - The number is the product. Every food message: per-item kcal/P/C/F(+fiber), day total, remaining, one
   line of advice at most.
