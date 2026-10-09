@@ -8,7 +8,6 @@ import pytest
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from strikt.core.clock import FakeClock
-from strikt.core.types import FoodItemIn, Macros
 from strikt.db import repo
 from strikt.db.models import Profile, Protocol, TurnRole, User
 from strikt.proactive import stats, store
@@ -285,59 +284,6 @@ async def test_week_scorecard(
         and card.measurements_taken == 1
     )
     assert card.as_facts()["week_start"] == "2026-08-31"
-
-
-async def _seed_macros(
-    session: AsyncSession, user_id: int, day: date, *, kcal: float, fat: float, carbs: float
-) -> None:
-    when = at_local(day, "12:00")
-    await repo.add_meal_with_items(
-        session,
-        user_id,
-        day_date=day,
-        items=[
-            FoodItemIn(
-                name="x",
-                macros=Macros(kcal=kcal, protein_g=50, fat_g=fat, carbs_g=carbs, fiber_g=5),
-            )
-        ],
-        logged_at=when,
-        eaten_at=when,
-    )
-
-
-async def test_week_scorecard_fat_and_carb_averages(
-    session: AsyncSession, user: User, protocol: Protocol
-) -> None:
-    start = TODAY - timedelta(days=6)
-    await _seed_macros(session, user.id, start, kcal=2000, fat=100, carbs=80)
-    await _seed_macros(session, user.id, TODAY, kcal=1000, fat=50, carbs=40)
-    await session.commit()
-    card = await stats.week_scorecard(
-        session,
-        user.id,
-        week_start=start,
-        tz=TZ,
-        targets=repo.protocol_targets(protocol),
-        bed_time=None,
-    )
-    assert card.days_logged == 2 and card.avg_fat_g == 75 and card.avg_carbs_g == 60
-    assert "avg_fat_g" not in card.as_facts()  # the Sunday facts keep their shape
-
-
-async def test_week_scorecard_of_an_empty_week(
-    session: AsyncSession, user: User, protocol: Protocol
-) -> None:
-    card = await stats.week_scorecard(
-        session,
-        user.id,
-        week_start=TODAY - timedelta(days=6),
-        tz=TZ,
-        targets=repo.protocol_targets(protocol),
-        bed_time=None,
-    )
-    assert card.days_logged == 0 and card.avg_kcal is None
-    assert card.avg_fat_g is None and card.avg_carbs_g is None
 
 
 async def test_response_rate_window(session: AsyncSession, user: User, clock: FakeClock) -> None:

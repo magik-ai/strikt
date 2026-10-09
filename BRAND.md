@@ -225,13 +225,11 @@ Commands (`/setcommands` or `setMyCommands`, en and ru):
 ```
 start - Begin, or resume where you left off
 today - Re-post the Today card
-week - The last seven days against your targets
 forget_me - Delete everything about you
 ```
 ```
 start - Начать или продолжить с того же места
 today - Заново отправить карточку дня
-week - Последние семь дней в сравнении с целями
 forget_me - Удалить всё о тебе
 ```
 

@@ -9,7 +9,7 @@ What happens to a message:
 
 1. Album parts (``media_group_id``) are gathered by ``AlbumCollector``; one ``InboundMessage``
    with every photo continues, the others stop.
-2. Commands: ``/start [code]`` (invite-only), ``/today``, ``/week``, ``/forget_me``, ``/invite`` (admins).
+2. Commands: ``/start [code]`` (invite-only), ``/today``, ``/forget_me``, ``/invite`` (admins).
    Unknown users get one line (``err.not_allowed``) and nothing else. Updates from anything but
    a private chat (a group the bot was added to, a channel) are dropped before that: the coach
    never rebinds ``user.chat_id`` to a group, so the pinned card, proactive nudges and health
@@ -71,7 +71,6 @@ from strikt.telegram.media import (
     prepare_image,
 )
 from strikt.telegram.voice import TranscriptionError
-from strikt.telegram.week import week_text
 
 if TYPE_CHECKING:
     from aiogram.types import CallbackQuery, Message
@@ -99,7 +98,7 @@ AUDIO_KINDS: frozenset[str] = frozenset({"voice", "audio", "video_note"})
 PROFILE_TOOLS: frozenset[str] = frozenset(
     {"update_profile", "finish_onboarding", "set_coaching_intensity"}
 )
-COMMANDS: frozenset[str] = frozenset({"start", "today", "week", "forget_me", "invite"})
+COMMANDS: frozenset[str] = frozenset({"start", "today", "forget_me", "invite"})
 START_TEXT = "/start"
 HEARTBEAT_S = 4.0
 
@@ -538,8 +537,6 @@ async def _dispatch_message(deps: AppDeps, inbound: InboundMessage) -> None:
         return
     if inbound.command == "today":
         await handle_today(deps, user.id)
-    elif inbound.command == "week":
-        await handle_week(deps, user)
     elif inbound.command == "forget_me":
         await handle_forget_me(deps, user)
     elif inbound.command == "invite":
@@ -689,20 +686,6 @@ async def handle_today(deps: AppDeps, user_id: int) -> None:
 
             await _send(deps, user.chat_id, render_day_card(state, user.language, user.timezone))
         await session.commit()
-
-
-async def handle_week(deps: AppDeps, user: User) -> None:
-    async with deps.sessions() as session:
-        profile = await repo.get_profile(session, user.id)
-        bed = profile.bed_time if profile is not None else None
-        today = coaching_today(
-            deps.clock,
-            user.timezone or "UTC",
-            bed,
-            profile.wake_time if profile is not None else None,
-        )
-        text = await week_text(session, user, today=today, bed_time=bed)
-    await _send(deps, user.chat_id, text)
 
 
 async def handle_forget_me(deps: AppDeps, user: User) -> None:
