@@ -12,6 +12,7 @@ from dataclasses import dataclass, field
 from datetime import datetime, timedelta
 from io import BytesIO
 from typing import Any
+from zoneinfo import ZoneInfo
 
 import pytest
 from PIL import Image
@@ -565,6 +566,26 @@ async def test_week_replies_with_averages_against_targets_and_no_model_call(
     await handle_message(deps, msg("/week", message_id=101))
     reply = messenger.texts(CHAT_ID)[-1]
     assert "1 из 7" in reply and f"{fmt_num(1800)} / {fmt_num(protocol.kcal)}" in reply
+    assert fake_llm.calls == []
+
+
+async def test_streak_replies_with_the_days_on_target(
+    deps: AppDeps, messenger: FakeMessenger, fake_llm: FakeLLM, session: AsyncSession, user: User
+) -> None:
+    today = NOW.astimezone(ZoneInfo("Asia/Dubai")).date()
+    on_target = Macros(kcal=2000, protein_g=210, fat_g=105, carbs_g=75)
+    for ago in (1, 2, 3, 5):  # day 4 has no food, so the streak is three
+        await repo.add_meal_with_items(
+            session,
+            user.id,
+            day_date=today - timedelta(days=ago),
+            items=[FoodItemIn(name="x", macros=on_target)],
+            logged_at=NOW - timedelta(days=ago),
+        )
+    await session.commit()
+    await handle_message(deps, msg("/streak"))
+    [sent] = messenger.sent
+    assert sent.text == t("ru", "streak.days", days=3)
     assert fake_llm.calls == []
 
 
