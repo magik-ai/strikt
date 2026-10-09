@@ -14,7 +14,4 @@
 # so repository-relative entries work whatever the checkout is named.
 # Blank lines and lines starting with # are ignored.
 
-docs/contracts/openapi.json  npm run generate:api
-src/clients/api/generated/*  npm run generate:api
-src/clients/ws/generated.ts  scripts/generate-ws-types.sh
-docs/architecture/INVENTORY.md  scripts/inventory/generate.py
+PROMPTS.md  make prompts
