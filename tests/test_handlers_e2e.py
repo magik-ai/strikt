@@ -9,9 +9,10 @@ from __future__ import annotations
 
 import asyncio
 from dataclasses import dataclass, field
-from datetime import datetime
+from datetime import UTC, date, datetime, timedelta
 from io import BytesIO
 from typing import Any
+from zoneinfo import ZoneInfo
 
 import pytest
 from PIL import Image
@@ -23,6 +24,7 @@ from strikt.agent.client import FakeKeyValidator, FakeLLM, FakeLLMFactory
 from strikt.agent.tools import build_registry
 from strikt.config import Settings
 from strikt.core.clock import FakeClock
+from strikt.core.types import FoodItemIn, Macros
 from strikt.db import repo
 from strikt.db.crypto import TokenCipher, generate_key
 from strikt.db.engine import make_session_factory
@@ -534,6 +536,134 @@ async def test_today_reposts_and_pins_the_card(
     assert len(messenger.pins) == 2 and messenger.unpins == [
         (CHAT_ID, messenger.sent[0].message_id)
     ]
+
+
+async def _log_day(session: AsyncSession, user: User, days_ago: int, kcal: float) -> None:
+    day = (NOW - timedelta(days=days_ago)).astimezone(ZoneInfo("Asia/Dubai")).date()
+    await repo.add_meal_with_items(
+        session,
+        user.id,
+        day_date=day,
+        items=[
+            FoodItemIn(
+                name="x",
+                macros=Macros(kcal=kcal, protein_g=kcal / 10, fat_g=kcal / 20, carbs_g=kcal / 25),
+            )
+        ],
+        logged_at=NOW - timedelta(days=days_ago),
+    )
+
+
+async def test_week_reports_averages_against_targets(
+    deps: AppDeps, messenger: FakeMessenger, fake_llm: FakeLLM, session: AsyncSession, user: User
+) -> None:
+    await _log_day(session, user, 1, 1800)
+    await _log_day(session, user, 2, 2200)
+    await _log_day(session, user, 7, 2000)
+    await _log_day(session, user, 8, 9000)  # outside the window
+    await session.commit()
+    await handle_message(deps, msg("/week"))
+    [sent] = messenger.sent
+    text = sent.text.replace("\xa0", "")  # fmt_num groups thousands with a no-break space
+    assert "3 из 7" in text
+    assert "2000 / 2000" in text  # kcal average over the three logged days
+    assert "200 / 210g" in text  # protein
+    assert "100 / 105g" in text  # fat
+    assert "80 / 75g" in text  # carbs
+    assert fake_llm.calls == []
+
+
+async def test_week_leaves_the_open_day_out(
+    deps: AppDeps, messenger: FakeMessenger, session: AsyncSession, user: User
+) -> None:
+    for ago in range(1, 7):
+        await _log_day(session, user, ago, 2000)
+    await _log_day(session, user, 0, 400)  # a breakfast, the day is still open
+    await session.commit()
+    await handle_message(deps, msg("/week"))
+    [sent] = messenger.sent
+    text = sent.text.replace("\xa0", "")
+    assert "6 из 7" in text and "2000 / 2000" in text and "200 / 210g" in text
+
+
+async def test_week_counts_a_closed_day(
+    deps: AppDeps, messenger: FakeMessenger, clock: FakeClock, session: AsyncSession, user: User
+) -> None:
+    for ago in range(1, 7):
+        await _log_day(session, user, ago, 2000)
+    await _log_day(session, user, 0, 1400)
+    await _log_day(session, user, 7, 9000)  # pushed out once today counts
+    today = clock.now().astimezone(ZoneInfo("Asia/Dubai")).date()
+    await repo.close_day(session, user.id, today, verdict=None, now=clock.now())
+    await session.commit()
+    await handle_message(deps, msg("/week"))
+    [sent] = messenger.sent
+    text = sent.text.replace("\xa0", "")
+    assert "7 из 7" in text and "1914 / 2000" in text  # (6 * 2000 + 1400) / 7
+
+
+async def test_week_after_midnight_follows_the_coaching_day(
+    deps: AppDeps, messenger: FakeMessenger, clock: FakeClock, session: AsyncSession, user: User
+) -> None:
+    clock.set(datetime(2026, 9, 3, 20, 30, tzinfo=UTC))  # 00:30 on 4 Sep in Dubai, still 3 Sep
+    # today (3 Sep) is open: the window is 27 Aug - 2 Sep; by the local date (4 Sep) 27 Aug would fall out
+    for day, kcal in ((date(2026, 8, 27), 2000), (date(2026, 8, 26), 9000)):
+        await repo.add_meal_with_items(
+            session,
+            user.id,
+            day_date=day,
+            items=[FoodItemIn(name="x", macros=Macros(kcal=kcal, protein_g=0, fat_g=0, carbs_g=0))],
+            logged_at=datetime(2026, 8, 28, 8, 0, tzinfo=UTC),
+        )
+    await session.commit()
+    await handle_message(deps, msg("/week"))
+    [sent] = messenger.sent
+    assert "1 из 7" in sent.text and "2000 / 2000" in sent.text.replace("\xa0", "")
+
+
+async def test_week_for_a_user_who_has_not_onboarded(
+    deps: AppDeps,
+    messenger: FakeMessenger,
+    fake_llm: FakeLLM,
+    session: AsyncSession,
+    clock: FakeClock,
+) -> None:
+    await repo.get_or_create_user(
+        session,
+        telegram_id=TELEGRAM_ID,
+        chat_id=CHAT_ID,
+        now=clock.now(),
+        timezone="Asia/Dubai",
+        status=UserStatus.active,
+    )
+    await session.commit()
+    await handle_message(deps, msg("/week"))
+    [sent] = messenger.sent
+    assert sent.text == t("en", "week.empty")
+    assert fake_llm.calls == []
+
+
+async def test_week_with_nothing_logged_says_so(
+    deps: AppDeps, messenger: FakeMessenger, fake_llm: FakeLLM, user: User
+) -> None:
+    await handle_message(deps, msg("/week"))
+    [sent] = messenger.sent
+    assert sent.text == t("ru", "week.empty") and "0" not in sent.text
+    assert fake_llm.calls == []
+
+
+async def test_week_without_targets_shows_averages_only(
+    deps: AppDeps, messenger: FakeMessenger, session: AsyncSession, user: User
+) -> None:
+    protocol = await repo.get_active_protocol(session, user.id)
+    assert protocol is not None
+    await session.delete(protocol)
+    await _log_day(session, user, 1, 1500)
+    await session.commit()
+    await handle_message(deps, msg("/week"))
+    [sent] = messenger.sent
+    assert "1500" in sent.text.replace("\xa0", "") and " / " not in sent.text
+    assert t("ru", "week.no_targets") in sent.text
 
 
 async def test_unknown_slash_command_goes_to_the_agent(
