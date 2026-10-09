@@ -9,7 +9,7 @@ from __future__ import annotations
 
 import asyncio
 from dataclasses import dataclass, field
-from datetime import datetime
+from datetime import datetime, timedelta
 from io import BytesIO
 from typing import Any
 
@@ -23,10 +23,11 @@ from strikt.agent.client import FakeKeyValidator, FakeLLM, FakeLLMFactory
 from strikt.agent.tools import build_registry
 from strikt.config import Settings
 from strikt.core.clock import FakeClock
+from strikt.core.types import FoodItemIn, Macros
 from strikt.db import repo
 from strikt.db.crypto import TokenCipher, generate_key
 from strikt.db.engine import make_session_factory
-from strikt.db.models import Meal, MealSlot, Profile, User, UserStatus
+from strikt.db.models import Meal, MealSlot, Profile, Protocol, User, UserStatus
 from strikt.events import EventBus
 from strikt.memory.daystate import DayStateBuilder
 from strikt.telegram.copy import t
@@ -36,6 +37,7 @@ from strikt.telegram.handlers import (
     CallbackInbound,
     InboundMessage,
     MediaRef,
+    _today,
     handle_callback,
     handle_message,
     parse_command,
@@ -43,6 +45,7 @@ from strikt.telegram.handlers import (
 from strikt.telegram.media import AlbumCollector, MediaTooLargeError
 from strikt.telegram.messenger import FakeMessenger
 from strikt.telegram.queue import PerChatQueue
+from strikt.telegram.render import fmt_num
 from strikt.telegram.voice import NullTranscriber
 from tests.conftest import CHAT_ID, NOW, TELEGRAM_ID
 
@@ -534,6 +537,35 @@ async def test_today_reposts_and_pins_the_card(
     assert len(messenger.pins) == 2 and messenger.unpins == [
         (CHAT_ID, messenger.sent[0].message_id)
     ]
+
+
+async def test_week_replies_with_averages_against_targets_and_no_model_call(
+    deps: AppDeps,
+    messenger: FakeMessenger,
+    fake_llm: FakeLLM,
+    user: User,
+    session: AsyncSession,
+    protocol: Protocol,
+) -> None:
+    await handle_message(deps, msg("/week"))
+    assert "ничего не записано" in messenger.texts(CHAT_ID)[-1]
+    today = await _today(deps, session, user)
+    when = deps.clock.now()
+    await repo.add_meal_with_items(
+        session,
+        user.id,
+        day_date=today - timedelta(days=1),
+        items=[
+            FoodItemIn(name="x", macros=Macros(kcal=1800, protein_g=120, fat_g=60, carbs_g=150))
+        ],
+        logged_at=when,
+        eaten_at=when,
+    )
+    await session.commit()
+    await handle_message(deps, msg("/week", message_id=101))
+    reply = messenger.texts(CHAT_ID)[-1]
+    assert "1 из 7" in reply and f"{fmt_num(1800)} / {fmt_num(protocol.kcal)}" in reply
+    assert fake_llm.calls == []
 
 
 async def test_unknown_slash_command_goes_to_the_agent(

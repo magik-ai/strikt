@@ -78,11 +78,25 @@ class WeekScorecard:
 
 
 @dataclass(frozen=True, kw_only=True)
+class SevenDays:
+    """The last seven coaching days: per-logged-day averages and how many days had food."""
+
+    days: int
+    days_logged: int
+    avg_kcal: float | None
+    avg_protein_g: float | None
+    avg_fat_g: float | None
+    avg_carbs_g: float | None
+
+
+@dataclass(frozen=True, kw_only=True)
 class _DayRow:
     date: date
     kcal: float
     protein_g: float
     fiber_g: float
+    fat_g: float
+    carbs_g: float
     meals: int
     closed: bool
     flags: tuple[str, ...]
@@ -137,6 +151,8 @@ async def _day_rows(
                 kcal=macros.kcal,
                 protein_g=macros.protein_g,
                 fiber_g=macros.fiber_g,
+                fat_g=macros.fat_g,
+                carbs_g=macros.carbs_g,
                 meals=counts.get(current, 0),
                 closed=bool(day is not None and day.closed_at is not None),
                 flags=tuple(str(f) for f in (day.flags or [])) if day is not None else (),
@@ -203,6 +219,21 @@ async def compute_streaks(
         three_meal_days=three,
         bedtime_hits=hits,
         clean_streak_start=clean_start,
+    )
+
+
+async def last_seven_days(session: AsyncSession, user_id: int, *, today: date) -> SevenDays:
+    """Seven days ending yesterday, or today once it is closed (``today`` = ``coaching_today``)."""
+    rows = await _day_rows(session, user_id, date_from=today - timedelta(days=7), date_to=today)
+    rows = rows[1:] if rows[-1].closed else rows[:-1]
+    logged = [r for r in rows if r.meals > 0]
+    return SevenDays(
+        days=len(rows),
+        days_logged=len(logged),
+        avg_kcal=_mean([r.kcal for r in logged]),
+        avg_protein_g=_mean([r.protein_g for r in logged]),
+        avg_fat_g=_mean([r.fat_g for r in logged]),
+        avg_carbs_g=_mean([r.carbs_g for r in logged]),
     )
 
 
