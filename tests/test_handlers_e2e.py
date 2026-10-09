@@ -536,6 +536,17 @@ async def test_today_reposts_and_pins_the_card(
     ]
 
 
+async def test_targets_replies_with_the_protocol_numbers_and_no_model_call(
+    deps: AppDeps, messenger: FakeMessenger, fake_llm: FakeLLM, user: User
+) -> None:
+    await handle_message(deps, msg("/targets"))
+    assert messenger.texts(CHAT_ID) == [
+        t("ru", "targets.reply", kcal=2000, protein=210, fat=105, carbs=75)
+    ]
+    assert "2000" in messenger.sent[0].text and "210" in messenger.sent[0].text
+    assert fake_llm.calls == []
+
+
 async def test_unknown_slash_command_goes_to_the_agent(
     deps: AppDeps, messenger: FakeMessenger, fake_llm: FakeLLM, user: User
 ) -> None:

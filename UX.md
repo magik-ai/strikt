@@ -273,7 +273,7 @@ confirms it.
 | `/invite` | admins only | Mints a one-time code: `Invite code: <code>`. Non-admins get nothing. |
 
 Unknown users get one line - `This coach is invite-only. Ask the owner for a code and send
-/start <code>.` - and nothing else. The bot profile registers `start`, `today`, `forget_me` in
+/start <code>.` - and nothing else. The bot profile registers `start`, `today`, `targets`, `forget_me` in
 English and Russian. Updates from groups and channels are dropped before any of this: the coach
 works in a private chat only, so the pinned card, nudges and health data never land anywhere else.
 

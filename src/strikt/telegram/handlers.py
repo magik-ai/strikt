@@ -9,7 +9,7 @@ What happens to a message:
 
 1. Album parts (``media_group_id``) are gathered by ``AlbumCollector``; one ``InboundMessage``
    with every photo continues, the others stop.
-2. Commands: ``/start [code]`` (invite-only), ``/today``, ``/forget_me``, ``/invite`` (admins).
+2. Commands: ``/start [code]`` (invite-only), ``/today``, ``/targets``, ``/forget_me``, ``/invite`` (admins).
    Unknown users get one line (``err.not_allowed``) and nothing else. Updates from anything but
    a private chat (a group the bot was added to, a channel) are dropped before that: the coach
    never rebinds ``user.chat_id`` to a group, so the pinned card, proactive nudges and health
@@ -98,7 +98,7 @@ AUDIO_KINDS: frozenset[str] = frozenset({"voice", "audio", "video_note"})
 PROFILE_TOOLS: frozenset[str] = frozenset(
     {"update_profile", "finish_onboarding", "set_coaching_intensity"}
 )
-COMMANDS: frozenset[str] = frozenset({"start", "today", "forget_me", "invite"})
+COMMANDS: frozenset[str] = frozenset({"start", "today", "targets", "forget_me", "invite"})
 START_TEXT = "/start"
 HEARTBEAT_S = 4.0
 
@@ -537,6 +537,8 @@ async def _dispatch_message(deps: AppDeps, inbound: InboundMessage) -> None:
         return
     if inbound.command == "today":
         await handle_today(deps, user.id)
+    elif inbound.command == "targets":
+        await handle_targets(deps, user)
     elif inbound.command == "forget_me":
         await handle_forget_me(deps, user)
     elif inbound.command == "invite":
@@ -686,6 +688,24 @@ async def handle_today(deps: AppDeps, user_id: int) -> None:
 
             await _send(deps, user.chat_id, render_day_card(state, user.language, user.timezone))
         await session.commit()
+
+
+async def handle_targets(deps: AppDeps, user: User) -> None:
+    lang = resolve_lang(user.language)
+    async with deps.sessions() as session:
+        protocol = await repo.get_active_protocol(session, user.id)
+    if protocol is None:
+        await _send(deps, user.chat_id, t(lang, "targets.none"))
+        return
+    text = t(
+        lang,
+        "targets.reply",
+        kcal=round(protocol.kcal),
+        protein=round(protocol.protein_g),
+        fat=round(protocol.fat_g),
+        carbs=round(protocol.carbs_g),
+    )
+    await _send(deps, user.chat_id, text)
 
 
 async def handle_forget_me(deps: AppDeps, user: User) -> None:
