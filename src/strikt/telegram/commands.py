@@ -1,4 +1,4 @@
-"""The bot's public surface: the four commands and the profile texts, in every language.
+"""The bot's public surface: the three commands and the profile texts, in every language.
 
 ``setMyCommands`` is per language (Telegram picks the client's language, default = English);
 ``setMyDescription`` / ``setMyShortDescription`` come from ``telegram/copy.py`` so the copy has
@@ -20,7 +20,7 @@ from strikt.telegram.copy import DEFAULT_LANG, LANGUAGES, t
 
 log = structlog.get_logger(__name__)
 
-COMMAND_NAMES: tuple[str, ...] = ("start", "today", "week", "forget_me")
+COMMAND_NAMES: tuple[str, ...] = ("start", "today", "forget_me")
 MAX_SHORT_DESCRIPTION = 120
 MAX_DESCRIPTION = 512
 MAX_COMMAND_DESCRIPTION = 256

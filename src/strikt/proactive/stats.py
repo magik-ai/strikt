@@ -60,8 +60,6 @@ class WeekScorecard:
     bedtime_hits: int
     nights_tracked: int
     measurements_taken: int
-    avg_fat_g: float | None = None
-    avg_carbs_g: float | None = None
 
     def as_facts(self) -> dict[str, Any]:
         return {
@@ -85,8 +83,6 @@ class _DayRow:
     kcal: float
     protein_g: float
     fiber_g: float
-    fat_g: float
-    carbs_g: float
     meals: int
     closed: bool
     flags: tuple[str, ...]
@@ -141,8 +137,6 @@ async def _day_rows(
                 kcal=macros.kcal,
                 protein_g=macros.protein_g,
                 fiber_g=macros.fiber_g,
-                fat_g=macros.fat_g,
-                carbs_g=macros.carbs_g,
                 meals=counts.get(current, 0),
                 closed=bool(day is not None and day.closed_at is not None),
                 flags=tuple(str(f) for f in (day.flags or [])) if day is not None else (),
@@ -242,8 +236,6 @@ async def week_scorecard(
         avg_kcal=_mean([r.kcal for r in logged]),
         avg_protein_g=_mean([r.protein_g for r in logged]),
         avg_fiber_g=_mean([r.fiber_g for r in logged]),
-        avg_fat_g=_mean([r.fat_g for r in logged]),
-        avg_carbs_g=_mean([r.carbs_g for r in logged]),
         sessions=len(workouts),
         bedtime_hits=hits,
         nights_tracked=len(nights),
