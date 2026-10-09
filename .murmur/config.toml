@@ -1,0 +1,8 @@
+# murmur configuration. Written by the init skill, safe to edit by hand.
+repo = "magik-ai/strikt"
+base_branch = "main"
+tracker = "github-issues"
+naming = "owner-names-per-session"
+never_without_owner = ["merge", "force-push", "production-writes", "paid-provisioning"]
+coordination = "private-github-repo"
+farm = "yes"
