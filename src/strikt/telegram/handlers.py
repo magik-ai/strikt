@@ -693,7 +693,15 @@ async def handle_today(deps: AppDeps, user_id: int) -> None:
 
 async def handle_week(deps: AppDeps, user: User) -> None:
     async with deps.sessions() as session:
-        text = await week_text(session, user, today=await _today(deps, session, user))
+        profile = await repo.get_profile(session, user.id)
+        bed = profile.bed_time if profile is not None else None
+        today = coaching_today(
+            deps.clock,
+            user.timezone or "UTC",
+            bed,
+            profile.wake_time if profile is not None else None,
+        )
+        text = await week_text(session, user, today=today, bed_time=bed)
     await _send(deps, user.chat_id, text)
 
 

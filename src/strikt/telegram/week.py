@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from datetime import date, timedelta
+from datetime import date, time, timedelta
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -39,16 +39,20 @@ def render_week(card: WeekScorecard, targets: Macros, lang: str | None) -> str:
     return "\n".join(lines)
 
 
-async def week_text(session: AsyncSession, user: User, *, today: date) -> str:
-    """The seven coaching days ending on ``today`` (the caller's ``coaching_today``)."""
-    profile = await repo.get_profile(session, user.id)
+async def week_text(
+    session: AsyncSession, user: User, *, today: date, bed_time: time | None
+) -> str:
+    """The seven coaching days before ``today`` (the caller's ``coaching_today``), plus ``today``
+    once it is closed. An open day is a partial day and would drag every average down."""
+    day = await repo.get_day(session, user.id, today)
+    closed = day is not None and day.closed_at is not None
     targets = repo.protocol_targets(await repo.get_active_protocol(session, user.id))
     card = await week_scorecard(
         session,
         user.id,
-        week_start=today - timedelta(days=WEEK_DAYS - 1),
+        week_start=today - timedelta(days=WEEK_DAYS - (1 if closed else 0)),
         tz=user.timezone or "UTC",
         targets=targets,
-        bed_time=profile.bed_time if profile is not None else None,
+        bed_time=bed_time,
     )
     return render_week(card, targets, resolve_lang(user.language))
