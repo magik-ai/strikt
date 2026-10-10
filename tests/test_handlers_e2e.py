@@ -9,9 +9,10 @@ from __future__ import annotations
 
 import asyncio
 from dataclasses import dataclass, field
-from datetime import datetime
+from datetime import datetime, timedelta
 from io import BytesIO
 from typing import Any
+from zoneinfo import ZoneInfo
 
 import pytest
 from PIL import Image
@@ -23,6 +24,7 @@ from strikt.agent.client import FakeKeyValidator, FakeLLM, FakeLLMFactory
 from strikt.agent.tools import build_registry
 from strikt.config import Settings
 from strikt.core.clock import FakeClock
+from strikt.core.types import FoodItemIn, Macros
 from strikt.db import repo
 from strikt.db.crypto import TokenCipher, generate_key
 from strikt.db.engine import make_session_factory
@@ -534,6 +536,26 @@ async def test_today_reposts_and_pins_the_card(
     assert len(messenger.pins) == 2 and messenger.unpins == [
         (CHAT_ID, messenger.sent[0].message_id)
     ]
+
+
+async def test_streak_replies_with_the_days_on_target(
+    deps: AppDeps, messenger: FakeMessenger, fake_llm: FakeLLM, session: AsyncSession, user: User
+) -> None:
+    today = NOW.astimezone(ZoneInfo("Asia/Dubai")).date()
+    on_target = Macros(kcal=2000, protein_g=210, fat_g=105, carbs_g=75)
+    for ago in (1, 2, 3, 5):  # day 4 has no food, so the streak is three
+        await repo.add_meal_with_items(
+            session,
+            user.id,
+            day_date=today - timedelta(days=ago),
+            items=[FoodItemIn(name="x", macros=on_target)],
+            logged_at=NOW - timedelta(days=ago),
+        )
+    await session.commit()
+    await handle_message(deps, msg("/streak"))
+    [sent] = messenger.sent
+    assert sent.text == t("ru", "streak.days", days=3)
+    assert fake_llm.calls == []
 
 
 async def test_unknown_slash_command_goes_to_the_agent(

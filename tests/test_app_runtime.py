@@ -463,7 +463,7 @@ class ProfileRecorder:
 def test_bot_commands_respect_telegram_limits() -> None:
     for lang in ("en", "ru"):
         cmds = commands.bot_commands(lang)
-        assert [c.command for c in cmds] == ["start", "today", "forget_me"]
+        assert [c.command for c in cmds] == ["start", "today", "streak", "forget_me"]
         for c in cmds:
             assert re.fullmatch(r"[a-z0-9_]{1,32}", c.command)
             assert 1 <= len(c.description) <= 256
@@ -490,7 +490,7 @@ async def test_apply_bot_profile_covers_every_language() -> None:
     by_lang = {lang: (kind, payload) for kind, payload, lang in recorder.calls}
     assert by_lang["ru"][0] == "description"
     ru_calls = [payload for kind, payload, lang in recorder.calls if lang == "ru"]
-    assert ru_calls[0] == ["start", "today", "forget_me"]
+    assert ru_calls[0] == ["start", "today", "streak", "forget_me"]
     assert ru_calls[2] == t("ru", "bot.description")
 
 
