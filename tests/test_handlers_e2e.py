@@ -43,6 +43,7 @@ from strikt.telegram.handlers import (
 from strikt.telegram.media import AlbumCollector, MediaTooLargeError
 from strikt.telegram.messenger import FakeMessenger
 from strikt.telegram.queue import PerChatQueue
+from strikt.telegram.render import fmt_num
 from strikt.telegram.voice import NullTranscriber
 from tests.conftest import CHAT_ID, NOW, TELEGRAM_ID
 
@@ -534,6 +535,16 @@ async def test_today_reposts_and_pins_the_card(
     assert len(messenger.pins) == 2 and messenger.unpins == [
         (CHAT_ID, messenger.sent[0].message_id)
     ]
+
+
+async def test_targets_replies_with_the_active_protocol(
+    deps: AppDeps, messenger: FakeMessenger, fake_llm: FakeLLM, user: User
+) -> None:
+    await handle_message(deps, msg("/targets"))
+    assert messenger.texts(CHAT_ID) == [
+        t("ru", "targets.reply", kcal=fmt_num(2000), p="210", f="105", c="75")
+    ]
+    assert fake_llm.calls == []
 
 
 async def test_unknown_slash_command_goes_to_the_agent(
