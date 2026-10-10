@@ -95,6 +95,7 @@
     "queue.busy": "Tôi vẫn đang xử tin nhắn trước, trả lời lần lượt.",
     "cmd.start": "Bắt đầu, hoặc tiếp chỗ đang dở",
     "cmd.today": "Gửi lại thẻ hôm nay",
+    "cmd.help": "Danh sách lệnh",
     "cmd.streak": "Số ngày liên tiếp đạt mục tiêu",
     "cmd.forget_me": "Xoá hết mọi thứ về bạn",
     "bot.short": "Một huấn luyện viên trong một khung chat. Gửi món ăn, nhận con số. Ngày khép lại bằng kết luận.",

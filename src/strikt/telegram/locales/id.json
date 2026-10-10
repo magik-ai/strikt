@@ -95,6 +95,7 @@
     "queue.busy": "Masih di pesanmu yang sebelumnya, kujawab berurutan.",
     "cmd.start": "Mulai, atau lanjut dari tempatmu berhenti",
     "cmd.today": "Kirim ulang kartu hari ini",
+    "cmd.help": "Daftar perintah",
     "cmd.streak": "Hari berturut-turut sesuai target",
     "cmd.forget_me": "Hapus semua tentang kamu",
     "bot.short": "Pelatih dalam satu obrolan. Kirim makanan, dapat angkanya. Hari ditutup dengan putusan.",

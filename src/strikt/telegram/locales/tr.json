@@ -95,6 +95,7 @@
     "queue.busy": "Hâlâ önceki mesajındayım, sırayla cevaplıyorum.",
     "cmd.start": "Başla ya da kaldığın yerden devam et",
     "cmd.today": "Bugün kartını yeniden gönder",
+    "cmd.help": "Komutları listele",
     "cmd.streak": "Hedefte art arda günler",
     "cmd.forget_me": "Seninle ilgili her şeyi sil",
     "bot.short": "Tek sohbette bir koç. Yemeği gönder, sayıyı al. Gün bir kararla biter.",

@@ -95,6 +95,7 @@
     "queue.busy": "Ich bin noch an deiner vorigen Nachricht, ich antworte der Reihe nach.",
     "cmd.start": "Anfangen oder da weitermachen, wo du warst",
     "cmd.today": "Die Heute-Karte neu schicken",
+    "cmd.help": "Die Befehle auflisten",
     "cmd.streak": "Tage in Folge im Zielbereich",
     "cmd.forget_me": "Alles über dich löschen",
     "bot.short": "Ein Coach in einem Chat. Schick dein Essen, bekomm die Zahl. Der Tag endet mit einem Urteil.",

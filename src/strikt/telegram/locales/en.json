@@ -96,6 +96,7 @@
     "queue.busy": "Still on your previous message, answering in order.",
     "cmd.start": "Begin, or resume where you left off",
     "cmd.today": "Re-post the Today card",
+    "cmd.help": "List the commands",
     "cmd.streak": "Days in a row on target",
     "cmd.forget_me": "Delete everything about you",
     "bot.short": "A coach in one chat. Send food, get the number. The day ends with a verdict.",

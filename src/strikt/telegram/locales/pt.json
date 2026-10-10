@@ -95,6 +95,7 @@
     "queue.busy": "Ainda estou na sua mensagem anterior, respondo na ordem.",
     "cmd.start": "Começar, ou seguir de onde parou",
     "cmd.today": "Reenviar o cartão de hoje",
+    "cmd.help": "Ver os comandos",
     "cmd.streak": "Dias seguidos dentro das metas",
     "cmd.forget_me": "Apagar tudo sobre você",
     "bot.short": "Um treinador em um chat. Mande a comida, receba o número. O dia acaba com um veredito.",
