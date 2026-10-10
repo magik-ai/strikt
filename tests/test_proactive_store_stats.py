@@ -8,6 +8,7 @@ import pytest
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from strikt.core.clock import FakeClock
+from strikt.core.types import FoodItemIn, Macros
 from strikt.db import repo
 from strikt.db.models import Profile, Protocol, TurnRole, User
 from strikt.proactive import stats, store
@@ -365,3 +366,58 @@ async def test_load_history_bundle(
     notes = await store.event_notes_for(session, user.id, day=TODAY, tz=TZ, now=clock.now())
     assert [n.text for n in notes] == ["Dinner at Kinoya"]
     assert store._parse_dt("not a date") is None and store._parse_dt(clock.now()) == clock.now()
+
+
+async def _seed_macros(
+    session: AsyncSession, user_id: int, day: date, *, kcal: float, fat: float, carbs: float
+) -> None:
+    when = at_local(day, "12:00")
+    macros = Macros(kcal=kcal, protein_g=50, fat_g=fat, carbs_g=carbs, fiber_g=5)
+    await repo.add_meal_with_items(
+        session,
+        user_id,
+        day_date=day,
+        items=[FoodItemIn(name="x", macros=macros)],
+        logged_at=when,
+        eaten_at=when,
+    )
+
+
+async def test_last_seven_days_averages_and_days_logged(session: AsyncSession, user: User) -> None:
+    await _seed_macros(session, user.id, TODAY - timedelta(days=8), kcal=9000, fat=1, carbs=1)
+    await _seed_macros(session, user.id, TODAY - timedelta(days=7), kcal=2000, fat=100, carbs=80)
+    await _seed_macros(session, user.id, TODAY - timedelta(days=1), kcal=1000, fat=50, carbs=40)
+    await session.commit()
+    week = await stats.last_seven_days(session, user.id, today=TODAY)
+    assert week.days == 7 and week.days_logged == 2  # day -8 is outside the window
+    assert (week.avg_kcal, week.avg_protein_g) == (1500, 50)
+    assert (week.avg_fat_g, week.avg_carbs_g) == (75, 60)
+
+
+async def test_last_seven_days_leaves_today_out_while_open(
+    session: AsyncSession, user: User
+) -> None:
+    await _seed_macros(session, user.id, TODAY - timedelta(days=1), kcal=2000, fat=60, carbs=60)
+    await _seed_macros(session, user.id, TODAY, kcal=200, fat=5, carbs=5)
+    await session.commit()
+    week = await stats.last_seven_days(session, user.id, today=TODAY)
+    assert week.days_logged == 1 and week.avg_kcal == 2000
+
+
+async def test_last_seven_days_takes_today_once_closed(
+    session: AsyncSession, user: User, clock: FakeClock
+) -> None:
+    await _seed_macros(session, user.id, TODAY - timedelta(days=6), kcal=2000, fat=60, carbs=60)
+    await _seed_macros(session, user.id, TODAY - timedelta(days=7), kcal=9000, fat=1, carbs=1)
+    await _seed_macros(session, user.id, TODAY, kcal=1000, fat=40, carbs=20)
+    await repo.close_day(session, user.id, TODAY, verdict="ok", now=clock.now())
+    await session.commit()
+    week = await stats.last_seven_days(session, user.id, today=TODAY)
+    # the window slides: today in, day -7 out
+    assert week.days == 7 and week.days_logged == 2 and week.avg_kcal == 1500
+
+
+async def test_last_seven_days_with_nothing_logged(session: AsyncSession, user: User) -> None:
+    week = await stats.last_seven_days(session, user.id, today=TODAY)
+    assert week.days == 7 and week.days_logged == 0
+    assert week.avg_kcal is None and week.avg_fat_g is None and week.avg_carbs_g is None

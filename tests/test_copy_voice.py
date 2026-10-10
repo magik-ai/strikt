@@ -153,7 +153,14 @@ def test_profile_texts_fit_telegram_limits_in_every_locale() -> None:
     for code, table in STRINGS.items():
         assert len(table["bot.short"]) <= 120, (code, len(table["bot.short"]))
         assert len(table["bot.description"]) <= 512, (code, len(table["bot.description"]))
-        for name in ("cmd.start", "cmd.today", "cmd.forget_me"):
+        for name in (
+            "cmd.start",
+            "cmd.today",
+            "cmd.week",
+            "cmd.streak",
+            "cmd.help",
+            "cmd.forget_me",
+        ):
             assert 1 <= len(table[name]) <= 256, (code, name)
 
 
