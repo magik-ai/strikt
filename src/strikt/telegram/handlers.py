@@ -9,7 +9,7 @@ What happens to a message:
 
 1. Album parts (``media_group_id``) are gathered by ``AlbumCollector``; one ``InboundMessage``
    with every photo continues, the others stop.
-2. Commands: ``/start [code]`` (invite-only), ``/today``, ``/help``, ``/forget_me``, ``/invite`` (admins).
+2. Commands: ``/start [code]`` (invite-only), ``/today``, ``/streak``, ``/help``, ``/forget_me``, ``/invite`` (admins).
    Unknown users get one line (``err.not_allowed``) and nothing else. Updates from anything but
    a private chat (a group the bot was added to, a channel) are dropped before that: the coach
    never rebinds ``user.chat_id`` to a group, so the pinned card, proactive nudges and health
@@ -71,6 +71,7 @@ from strikt.telegram.media import (
     prepare_document,
     prepare_image,
 )
+from strikt.telegram.streak import streak_text
 from strikt.telegram.voice import TranscriptionError
 
 if TYPE_CHECKING:
@@ -99,7 +100,7 @@ AUDIO_KINDS: frozenset[str] = frozenset({"voice", "audio", "video_note"})
 PROFILE_TOOLS: frozenset[str] = frozenset(
     {"update_profile", "finish_onboarding", "set_coaching_intensity"}
 )
-COMMANDS: frozenset[str] = frozenset({"start", "today", "help", "forget_me", "invite"})
+COMMANDS: frozenset[str] = frozenset({"start", "today", "streak", "help", "forget_me", "invite"})
 START_TEXT = "/start"
 HEARTBEAT_S = 4.0
 
@@ -538,6 +539,8 @@ async def _dispatch_message(deps: AppDeps, inbound: InboundMessage) -> None:
         return
     if inbound.command == "today":
         await handle_today(deps, user.id)
+    elif inbound.command == "streak":
+        await handle_streak(deps, user)
     elif inbound.command == "help":
         lang = resolve_lang(user.language)
         lines = [f"/{c.command} - {c.description}" for c in bot_commands(lang)]
@@ -691,6 +694,12 @@ async def handle_today(deps: AppDeps, user_id: int) -> None:
 
             await _send(deps, user.chat_id, render_day_card(state, user.language, user.timezone))
         await session.commit()
+
+
+async def handle_streak(deps: AppDeps, user: User) -> None:
+    async with deps.sessions() as session:
+        text = await streak_text(session, user, today=await _today(deps, session, user))
+    await _send(deps, user.chat_id, text)
 
 
 async def handle_forget_me(deps: AppDeps, user: User) -> None:

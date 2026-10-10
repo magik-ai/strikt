@@ -269,6 +269,7 @@ confirms it.
 |---|---|---|
 | `/start [code]` | anyone | Invite-only: allowed ids or a valid one-time code create the user; `Strikt. One window, no settings. Send food photos, screenshots, voice or text - I log, count and push.` then, as the second message, the key walkthrough (`key.needed`, section 5) - the interview's question 1 follows the moment the key is in. A user who already has a key (or an admin on the server key) gets question 1 right away. A returning user mid-interview gets `Back. Where we left off:` and continues. |
 | `/today` | user | Re-posts the card, pins it, unpins the old one. |
+| `/streak` | user | One line: how many days in a row kcal, protein, fat and carbs each landed within 10% of the targets (`Days in a row on target: {days}.`). An open today is left out; a closed one counts. |
 | `/forget_me` | user | `Delete everything about you - profile, meals, training, notes, chat history, your API key? This cannot be undone.` with the two buttons; on yes: `Deleted {rows} rows, your API key included. Nothing about you remains. Send /start to begin again.` |
 | `/invite` | admins only | Mints a one-time code: `Invite code: <code>`. Non-admins get nothing. |
 
