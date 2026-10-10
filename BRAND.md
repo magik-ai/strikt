@@ -225,11 +225,13 @@ Commands (`/setcommands` or `setMyCommands`, en and ru):
 ```
 start - Begin, or resume where you left off
 today - Re-post the Today card
+help - List the commands
 forget_me - Delete everything about you
 ```
 ```
 start - Начать или продолжить с того же места
 today - Заново отправить карточку дня
+help - Список команд
 forget_me - Удалить всё о тебе
 ```
 

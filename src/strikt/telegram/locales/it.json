@@ -91,6 +91,7 @@
     "queue.busy": "Sono ancora sul messaggio precedente, rispondo in ordine.",
     "cmd.start": "Iniziare, o riprendere da dove eri",
     "cmd.today": "Rimandare la scheda di oggi",
+    "cmd.help": "Elenco dei comandi",
     "cmd.forget_me": "Cancellare tutto su di te",
     "bot.short": "Un coach in una chat. Manda il cibo, ricevi il numero. La giornata finisce con un verdetto.",
     "bot.description": "Strikt registra cibo, allenamento, sonno e misure da una sola chat Telegram. Manda una foto, uno screenshot, un vocale o del testo: la risposta dà kcal, proteine, carboidrati, grassi e fibre per voce, la giornata finora e quello che resta. La scheda di oggi resta fissata e si aggiorna sul posto. Se sparisci, scrive per primo: il fatto, poi lo schema nei tuoi dati, poi un'istruzione con una scadenza. La giornata chiude con un verdetto. Senza saluti, senza emoji, senza lodi.",

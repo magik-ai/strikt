@@ -29,6 +29,7 @@ from strikt.db.engine import make_session_factory
 from strikt.db.models import Meal, MealSlot, Profile, User, UserStatus
 from strikt.events import EventBus
 from strikt.memory.daystate import DayStateBuilder
+from strikt.telegram.commands import COMMAND_NAMES
 from strikt.telegram.copy import t
 from strikt.telegram.daycard import DayCard
 from strikt.telegram.handlers import (
@@ -534,6 +535,17 @@ async def test_today_reposts_and_pins_the_card(
     assert len(messenger.pins) == 2 and messenger.unpins == [
         (CHAT_ID, messenger.sent[0].message_id)
     ]
+
+
+async def test_help_lists_every_command_in_the_users_language(
+    deps: AppDeps, messenger: FakeMessenger, fake_llm: FakeLLM, user: User
+) -> None:
+    await handle_message(deps, msg("/help"))
+    assert messenger.texts(CHAT_ID) == [
+        "\n".join(f"/{name} - {t('ru', f'cmd.{name}')}" for name in COMMAND_NAMES)
+    ]
+    assert "/help - Список команд" in messenger.sent[0].text
+    assert fake_llm.calls == []
 
 
 async def test_unknown_slash_command_goes_to_the_agent(
