@@ -9,7 +9,7 @@ What happens to a message:
 
 1. Album parts (``media_group_id``) are gathered by ``AlbumCollector``; one ``InboundMessage``
    with every photo continues, the others stop.
-2. Commands: ``/start [code]`` (invite-only), ``/today``, ``/week``, ``/streak``, ``/help``, ``/forget_me``, ``/invite`` (admins).
+2. Commands: ``/start [code]`` (invite-only), ``/today``, ``/week``, ``/streak``, ``/targets``, ``/help``, ``/forget_me``, ``/invite`` (admins).
    Unknown users get one line (``err.not_allowed``) and nothing else. Updates from anything but
    a private chat (a group the bot was added to, a channel) are dropped before that: the coach
    never rebinds ``user.chat_id`` to a group, so the pinned card, proactive nudges and health
@@ -72,6 +72,7 @@ from strikt.telegram.media import (
     prepare_document,
     prepare_image,
 )
+from strikt.telegram.render import fmt_num
 from strikt.telegram.streak import streak_text
 from strikt.telegram.voice import TranscriptionError
 from strikt.telegram.week import render_week
@@ -103,7 +104,7 @@ PROFILE_TOOLS: frozenset[str] = frozenset(
     {"update_profile", "finish_onboarding", "set_coaching_intensity"}
 )
 COMMANDS: frozenset[str] = frozenset(
-    {"start", "today", "week", "streak", "help", "forget_me", "invite"}
+    {"start", "today", "week", "streak", "targets", "help", "forget_me", "invite"}
 )
 START_TEXT = "/start"
 HEARTBEAT_S = 4.0
@@ -547,6 +548,8 @@ async def _dispatch_message(deps: AppDeps, inbound: InboundMessage) -> None:
         await handle_week(deps, user)
     elif inbound.command == "streak":
         await handle_streak(deps, user)
+    elif inbound.command == "targets":
+        await handle_targets(deps, user)
     elif inbound.command == "help":
         lang = resolve_lang(user.language)
         lines = [f"/{c.command} - {c.description}" for c in bot_commands(lang)]
@@ -713,6 +716,25 @@ async def handle_week(deps: AppDeps, user: User) -> None:
 async def handle_streak(deps: AppDeps, user: User) -> None:
     async with deps.sessions() as session:
         text = await streak_text(session, user, today=await _today(deps, session, user))
+    await _send(deps, user.chat_id, text)
+
+
+async def handle_targets(deps: AppDeps, user: User) -> None:
+    """The active protocol's daily numbers, as they are."""
+    lang = resolve_lang(user.language)
+    async with deps.sessions() as session:
+        protocol = await repo.get_active_protocol(session, user.id)
+    if protocol is None:
+        await _send(deps, user.chat_id, t(lang, "targets.none"))
+        return
+    text = t(
+        lang,
+        "targets.reply",
+        kcal=fmt_num(protocol.kcal),
+        p=fmt_num(protocol.protein_g),
+        f=fmt_num(protocol.fat_g),
+        c=fmt_num(protocol.carbs_g),
+    )
     await _send(deps, user.chat_id, text)
 
 

@@ -589,6 +589,16 @@ async def test_streak_replies_with_the_days_on_target(
     assert sent.text == t("ru", "streak.days", days=3)
 
 
+async def test_targets_replies_with_the_active_protocol(
+    deps: AppDeps, messenger: FakeMessenger, fake_llm: FakeLLM, user: User
+) -> None:
+    await handle_message(deps, msg("/targets"))
+    assert messenger.texts(CHAT_ID) == [
+        t("ru", "targets.reply", kcal=fmt_num(2000), p="210", f="105", c="75")
+    ]
+    assert fake_llm.calls == []
+
+
 async def test_help_lists_every_command_in_the_users_language(
     deps: AppDeps, messenger: FakeMessenger, fake_llm: FakeLLM, user: User
 ) -> None:

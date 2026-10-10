@@ -468,6 +468,7 @@ def test_bot_commands_respect_telegram_limits() -> None:
             "today",
             "week",
             "streak",
+            "targets",
             "help",
             "forget_me",
         ]
@@ -497,7 +498,7 @@ async def test_apply_bot_profile_covers_every_language() -> None:
     by_lang = {lang: (kind, payload) for kind, payload, lang in recorder.calls}
     assert by_lang["ru"][0] == "description"
     ru_calls = [payload for kind, payload, lang in recorder.calls if lang == "ru"]
-    assert ru_calls[0] == ["start", "today", "week", "streak", "help", "forget_me"]
+    assert ru_calls[0] == ["start", "today", "week", "streak", "targets", "help", "forget_me"]
     assert ru_calls[2] == t("ru", "bot.description")
 
 
