@@ -94,6 +94,7 @@
     "cmd.start": "Begin, or resume where you left off",
     "cmd.today": "Re-post the Today card",
     "cmd.week": "The last seven days against your targets",
+    "cmd.help": "List the commands",
     "cmd.streak": "Days in a row on target",
     "week.head": "Last 7 days: food logged on {logged} of {days} days",
     "week.avg": "Average per logged day:",

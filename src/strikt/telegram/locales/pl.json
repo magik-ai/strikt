@@ -92,6 +92,7 @@
     "cmd.start": "Zacząć albo wrócić tam, gdzie skończyłeś",
     "cmd.today": "Wysłać kartę dnia jeszcze raz",
     "cmd.week": "Ostatnie siedem dni na tle twoich celów",
+    "cmd.help": "Lista poleceń",
     "cmd.streak": "Dni z rzędu w normie",
     "week.head": "Ostatnie 7 dni: jedzenie zapisane w {logged} z {days} dni",
     "week.avg": "Średnia na zapisany dzień:",

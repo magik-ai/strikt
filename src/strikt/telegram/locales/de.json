@@ -93,6 +93,7 @@
     "cmd.start": "Anfangen oder da weitermachen, wo du warst",
     "cmd.today": "Die Heute-Karte neu schicken",
     "cmd.week": "Die letzten sieben Tage im Vergleich zu deinen Zielen",
+    "cmd.help": "Die Befehle auflisten",
     "cmd.streak": "Tage in Folge im Zielbereich",
     "week.head": "Letzte 7 Tage: Essen an {logged} von {days} Tagen erfasst",
     "week.avg": "Durchschnitt pro erfasstem Tag:",

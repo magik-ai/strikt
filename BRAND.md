@@ -227,6 +227,7 @@ start - Begin, or resume where you left off
 today - Re-post the Today card
 week - The last seven days against your targets
 streak - Days in a row on target
+help - List the commands
 forget_me - Delete everything about you
 ```
 ```
@@ -234,6 +235,7 @@ start - Начать или продолжить с того же места
 today - Заново отправить карточку дня
 week - Последние семь дней в сравнении с целями
 streak - Дни подряд в пределах целей
+help - Список команд
 forget_me - Удалить всё о тебе
 ```
 

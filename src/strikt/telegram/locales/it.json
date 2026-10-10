@@ -92,6 +92,7 @@
     "cmd.start": "Iniziare, o riprendere da dove eri",
     "cmd.today": "Rimandare la scheda di oggi",
     "cmd.week": "Gli ultimi sette giorni rispetto ai tuoi obiettivi",
+    "cmd.help": "Elenco dei comandi",
     "cmd.streak": "Giorni di fila entro gli obiettivi",
     "week.head": "Ultimi 7 giorni: cibo registrato in {logged} giorni su {days}",
     "week.avg": "Media per giorno registrato:",

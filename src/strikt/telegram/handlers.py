@@ -9,7 +9,7 @@ What happens to a message:
 
 1. Album parts (``media_group_id``) are gathered by ``AlbumCollector``; one ``InboundMessage``
    with every photo continues, the others stop.
-2. Commands: ``/start [code]`` (invite-only), ``/today``, ``/week``, ``/streak``, ``/forget_me``, ``/invite`` (admins).
+2. Commands: ``/start [code]`` (invite-only), ``/today``, ``/week``, ``/streak``, ``/help``, ``/forget_me``, ``/invite`` (admins).
    Unknown users get one line (``err.not_allowed``) and nothing else. Updates from anything but
    a private chat (a group the bot was added to, a channel) are dropped before that: the coach
    never rebinds ``user.chat_id`` to a group, so the pinned card, proactive nudges and health
@@ -51,6 +51,7 @@ from strikt.events import DayStateChanged
 from strikt.keycheck import check_secret
 from strikt.privacy import delete_everything
 from strikt.proactive import stats
+from strikt.telegram.commands import bot_commands
 from strikt.telegram.copy import detect_lang, resolve_lang, t
 from strikt.telegram.keyboards import (
     Callback,
@@ -101,7 +102,9 @@ AUDIO_KINDS: frozenset[str] = frozenset({"voice", "audio", "video_note"})
 PROFILE_TOOLS: frozenset[str] = frozenset(
     {"update_profile", "finish_onboarding", "set_coaching_intensity"}
 )
-COMMANDS: frozenset[str] = frozenset({"start", "today", "week", "streak", "forget_me", "invite"})
+COMMANDS: frozenset[str] = frozenset(
+    {"start", "today", "week", "streak", "help", "forget_me", "invite"}
+)
 START_TEXT = "/start"
 HEARTBEAT_S = 4.0
 
@@ -544,6 +547,10 @@ async def _dispatch_message(deps: AppDeps, inbound: InboundMessage) -> None:
         await handle_week(deps, user)
     elif inbound.command == "streak":
         await handle_streak(deps, user)
+    elif inbound.command == "help":
+        lang = resolve_lang(user.language)
+        lines = [f"/{c.command} - {c.description}" for c in bot_commands(lang)]
+        await _send(deps, inbound.chat_id, "\n".join(lines))
     elif inbound.command == "forget_me":
         await handle_forget_me(deps, user)
     elif inbound.command == "invite":

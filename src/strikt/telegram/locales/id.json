@@ -93,6 +93,7 @@
     "cmd.start": "Mulai, atau lanjut dari tempatmu berhenti",
     "cmd.today": "Kirim ulang kartu hari ini",
     "cmd.week": "Tujuh hari terakhir dibanding targetmu",
+    "cmd.help": "Daftar perintah",
     "cmd.streak": "Hari berturut-turut sesuai target",
     "week.head": "7 hari terakhir: makanan tercatat di {logged} dari {days} hari",
     "week.avg": "Rata-rata per hari tercatat:",

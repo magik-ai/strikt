@@ -93,6 +93,7 @@
     "cmd.start": "Commencer, ou reprendre où tu t'es arrêté",
     "cmd.today": "Renvoyer la carte du jour",
     "cmd.week": "Les sept derniers jours face à tes objectifs",
+    "cmd.help": "Voir les commandes",
     "cmd.streak": "Jours d'affilée dans tes objectifs",
     "week.head": "7 derniers jours : repas notés sur {logged} jours sur {days}",
     "week.avg": "Moyenne par jour noté :",
