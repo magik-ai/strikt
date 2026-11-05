@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import contextlib
 import json
 from datetime import UTC, date, datetime, timedelta
 from typing import Any
@@ -650,3 +651,28 @@ def test_signature_known_answer_vector() -> None:
     assert independent == expected
     assert whoop.compute_signature("whoop-secret", ts, body) == expected
     assert whoop.compute_signature("whoop-secret", ts, body + b" ") != expected
+
+
+async def test_a_refresh_racing_a_disconnect_never_brings_the_tokens_back(
+    session: AsyncSession, user: User, clock: FakeClock
+) -> None:
+    settings = make_settings()
+    cipher = TokenCipher(settings.token_encryption_key.get_secret_value())
+    await seed_tokens(session, cipher, user, expires_at=NOW - timedelta(minutes=1))
+    router = make_router()
+
+    def refresh_after_disconnect(_request: httpx.Request) -> httpx.Response:
+        return httpx.Response(
+            200, json={"access_token": "new", "refresh_token": "new-r", "expires_in": 3600}
+        )
+
+    router.add("POST", whoop.TOKEN_URL, refresh_after_disconnect)
+    integration = make_integration(router, settings, clock)
+    row = await repo.get_integration(session, user.id, "whoop")
+    assert row is not None
+    await repo.clear_integration(session, user.id, "whoop")  # "disconnect WHOOP"
+    async with make_integration(router, settings, clock)._client_factory() as client:
+        with contextlib.suppress(whoop.WhoopAuthError):
+            await integration._refresh(session, row, client)
+    await session.commit()
+    assert await repo.get_integration(session, user.id, "whoop") is None

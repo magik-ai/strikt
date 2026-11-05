@@ -61,6 +61,8 @@ if TYPE_CHECKING:
 log = structlog.get_logger(__name__)
 
 PROVIDER: ProviderName = "withings"
+#: Access token lifetime when the token answer leaves ``expires_in`` out.
+DEFAULT_EXPIRES_S = 10800.0
 AUTH_URL = "https://account.withings.com/oauth2_user/authorize2"
 TOKEN_URL = "https://wbsapi.withings.net/v2/oauth2"
 MEASURE_URL = "https://wbsapi.withings.net/measure"
@@ -528,7 +530,17 @@ class WithingsIntegration:
                 session, row.user_id, PROVIDER, IntegrationStatus.expired
             )
             raise WithingsAuthError("refresh rejected") from None
-        updated = await self._store_tokens(session, row.user_id, fresh, now=self._clock.now())
+        updated = await repo.rotate_integration_tokens(
+            session,
+            self._cipher,
+            row.user_id,
+            PROVIDER,
+            access_token=str(fresh["access_token"]),
+            refresh_token=str(fresh["refresh_token"]) if fresh.get("refresh_token") else None,
+            expires_at=self._clock.now() + timedelta(seconds=_expires_in(fresh.get("expires_in"))),
+        )
+        if updated is None:  # disconnected while the refresh was on its way
+            raise WithingsAuthError("integration gone")
         log.info("withings_token_refreshed", user_id=row.user_id)
         return str(repo.integration_tokens(self._cipher, updated).access_token)
 
@@ -831,3 +843,10 @@ class WithingsIntegration:
         # The cursor moves only in ``sync``: a spoofed notification must not skip a weigh-in.
         log.info("withings_webhook", user_id=user.id, groups=len(groups), events=len(events))
         return WebhookResponse(), events
+
+
+def _expires_in(value: Any, default: float = DEFAULT_EXPIRES_S) -> float:
+    try:
+        return float(value) if value else default
+    except (TypeError, ValueError):
+        return default

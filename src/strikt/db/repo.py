@@ -2000,3 +2000,44 @@ async def purge_oauth_states(
     cutoff = ensure_utc(now) - timedelta(seconds=max_age_s)
     result = await session.execute(sa.delete(OAuthState).where(OAuthState.created_at < cutoff))
     return _rowcount(result)
+
+
+async def rotate_integration_tokens(
+    session: AsyncSession,
+    cipher: TokenCipher,
+    user_id: int,
+    provider: Provider | str,
+    *,
+    access_token: str,
+    refresh_token: str | None,
+    expires_at: datetime | None,
+    scopes: str | None = None,
+) -> Integration | None:
+    """A refresh's new token pair, written only onto a row that still exists and is still
+    connected: a refresh that raced the user's "disconnect" must not bring the login back.
+    Returns the updated row, or None when there is nothing to update."""
+    values: dict[str, Any] = {
+        "access_token_enc": cipher.encrypt_optional(access_token),
+        "refresh_token_enc": cipher.encrypt_optional(refresh_token),
+        "expires_at": expires_at,
+    }
+    if scopes is not None:
+        values["scopes"] = scopes
+    result = await session.execute(
+        update(Integration)
+        .where(
+            Integration.user_id == user_id,
+            Integration.provider == Provider(provider),
+            Integration.status == IntegrationStatus.connected,
+        )
+        .values(**values)
+        .execution_options(synchronize_session="fetch")
+    )
+    if _rowcount(result) == 0:
+        return None
+    return await _first(
+        session,
+        select(Integration)
+        .where(Integration.user_id == user_id, Integration.provider == Provider(provider))
+        .execution_options(populate_existing=True),
+    )

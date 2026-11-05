@@ -770,11 +770,39 @@ async def test_an_entry_whose_answer_was_lost_is_adopted_not_doubled(
     ]
     result = await integration.mirror_day(session, user, today)
     assert result.status == "unchanged" and len(fake.day_entries(today)) == 1  # adopted
-    # a surplus copy of a Strikt food (a listing that briefly left one out) is removed, too
+    # a listing that briefly leaves our entry out: it is re-added, and when the original shows
+    # up again it is known by its id (a ghost) and the surplus copy goes
     entry = fake.day_entries(today)[0]
-    fake.entries["dup-1"] = {**entry, "id": "dup-1"}
+    hidden = fake.entries.pop(entry["id"])
+    result = await integration.mirror_day(session, user, today, verify=True)
+    assert result.added == 1 and len(fake.day_entries(today)) == 1
+    fake.entries[hidden["id"]] = hidden
     result = await integration.mirror_day(session, user, today, verify=True)
     assert result.removed == 1 and len(fake.day_entries(today)) == 1
+
+
+async def test_an_entry_logged_by_hand_with_a_strikt_food_is_never_touched(
+    integration: MyFitnessPalIntegration,
+    fake: FakeMfp,
+    session: AsyncSession,
+    user: User,
+    clock: FakeClock,
+) -> None:
+    """Strikt's foods sit in the user's "My Foods" and "Recent": they log them by hand too.
+    Those entries are theirs, whatever food they point at."""
+    today = _today(clock, user)
+    yesterday = today - timedelta(days=1)
+    oats = ("овсянка", "60 г", 230.0, 8.0, 38.0, 4.0, 6.0)
+    rice = ("рис", "200 г", 260.0, 5.0, 57.0, 0.6, 0.8)
+    await _log(session, user, yesterday, MealSlot.breakfast, oats, clock=clock)
+    await _log(session, user, today, MealSlot.lunch, rice, clock=clock)
+    await _connect(integration, session, user)
+    oats_entry = fake.day_entries(yesterday)[0]
+    fake.entries["hand-oats"] = {**oats_entry, "id": "hand-oats", "date": today.isoformat()}
+    for _ in range(2):
+        await integration.sync(session, user, None)
+    assert "hand-oats" in {e["id"] for e in fake.day_entries(today)}
+    assert len(fake.day_entries(today)) == 2
 
 
 async def test_a_reconnect_leaves_days_logged_by_hand_while_it_was_down(
@@ -1023,7 +1051,10 @@ async def test_disconnect_stops_the_mirror_and_keeps_what_was_made(
     )
     await session.commit()
     assert not result.is_error
-    assert await repo.get_integration(session, user.id, "myfitnesspal") is None
+    session.expunge_all()
+    row = await repo.get_integration(session, user.id, "myfitnesspal")
+    assert row is not None and row.status == IntegrationStatus.revoked
+    assert row.access_token_enc is None and row.refresh_token_enc is None  # the login is gone
     await _log(
         session,
         user,
@@ -1034,3 +1065,53 @@ async def test_disconnect_stops_the_mirror_and_keeps_what_was_made(
     )
     assert (await integration.mirror_day(session, user, today)).status == "not_connected"
     assert fake.names(today) == [("Lunch", "рис (200 г)")]
+
+
+async def test_a_mirror_in_flight_never_brings_a_disconnected_login_back(
+    integration: MyFitnessPalIntegration,
+    fake: FakeMfp,
+    session: AsyncSession,
+    user: User,
+    clock: FakeClock,
+    engine: AsyncEngine,
+) -> None:
+    """The user says "disconnect" while a mirror is writing; the cookies MFP re-issued on the
+    way must not be stored back onto the revoked row."""
+    today = _today(clock, user)
+    await _connect(integration, session, user)
+    rice = ("рис", "200 г", 260.0, 5.0, 57.0, 0.6, 0.8)
+    await _log(session, user, today, MealSlot.lunch, rice, clock=clock)
+    other = make_session_factory(engine)
+    real_food = mfp.MfpApi.create_food
+
+    async def create_then_disconnect(self: mfp.MfpApi, entry: mfp.DesiredEntry) -> str:
+        food_id = await real_food(self, entry)
+        async with other() as side:  # the disconnect commits in another session meanwhile
+            await store.update_connected(
+                side,
+                user.id,
+                "myfitnesspal",
+                {"status": IntegrationStatus.revoked, "refresh_token_enc": None},
+            )
+            await side.commit()
+        self.changed = True  # MFP re-issued a cookie on the way
+        return food_id
+
+    mfp.MfpApi.create_food = create_then_disconnect  # type: ignore[method-assign]
+    try:
+        await integration.mirror_day(session, user, today)
+    finally:
+        mfp.MfpApi.create_food = real_food  # type: ignore[method-assign]
+    session.expunge_all()
+    row = await repo.get_integration(session, user.id, "myfitnesspal")
+    assert row is not None and row.status == IntegrationStatus.revoked
+    assert row.refresh_token_enc is None
+
+
+def test_ordinary_messages_about_cookies_and_mfp_are_not_secrets() -> None:
+    for text in (
+        "I used to track on myfitnesspal.com. Yesterday: oatmeal cookie: 2 pieces, coffee",
+        "myfitnesspal.com says my cookie = 140 kcal, is that right?",
+        "Cookie: 1 big one. Can you also connect myfitnesspal.com?",
+    ):
+        assert not mfp.looks_like_mfp_cookies(text), text

@@ -99,9 +99,15 @@ How it works: `integrations/myfitnesspal.py`.
   holds food in MFP is skipped, and the user is told which ones; after a reconnect that covers the
   days logged by hand while the connection was down. Connecting another MFP account starts from
   a clean slate.
-- A write whose answer never came back (MFP stored the entry, the reply timed out) is recognised
-  on the next run by its Strikt food and adopted, never added a second time; a surplus copy of a
-  Strikt food is removed.
+- Every entry is known by its MFP id, never guessed from its food: a write is recorded as
+  pending before the call and gets its id after it, so an answer that never came back (MFP stored
+  the entry, the reply timed out) is matched on the next run and never added twice; an entry of
+  Strikt's missing from one listing is remembered by id and removed if it reappears next to its
+  replacement. An entry the user logs by hand is never touched, even when it uses a Strikt food
+  from their "My Foods".
+- "Disconnect MyFitnessPal" deletes the login and stops the mirror at once (a mirror that was
+  writing at that moment cannot store the login again); the record of what Strikt created stays,
+  so reconnecting the same account does not copy those days twice.
 - `/forget_me` deletes Strikt's records of what it created, not the entries in the user's MFP
   account (that account is the user's).
 

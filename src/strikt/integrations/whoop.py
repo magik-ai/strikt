@@ -58,6 +58,8 @@ if TYPE_CHECKING:
 log = structlog.get_logger(__name__)
 
 PROVIDER: ProviderName = "whoop"
+#: Access token lifetime when the token answer leaves ``expires_in`` out.
+DEFAULT_EXPIRES_S = 3600.0
 AUTH_URL = "https://api.prod.whoop.com/oauth/oauth2/auth"
 TOKEN_URL = "https://api.prod.whoop.com/oauth/oauth2/token"
 API_BASE = "https://api.prod.whoop.com/developer"
@@ -591,7 +593,18 @@ class WhoopIntegration:
                 raise
             if not fresh.get("refresh_token"):
                 fresh = {**fresh, "refresh_token": tokens.refresh_token}
-            updated = await self._store_tokens(session, row.user_id, fresh, now=self._clock.now())
+            updated = await repo.rotate_integration_tokens(
+                session,
+                self._cipher,
+                row.user_id,
+                PROVIDER,
+                access_token=str(fresh["access_token"]),
+                refresh_token=(str(fresh["refresh_token"]) if fresh.get("refresh_token") else None),
+                expires_at=self._clock.now()
+                + timedelta(seconds=_expires_in(fresh.get("expires_in"))),
+            )
+            if updated is None:  # disconnected while the refresh was on its way
+                raise WhoopAuthError("integration gone")
             log.info("whoop_token_refreshed", user_id=row.user_id)
             return str(repo.integration_tokens(self._cipher, updated).access_token)
 
@@ -1046,3 +1059,10 @@ def _json(response: httpx.Response) -> dict[str, Any]:
     if not isinstance(body, dict):
         raise WhoopError("response is not a JSON object")
     return cast("dict[str, Any]", body)
+
+
+def _expires_in(value: Any, default: float = DEFAULT_EXPIRES_S) -> float:
+    try:
+        return float(value) if value else default
+    except (TypeError, ValueError):
+        return default

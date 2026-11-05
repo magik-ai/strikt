@@ -298,3 +298,20 @@ async def delete_links(session: AsyncSession, user_id: int, provider: Provider |
         )
     )
     return _rowcount(result)
+
+
+async def update_connected(
+    session: AsyncSession, user_id: int, provider: Provider | str, values: Mapping[str, Any]
+) -> bool:
+    """Update the row only if it exists and is still connected (a write racing a disconnect
+    changes nothing). Returns whether a row was updated."""
+    result = await session.execute(
+        sa.update(Integration)
+        .where(
+            Integration.user_id == user_id,
+            Integration.provider == Provider(provider),
+            Integration.status == IntegrationStatus.connected,
+        )
+        .values(**values)
+    )
+    return _rowcount(result) > 0
