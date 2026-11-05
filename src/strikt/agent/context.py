@@ -53,6 +53,7 @@ from strikt.db.models import (
     User,
     UserStatus,
 )
+from strikt.memory.body import body_block
 from strikt.memory.daystate import DayStateBuilder, render_context, yesterday_close_line
 from strikt.memory.notes import active_notes, render_notes_block
 from strikt.memory.periods import find_period
@@ -546,6 +547,17 @@ async def render_context_block(
         )
         parts.append(recent)
         parts.append("</recent>")
+
+    try:
+        body = await body_block(session, user.id, today=state.date, tz=tz)
+    except Exception as exc:
+        log.warning("context_body_failed", user_id=user.id, error=repr(exc))
+        body = ""
+    if body:
+        parts.append(
+            "<body>the latest body numbers in the database (scale, pressure, steps arrive by"
+            f" themselves; each has its date): {body}</body>"
+        )
 
     if weeks or days:
         parts.append("<summaries>")

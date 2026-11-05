@@ -5,8 +5,9 @@ prose summaries. Anything older was invisible, so the coach filled the gap from 
 and told the user he had trained zero times last week when the database held four sessions. A
 claim about a past day now has somewhere to come from.
 
-One line a day, oldest first, ~40 characters each: food totals, training, sleep, closed or not.
-Four aggregate queries for the whole window, none of them per-day.
+One line a day, oldest first, ~40 characters each: food totals, training, sleep, the WHOOP
+recovery and the day's last weigh-in, closed or not. Six queries for the whole window, none of
+them per-day.
 """
 
 from __future__ import annotations
@@ -19,7 +20,16 @@ import sqlalchemy as sa
 from sqlalchemy import func, select
 
 from strikt.core.clock import local_day_bounds, to_local
-from strikt.db.models import Day, Meal, MealItem, Sleep, Workout
+from strikt.db.models import (
+    Day,
+    Meal,
+    MealItem,
+    Measurement,
+    MeasurementType,
+    Recovery,
+    Sleep,
+    Workout,
+)
 from strikt.telegram.copy import weekday_name
 
 if TYPE_CHECKING:
@@ -46,11 +56,13 @@ class RecentDay:
     meals: int = 0
     workouts: list[str] = field(default_factory=list)
     sleep_h: float | None = None
+    recovery: float | None = None
+    weight: float | None = None
     closed: bool = False
 
     @property
     def empty(self) -> bool:
-        return not (self.meals or self.workouts or self.sleep_h)
+        return not (self.meals or self.workouts or self.sleep_h or self.recovery or self.weight)
 
 
 async def recent_days(
@@ -129,6 +141,34 @@ async def recent_days(
         if slept:
             row.sleep_h = round(float(slept) / 60, 1)
 
+    recoveries = await session.execute(
+        select(Recovery.date, Recovery.score).where(
+            Recovery.user_id == user_id,
+            Recovery.date >= first,
+            Recovery.date <= last,
+            Recovery.score.is_not(None),
+        )
+    )
+    for day, score in recoveries.all():
+        row = rows.get(day)
+        if row is not None and score is not None:
+            row.recovery = float(score)
+
+    weights = await session.scalars(
+        select(Measurement)
+        .where(
+            Measurement.user_id == user_id,
+            Measurement.type == MeasurementType.weight,
+            Measurement.measured_at >= start_utc,
+            Measurement.measured_at < end_utc,
+        )
+        .order_by(Measurement.measured_at, Measurement.id)
+    )
+    for reading in weights:
+        row = rows.get(to_local(reading.measured_at, tz).date())
+        if row is not None:
+            row.weight = float(reading.value)  # the day's last one wins
+
     closed = await session.execute(
         select(Day.date).where(
             Day.user_id == user_id,
@@ -169,6 +209,10 @@ def render_recent(days: list[RecentDay], lang: str | None, *, empty_label: str =
             parts.append("no training")
         if row.sleep_h:
             parts.append(f"{row.sleep_h:g} h sleep")
+        if row.recovery is not None:
+            parts.append(f"recovery {round(row.recovery)}%")
+        if row.weight is not None:
+            parts.append(f"{row.weight:g} kg")
         lines.append(f"{head} " + " | ".join(parts))
     return "\n".join(lines)
 
