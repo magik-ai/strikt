@@ -797,15 +797,25 @@ class MyFitnessPalIntegration:
         record of what Strikt made and of used connect links survives a reconnect). Under the
         user's lock and committed at once, so no running mirror can write the login back."""
         async with self._lock(user_id):
-            row = await store.fresh_integration(session, user_id, PROVIDER)
-            if row is None:
-                return False
-            row.access_token_enc = None
-            row.refresh_token_enc = None
-            row.expires_at = None
-            row.status = IntegrationStatus.revoked
-            await session.commit()
-        log.info("mfp_disconnected", user_id=user_id)
+            if self._sessions is None:
+                done = await self._revoke(session, user_id)
+            else:  # its own transaction: committing the turn's session from a tool is not ours
+                async with self._sessions() as own:
+                    done = await self._revoke(own, user_id)
+        if done:
+            log.info("mfp_disconnected", user_id=user_id)
+        return done
+
+    @staticmethod
+    async def _revoke(session: AsyncSession, user_id: int) -> bool:
+        row = await store.fresh_integration(session, user_id, PROVIDER)
+        if row is None:
+            return False
+        row.access_token_enc = None
+        row.refresh_token_enc = None
+        row.expires_at = None
+        row.status = IntegrationStatus.revoked
+        await session.commit()
         return True
 
     async def _today(self, session: AsyncSession, user: User) -> date:
@@ -1024,8 +1034,10 @@ class MyFitnessPalIntegration:
             links = await store.list_links(session, user.id, PROVIDER, LinkKind.entry, day=day)
             live = [link for link in links if _state(link) == "live"]
             pending = [link for link in links if _state(link) == "pending"]
+            ghosts = [link for link in links if _state(link) == "ghost"]
             same = Counter(d.key for d in desired) == Counter(link.key for link in live)
-            if same and not pending and not (verify and live):
+            # a ghost keeps the check days listing: if it reappears it is ours and may be surplus
+            if same and not pending and not (verify and (live or ghosts)):
                 return MirrorResult(status="unchanged")
             async with self._client_factory() as http:
                 api = self._api_for(row, http)
@@ -1098,16 +1110,16 @@ class MyFitnessPalIntegration:
             if _state(link) != "pending":
                 continue
             wanted = link.data or {}
-            match = next(
-                (
-                    entry
-                    for entry in remote
-                    if str(entry["id"]) not in claimed
-                    and _food_id(entry) == wanted.get("food_id")
-                    and entry.get("meal_name") == wanted.get("meal")
-                ),
-                None,
-            )
+            candidates = [
+                entry
+                for entry in remote
+                if str(entry["id"]) not in claimed
+                and _food_id(entry) == wanted.get("food_id")
+                and _same_meal(entry.get("meal_name"), wanted.get("meal"))
+            ]
+            # what Strikt writes is one serving: a hand entry of the same food rarely is
+            candidates.sort(key=lambda entry: entry.get("servings") not in (1, 1.0))
+            match = candidates[0] if candidates else None
             if match is None:  # the write never landed: the list below adds it again
                 await store.delete_link(session, user.id, link.id)
                 continue
@@ -1149,11 +1161,49 @@ class MyFitnessPalIntegration:
     async def _add(
         self, session: AsyncSession, user: User, api: MfpApi, day: date, entry: DesiredEntry
     ) -> None:
-        """Write one entry: a pending row first, committed, then the POST, then its id."""
+        """Write one entry: a pending row first, committed, then the POST, then its id.
+
+        The pending row survives only when no answer came (a transport error, a 5xx): then MFP
+        may hold the entry, and the next run looks for it. A refusal (a 4xx) means there is no
+        entry, so the row goes at once and can never claim one the user logs by hand."""
         food_id, food = await self._food(session, user, api, entry)
+        link = await self._pending(session, user.id, day, entry, food_id)
+        try:
+            entry_id = await api.add_entry(
+                day, entry.meal, food_id, food["version"], food["serving"]
+            )
+        except MfpEntryRejectedError as exc:
+            if exc.status >= 500:
+                raise
+            await store.delete_link(session, user.id, link.id)
+            await session.commit()
+            # the food moved on (a new version) or the user deleted it in MFP: look again, once
+            food_id, food = await self._food_again(session, user, api, entry, food_id)
+            link = await self._pending(session, user.id, day, entry, food_id)
+            try:
+                entry_id = await api.add_entry(
+                    day, entry.meal, food_id, food["version"], food["serving"]
+                )
+            except MfpEntryRejectedError as again:
+                if again.status < 500:
+                    await store.delete_link(session, user.id, link.id)
+                    await session.commit()
+                raise
+        link.external_id = entry_id
+        link.data = {
+            "state": "live",
+            "meal": entry.meal,
+            "food_id": food_id,
+            "name": entry.description,
+        }
+        await session.commit()
+
+    async def _pending(
+        self, session: AsyncSession, user_id: int, day: date, entry: DesiredEntry, food_id: str
+    ) -> IntegrationLink:
         link = await store.add_link(
             session,
-            user.id,
+            user_id,
             PROVIDER,
             LinkKind.entry,
             key=entry.key,
@@ -1163,39 +1213,25 @@ class MyFitnessPalIntegration:
             data={"state": "pending", "meal": entry.meal, "food_id": food_id},
         )
         await session.commit()
-        try:
-            entry_id = await api.add_entry(
-                day, entry.meal, food_id, food["version"], food["serving"]
-            )
-        except MfpEntryRejectedError as exc:
-            if exc.status >= 500:
-                raise
-            # the food moved on (a new version) or the user deleted it in MFP: look again, once
-            fresh = await api.food(food_id)
-            foods = await store.list_links(
-                session, user.id, PROVIDER, LinkKind.food, key=entry.food_key
-            )
-            if fresh is None:
-                for food_link in foods:
-                    await store.delete_link(session, user.id, food_link.id)
-                await session.commit()
-                food_id, fresh = await self._food(session, user, api, entry)
-                link.data = {**(link.data or {}), "food_id": food_id}
-            else:
-                for food_link in foods:
-                    food_link.data = dict(fresh)
+        return link
+
+    async def _food_again(
+        self, session: AsyncSession, user: User, api: MfpApi, entry: DesiredEntry, food_id: str
+    ) -> tuple[str, dict[str, Any]]:
+        """The food's current version, or a new food when the old one is gone."""
+        fresh = await api.food(food_id)
+        foods = await store.list_links(
+            session, user.id, PROVIDER, LinkKind.food, key=entry.food_key
+        )
+        if fresh is None:
+            for food_link in foods:
+                await store.delete_link(session, user.id, food_link.id)
             await session.commit()
-            entry_id = await api.add_entry(
-                day, entry.meal, food_id, fresh["version"], fresh["serving"]
-            )
-        link.external_id = entry_id
-        link.data = {
-            "state": "live",
-            "meal": entry.meal,
-            "food_id": food_id,
-            "name": entry.description,
-        }
+            return await self._food(session, user, api, entry)
+        for food_link in foods:
+            food_link.data = dict(fresh)
         await session.commit()
+        return food_id, fresh
 
     async def _food(
         self, session: AsyncSession, user: User, api: MfpApi, entry: DesiredEntry
@@ -1252,6 +1288,12 @@ def _state(link: IntegrationLink) -> str:
     (ours, missing from the last listing)."""
     state = (link.data or {}).get("state")
     return state if state in ("pending", "ghost") else "live"
+
+
+def _same_meal(listed: Any, sent: Any) -> bool:
+    return (
+        isinstance(listed, str) and isinstance(sent, str) and listed.casefold() == sent.casefold()
+    )
 
 
 def _food_id(entry: Mapping[str, Any]) -> str:

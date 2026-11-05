@@ -1115,3 +1115,68 @@ def test_ordinary_messages_about_cookies_and_mfp_are_not_secrets() -> None:
         "Cookie: 1 big one. Can you also connect myfitnesspal.com?",
     ):
         assert not mfp.looks_like_mfp_cookies(text), text
+
+
+async def test_a_refused_write_leaves_nothing_that_could_claim_a_hand_entry(
+    integration: MyFitnessPalIntegration,
+    fake: FakeMfp,
+    session: AsyncSession,
+    user: User,
+    clock: FakeClock,
+) -> None:
+    today = _today(clock, user)
+    rice = ("рис", "200 г", 260.0, 5.0, 57.0, 0.6, 0.8)
+    await _connect(integration, session, user)
+    await _log(session, user, today, MealSlot.lunch, rice, clock=clock)
+    original = fake.add_entry
+    fake.router.routes = [
+        (m, path, (lambda _r: httpx.Response(422)) if (m, path) == ("POST", mfp.DIARY_URL) else h)
+        for m, path, h in fake.router.routes
+    ]
+    with pytest.raises(mfp.MfpError):
+        await integration.mirror_day(session, user, today)
+    links = await store.list_links(session, user.id, "myfitnesspal", LinkKind.entry, day=today)
+    assert links == []  # MFP said no: nothing pending
+    food_id = next(iter(fake.foods))
+    fake.entries["hand-rice"] = {
+        "id": "hand-rice",
+        "type": "food_entry",
+        "date": today.isoformat(),
+        "meal_name": "Lunch",
+        "servings": 2.0,
+        "food": {"id": food_id, "description": "рис (200 г)"},
+    }
+    fake.router.routes = [
+        (m, path, original if (m, path) == ("POST", mfp.DIARY_URL) else h)
+        for m, path, h in fake.router.routes
+    ]
+    await integration.mirror_day(session, user, today, verify=True)
+    assert {e["id"] for e in fake.day_entries(today)} >= {"hand-rice"}
+    for meal in await repo.list_meals_for_date(session, user.id, today):
+        await session.delete(meal)
+    await session.commit()
+    await integration.mirror_day(session, user, today, verify=True)
+    assert [e["id"] for e in fake.day_entries(today)] == ["hand-rice"]  # theirs, untouched
+
+
+async def test_a_line_removed_while_the_listing_hid_it_is_removed_when_it_shows_again(
+    integration: MyFitnessPalIntegration,
+    fake: FakeMfp,
+    session: AsyncSession,
+    user: User,
+    clock: FakeClock,
+) -> None:
+    today = _today(clock, user)
+    rice = ("рис", "200 г", 260.0, 5.0, 57.0, 0.6, 0.8)
+    await _connect(integration, session, user)
+    await _log(session, user, today, MealSlot.lunch, rice, clock=clock)
+    await integration.mirror_day(session, user, today)
+    entry = fake.day_entries(today)[0]
+    for meal in await repo.list_meals_for_date(session, user.id, today):
+        await session.delete(meal)
+    await session.commit()
+    hidden = fake.entries.pop(entry["id"])  # the coach drops the rice; MFP's listing skips it
+    await integration.mirror_day(session, user, today)
+    fake.entries[hidden["id"]] = hidden  # ...and shows it again later
+    await integration.sync(session, user, None)
+    assert fake.day_entries(today) == []
