@@ -31,7 +31,14 @@ from aiohttp import web
 from strikt.core.clock import Clock, SystemClock
 from strikt.db import repo
 from strikt.integrations.base import Integration, ProviderName, WebhookRequest
-from strikt.integrations.oauth import LinkError, link_secret, provider_from_slug, verify_user
+from strikt.integrations.oauth import (
+    LinkError,
+    connect_page_with,
+    link_secret,
+    provider_from_slug,
+    verify_link,
+    verify_user,
+)
 from strikt.telegram.copy import resolve_lang, t
 from strikt.web.export import make_handler as make_export_handler
 from strikt.web.repair import make_repair_handler
@@ -147,8 +154,12 @@ async def oauth_start(request: web.Request) -> web.StreamResponse:
             return _page(
                 "Strikt", "Could not start the connection. Try again in a minute.", status=500
             )
-    if info.kind in ("oauth", "form") and info.url:
-        raise web.HTTPFound(info.url)  # the provider's login, or our own connect form
+    if info.kind == "form":
+        # our own form, with the token the user already holds: re-signing here would let any
+        # one link be renewed forever by bouncing it through this route
+        raise web.HTTPFound(connect_page_with(settings, name, token))
+    if info.kind == "oauth" and info.url:
+        raise web.HTTPFound(info.url)
     body = info.instructions or (info.url or "")
     return _page("Strikt", body)
 
@@ -181,17 +192,25 @@ async def oauth_callback(request: web.Request) -> web.Response:
 
 async def _form_user(request: web.Request, token: str) -> tuple[Any, Any] | web.Response:
     """The integration with a connect form and the user the signed token names, or a page."""
-    _name, integration = _provider(request)
-    if not hasattr(integration, "connect_form") or not hasattr(integration, "submit_cookies"):
+    _name, found = _provider(request)
+    integration: Any = found  # a provider with a connect form (MyFitnessPal), checked below
+    if not all(
+        hasattr(integration, name) for name in ("connect_form", "submit_cookies", "link_used")
+    ):
         raise web.HTTPNotFound(text="unknown provider")
     settings: Settings = request.app[SETTINGS_KEY]
     clock: Clock = request.app[CLOCK_KEY]
+    expired = _page(
+        "Strikt", "This link is invalid or expired. Ask for a new one in Telegram.", status=400
+    )
     try:
-        user_id = verify_user(token, secret=link_secret(settings), now=clock.now())
+        user_id, issued = verify_link(token, secret=link_secret(settings), now=clock.now())
     except (LinkError, ValueError):
-        return _page(
-            "Strikt", "This link is invalid or expired. Ask for a new one in Telegram.", status=400
-        )
+        return expired
+    sessions: SessionFactory = request.app[SESSIONS_KEY]
+    async with sessions() as session:
+        if await integration.link_used(session, user_id, issued):
+            return expired  # one connect per link: a copy left in a browser history is dead
     return integration, user_id
 
 

@@ -9,14 +9,15 @@ and publishes the resulting events on the bus. Adding a provider is one module a
 from __future__ import annotations
 
 from collections.abc import Callable
+from datetime import time
 from typing import TYPE_CHECKING, Any
 
 import structlog
 
-from strikt.core.clock import Clock, SystemClock, ensure_utc
+from strikt.core.clock import Clock, SystemClock, ensure_utc, in_quiet_hours, to_local
 from strikt.db import repo
 from strikt.db.crypto import TokenCipher
-from strikt.db.models import Integration as IntegrationRow, IntegrationStatus
+from strikt.db.models import Integration as IntegrationRow, IntegrationStatus, User, UserStatus
 from strikt.events import DayStateChanged
 from strikt.integrations import store
 from strikt.integrations.apple_health import AppleHealthIntegration
@@ -31,7 +32,6 @@ if TYPE_CHECKING:
     import httpx
 
     from strikt.config import Settings
-    from strikt.db.models import User
     from strikt.events import EventBus
 
 log = structlog.get_logger(__name__)
@@ -50,12 +50,16 @@ class Integrations(dict[ProviderName, Integration]):
         bus: EventBus,
         *,
         clock: Clock | None = None,
+        quiet_start: time = time(0, 0),
+        quiet_end: time = time(7, 30),
     ) -> None:
         super().__init__()
         self._sessions = session_factory
         self._bus = bus
         self._clock: Clock = clock or SystemClock()
         self._notify: Notify | None = None
+        self._quiet_start = quiet_start
+        self._quiet_end = quiet_end
 
     @property
     def bus(self) -> EventBus:
@@ -90,8 +94,10 @@ class Integrations(dict[ProviderName, Integration]):
                 if row.provider.value not in self:
                     continue
                 user = await repo.get_user(session, row.user_id)
-                if user is None:
+                if user is None or user.status != UserStatus.active:
                     continue
+                if await self._quiet(session, user):
+                    continue  # quiet hours are absolute: it goes out on the first run after
                 try:
                     await self._notify(user, link_copy(user.language, "lost", row.provider.value))
                 except Exception as exc:
@@ -108,6 +114,12 @@ class Integrations(dict[ProviderName, Integration]):
         if told:
             log.info("integration_lost_announced", count=told)
         return told
+
+    async def _quiet(self, session: Any, user: User) -> bool:
+        profile = await repo.get_profile(session, user.id)
+        start = (profile.quiet_start if profile else None) or self._quiet_start
+        end = (profile.quiet_end if profile else None) or self._quiet_end
+        return in_quiet_hours(to_local(self._clock.now(), user.timezone or "UTC"), start, end)
 
     async def sync_user(self, user_id: int, provider: ProviderName) -> int:
         """Sync one user's provider in its own session; returns the number of events published."""
@@ -169,7 +181,13 @@ def build_registry(
 ) -> Integrations:
     """Every provider the server knows. WHOOP and Withings need the Fernet key for tokens; when
     it is missing they are still registered (``connect`` explains) but cannot store tokens."""
-    registry = Integrations(session_factory, bus, clock=clock)
+    registry = Integrations(
+        session_factory,
+        bus,
+        clock=clock,
+        quiet_start=settings.quiet_start,
+        quiet_end=settings.quiet_end,
+    )
     key = settings.token_encryption_key.get_secret_value()
     cipher = TokenCipher(key) if key else None
     registry["apple_health"] = AppleHealthIntegration(settings, clock=clock)

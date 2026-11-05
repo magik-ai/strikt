@@ -114,6 +114,14 @@ def verify_user(
     token: str, *, secret: bytes, now: datetime, max_age_s: int = LINK_MAX_AGE_S
 ) -> int:
     """Return the user id inside a signed link. Raises :class:`LinkError` on any problem."""
+    user_id, _issued = verify_link(token, secret=secret, now=now, max_age_s=max_age_s)
+    return user_id
+
+
+def verify_link(
+    token: str, *, secret: bytes, now: datetime, max_age_s: int = LINK_MAX_AGE_S
+) -> tuple[int, int]:
+    """``(user_id, issued unix time)`` of a signed link. Raises :class:`LinkError`."""
     try:
         payload_b64, mac_b64 = token.split(".", 1)
         payload = _unb64(payload_b64)
@@ -132,7 +140,7 @@ def verify_user(
     age = int(ensure_utc(now).timestamp()) - issued
     if age < -60 or age > max_age_s:
         raise LinkError("link expired")
-    return user_id
+    return user_id, issued
 
 
 def start_url(
@@ -147,7 +155,14 @@ def connect_page_url(
     settings: Settings, provider: ProviderName | str, user_id: int, *, now: datetime
 ) -> str:
     """Our own connect page (a form, for providers without OAuth), signed like a start link."""
-    token = sign_user(user_id, secret=link_secret(settings), now=now)
+    return connect_page_with(
+        settings, provider, sign_user(user_id, secret=link_secret(settings), now=now)
+    )
+
+
+def connect_page_with(settings: Settings, provider: ProviderName | str, token: str) -> str:
+    """The connect page for an already signed token (never re-signed: a link must not be
+    renewable by passing it through another route)."""
     return f"{public_base_url(settings)}/connect/{provider_slug(provider)}?u={token}"
 
 

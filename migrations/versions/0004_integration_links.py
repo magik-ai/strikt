@@ -1,5 +1,7 @@
-"""integration_links (what Strikt created in a provider's account), integrations.notified_at
-and integrations.data
+"""integration_links, integrations.notified_at and integrations.data
+
+What Strikt created in a provider's account (MyFitnessPal foods and diary entries), when the
+user was told a connection broke, and provider state that is not a token.
 
 Revision ID: 0004
 Revises: 0003
@@ -32,6 +34,11 @@ def upgrade() -> None:
     with op.batch_alter_table('integrations', schema=None) as batch_op:
         batch_op.add_column(sa.Column('notified_at', sa.DateTime(timezone=True), nullable=True))
         batch_op.add_column(sa.Column('data', JSON, nullable=True))
+    # connections that died before this release are old news: no wave of "disconnected" messages
+    # on the first sync after the deploy
+    op.execute(
+        "UPDATE integrations SET notified_at = CURRENT_TIMESTAMP WHERE status = 'expired'"
+    )
     op.create_table(
         'integration_links',
         sa.Column('id', sa.BigInteger().with_variant(sa.Integer(), 'sqlite'), autoincrement=True, nullable=False),

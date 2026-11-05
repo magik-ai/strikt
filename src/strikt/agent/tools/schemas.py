@@ -56,6 +56,7 @@ TOOL_NAMES: tuple[str, ...] = (
     "web_research",
     "render_day_card",
     "connect_integration",
+    "disconnect_integration",
     "request_key",
     "set_coaching_intensity",
     "finish_onboarding",
@@ -629,6 +630,16 @@ class ConnectIntegrationInput(ToolInput):
     )
 
 
+class DisconnectIntegrationInput(ToolInput):
+    """Disconnect WHOOP, Withings, Apple Health or MyFitnessPal when the user asks to: the stored
+    login is deleted and syncing stops (for MyFitnessPal: meals are no longer copied there).
+    What was already imported stays here, and entries already in their MFP diary stay there."""
+
+    provider: Literal["whoop", "withings", "apple_health", "myfitnesspal"] = Field(
+        description="Provider."
+    )
+
+
 class RequestKeyInput(ToolInput):
     """Ask the user for an optional third-party key and read their next message as that key.
 
@@ -690,6 +701,7 @@ SCHEMAS: dict[str, type[ToolInput]] = {
     "web_research": WebResearchInput,
     "render_day_card": RenderDayCardInput,
     "connect_integration": ConnectIntegrationInput,
+    "disconnect_integration": DisconnectIntegrationInput,
     "request_key": RequestKeyInput,
     "set_coaching_intensity": SetCoachingIntensityInput,
     "finish_onboarding": FinishOnboardingInput,

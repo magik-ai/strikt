@@ -274,3 +274,27 @@ async def list_unannounced(
         .order_by(Integration.id)
     )
     return list((await session.scalars(stmt)).all())
+
+
+async def fresh_integration(
+    session: AsyncSession, user_id: int, provider: Provider | str
+) -> Integration | None:
+    """The row as the database has it now, even when a long-lived session holds an older copy
+    (another task may have stored new cookies or state in the meantime)."""
+    stmt = (
+        select(Integration)
+        .where(Integration.user_id == user_id, Integration.provider == Provider(provider))
+        .execution_options(populate_existing=True)
+    )
+    return (await session.scalars(stmt.limit(1))).first()
+
+
+async def delete_links(session: AsyncSession, user_id: int, provider: Provider | str) -> int:
+    """Forget everything Strikt created in one provider account (the user switched accounts)."""
+    result = await session.execute(
+        sa.delete(IntegrationLink).where(
+            IntegrationLink.user_id == user_id,
+            IntegrationLink.provider == Provider(provider),
+        )
+    )
+    return _rowcount(result)

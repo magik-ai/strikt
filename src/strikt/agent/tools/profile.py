@@ -284,6 +284,19 @@ async def connect_integration(
     return ok(result)
 
 
+async def disconnect_integration(
+    ctx: ToolContext, args: schemas.DisconnectIntegrationInput
+) -> ToolResult:
+    """Revoke is delete: the tokens (MFP: the login cookies) go, the imported data stays. The
+    record of what Strikt created in MFP stays too, so reconnecting the same account later does
+    not copy those days twice."""
+    removed = await repo.clear_integration(ctx.session, ctx.user_id, args.provider)
+    log.info(
+        "integration_disconnected", user_id=ctx.user_id, provider=args.provider, removed=removed
+    )
+    return ok({"provider": args.provider, "disconnected": removed, "was_connected": removed})
+
+
 async def import_history(ctx: ToolContext, args: schemas.ImportHistoryInput) -> ToolResult:
     if not args.text.strip():
         return fail("import_history: no rows given")

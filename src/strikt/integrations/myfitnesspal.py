@@ -125,6 +125,12 @@ Notify = Callable[[User, str], Awaitable[None]]
 _LOGIN_COOKIE_RE = re.compile(
     r"(?:_mfp_session|remember_me|next-auth\.session-token)\s*=\s*[^;\s'\"]{8,}"
 )
+#: A request to MyFitnessPal copied from the browser (a cURL, a fetch, a header block) carries the
+#: cookies even when the login cookie itself landed in another message.
+_MFP_REQUEST_RE = re.compile(
+    r"(?is)myfitnesspal\.com.*?(?:\bcookie\s*[:=]|\s-b\s|--cookie\b)"
+    r"|(?:\bcookie\s*[:=]|\s-b\s|--cookie\b).*?myfitnesspal\.com"
+)
 _COOKIE_NAME = re.compile(r"^[A-Za-z0-9_.\-]+$")
 _CURL_HEADER = re.compile(r"""(?is)(?:-H|--header)\s+(['"])\s*cookie\s*:\s*(.*?)\1""")
 _CURL_COOKIE = re.compile(r"""(?is)(?:\s-b|--cookie)\s+(['"])(.*?)\1""")
@@ -159,15 +165,33 @@ class MfpEntryRejectedError(MfpError):
 
 
 def looks_like_mfp_cookies(text: str | None) -> bool:
-    """A chat message that carries an MFP login (a cookie header, a cURL, a cookie export)."""
-    return bool(text) and _LOGIN_COOKIE_RE.search(text or "") is not None
+    """A chat message that carries (part of) an MFP login: a cookie header, a cURL, a cookie
+    export, or a piece of a long cURL that Telegram split. Such a message is a secret: it is
+    deleted and never becomes a turn, so it must never reach the model."""
+    if not text:
+        return False
+    if _LOGIN_COOKIE_RE.search(text) is not None:
+        return True
+    if _MFP_REQUEST_RE.search(text) is not None:
+        return True
+    return has_login(parse_cookie_input(text))
+
+
+def _clean(value: str) -> str | None:
+    """A cookie value as RFC 6265 allows it, or None (a smart quote or a non-breaking space
+    from a copy-paste would otherwise make httpx raise instead of MFP saying "invalid")."""
+    value = value.strip().strip("\"\u201c\u201d'")
+    if not value or any(not (33 <= ord(c) <= 126) or c in '",;\\' for c in value):
+        return None
+    return value
 
 
 def _pairs(header: str) -> dict[str, str]:
     cookies: dict[str, str] = {}
     for part in header.split(";"):
-        name, sep, value = part.strip().partition("=")
-        name, value = name.strip(), value.strip().strip('"')
+        name, sep, raw_value = part.strip().partition("=")
+        name = name.strip()
+        value = _clean(raw_value)
         if sep and name and value and _COOKIE_NAME.match(name):
             cookies[name] = value
     return cookies
@@ -188,15 +212,17 @@ def parse_cookie_input(text: str | None) -> dict[str, str]:
             if isinstance(data, dict) and isinstance(data.get("cookies"), list):
                 data = data["cookies"]
             if isinstance(data, list):
-                return {
-                    str(item["name"]): str(item["value"])
-                    for item in data
-                    if isinstance(item, dict)
-                    and isinstance(item.get("name"), str)
-                    and isinstance(item.get("value"), str)
-                    and _COOKIE_NAME.match(item["name"])
-                    and item["value"]
-                }
+                exported: dict[str, str] = {}
+                for item in data:
+                    if not isinstance(item, dict):
+                        continue
+                    name, value = item.get("name"), item.get("value")
+                    if not isinstance(name, str) or not isinstance(value, str):
+                        continue
+                    clean = _clean(value)
+                    if clean and _COOKIE_NAME.match(name):
+                        exported[name] = clean
+                return exported
     for pattern in (_CURL_HEADER, _CURL_COOKIE, _FETCH_COOKIE):
         match = pattern.search(raw)
         if match is not None:
@@ -208,7 +234,8 @@ def parse_cookie_input(text: str | None) -> dict[str, str]:
 
 
 def has_login(cookies: Mapping[str, str]) -> bool:
-    return any(cookies.get(name) for name in LOGIN_COOKIES)
+    """At least one login cookie with a value long enough to be one (``remember_me=1`` is not)."""
+    return any(len(cookies.get(name) or "") >= 8 for name in LOGIN_COOKIES)
 
 
 def _cookie_header(cookies: Mapping[str, str]) -> str:
@@ -263,11 +290,15 @@ class DesiredEntry:
 
     @property
     def food_key(self) -> str:
-        """The custom food: same text and the same numbers is the same food."""
+        """The custom food: the same line (full name, portion, every number) is the same food."""
+        name = " ".join(self.name.split()).casefold()
+        portion = " ".join((self.portion or "").split()).casefold()
+        numbers = (self.kcal, self.protein_g, self.carbs_g, self.fat_g, self.fiber_g)
         parts = [
-            self.description.casefold(),
-            *(f"{v:g}" for v in (self.kcal, self.protein_g, self.carbs_g, self.fat_g)),
-            f"{self.fiber_g:g}",
+            name,
+            portion,
+            *(f"{v:g}" for v in numbers),
+            "" if self.sodium_mg is None else f"{self.sodium_mg:g}",
         ]
         return hashlib.sha256("|".join(parts).encode("utf-8")).hexdigest()[:40]
 
@@ -504,13 +535,14 @@ class MfpApi:
     # --- foods ----------------------------------------------------------------------------
     async def create_food(self, entry: DesiredEntry) -> str:
         """A private custom food whose one serving is exactly this line."""
-        csrf: str | None = None
         response = await self._send("GET", CSRF_URL, headers=self._web_headers())
         self._absorb(response)
-        if response.status_code == 200:
-            body = self._json(response, "csrf")
-            if isinstance(body, dict) and body.get("csrfToken"):
-                csrf = str(body["csrfToken"])
+        body = self._json(response, "csrf") if response.status_code == 200 else None
+        if not isinstance(body, dict) or not body.get("csrfToken"):
+            # a hiccup, not a logout: without the token the POST would get a 403 that looks
+            # exactly like a dead session
+            raise MfpError(f"csrf: no token (HTTP {response.status_code})")
+        csrf = str(body["csrfToken"])
         item = {
             "description": entry.description,
             "brand_name": FOOD_BRAND,
@@ -545,9 +577,11 @@ class MfpApi:
         self._absorb(response)
         if self._blocked(response):
             raise MfpBlockedError("create food: blocked by the firewall")
-        if response.status_code in (401, 403):
-            raise MfpAuthError(f"create food: HTTP {response.status_code}")
+        if response.status_code == 401:
+            raise MfpAuthError("create food: HTTP 401")
         if response.status_code not in (200, 201):
+            # 403 included: with a fresh CSRF token it is a refusal, not proof of a logout (a
+            # dead session fails at auth_token, which the next run calls anyway)
             raise MfpError(f"create food: HTTP {response.status_code}")
         body = self._json(response, "create food")
         food: Any = body[0] if isinstance(body, list) and body else body
@@ -635,6 +669,7 @@ class MyFitnessPalIntegration:
         self._locks: dict[int, asyncio.Lock] = {}
         self._dirty: dict[tuple[int, date], bool] = {}
         self._tasks: set[asyncio.Task[None]] = set()
+        self._sleeping: set[asyncio.Task[Any]] = set()
         #: Tells the user something in Telegram (set by the app: ``Integrations.set_notifier``).
         self.notify: Notify | None = None
 
@@ -649,6 +684,12 @@ class MyFitnessPalIntegration:
             url=connect_page_url(self._settings, PROVIDER, user.id, now=self._clock.now()),
             instructions=t(user.language, "mfp.connect"),
         )
+
+    async def link_used(self, session: AsyncSession, user_id: int, issued: int) -> bool:
+        """A connect link issued before the last successful connect no longer works."""
+        row = await store.fresh_integration(session, user_id, PROVIDER)
+        linked_at = (row.data or {}).get("linked_at") if row is not None else None
+        return isinstance(linked_at, int) and issued <= linked_at
 
     def connect_form(self, lang: str | None) -> ConnectForm:
         return ConnectForm(
@@ -686,14 +727,29 @@ class MyFitnessPalIntegration:
             except MfpError as exc:
                 log.warning("mfp_connect_unchecked", user_id=user.id, error=str(exc))
                 unchecked = True
-        now = self._clock.now()
-        row = await self._store(session, user.id, api, now=now)
         today = await self._today(session, user)
-        data = dict(row.data or {})
-        data.setdefault("mirror_from", (today - timedelta(days=BACKFILL_DAYS)).isoformat())
-        data.setdefault("connected_on", today.isoformat())
-        row.data = data
-        await session.commit()
+        async with self._lock(user.id):  # never interleaved with a mirror's cookie write
+            before = await store.fresh_integration(session, user.id, PROVIDER)
+            previous = before.external_user_id if before is not None else None
+            if previous and api.user_id and previous != api.user_id:
+                # another MFP account: what Strikt made lives in the old one
+                dropped = await store.delete_links(session, user.id, PROVIDER)
+                log.info("mfp_account_changed", user_id=user.id, links_dropped=dropped)
+                data: dict[str, Any] = {}
+            else:
+                data = dict(before.data or {}) if before is not None else {}
+            now = self._clock.now()
+            row = await self._store(session, user.id, api, now=now)
+            start = today - timedelta(days=BACKFILL_DAYS)
+            known = _parse_day(data.get("mirror_from"))
+            data["mirror_from"] = min(known, start).isoformat() if known else start.isoformat()
+            # days before this connect that already hold food in MFP are the user's own (logged
+            # by hand while the connection was down, say): the backfill leaves them alone
+            data["connected_on"] = today.isoformat()
+            data["linked_at"] = int(now.timestamp())
+            data.pop("keepalive_at", None)
+            row.data = data
+            await session.commit()
         days = [today - timedelta(days=offset) for offset in range(BACKFILL_DAYS, -1, -1)]
         self._spawn(self._backfill(user.id, days))
         log.info(
@@ -737,10 +793,16 @@ class MyFitnessPalIntegration:
         task.add_done_callback(self._tasks.discard)
 
     async def aclose(self) -> None:
-        """Cancel the mirrors still waiting (shutdown); the 30-minute sync redoes them."""
+        """Shutdown: cancel the mirrors still waiting out their delay (the 30-minute sync redoes
+        them) and give the ones already talking to MFP a few seconds to finish. One cut short
+        anyway is safe: the next run adopts an entry whose answer it never read."""
         for task in list(self._tasks):
-            task.cancel()
-        await asyncio.gather(*list(self._tasks), return_exceptions=True)
+            if task in self._sleeping:
+                task.cancel()
+        with contextlib.suppress(TimeoutError):
+            await asyncio.wait_for(
+                asyncio.gather(*list(self._tasks), return_exceptions=True), timeout=5.0
+            )
 
     async def drain(self) -> None:
         """Wait for every scheduled mirror (tests, shutdown)."""
@@ -759,9 +821,16 @@ class MyFitnessPalIntegration:
         self._spawn(self._debounced(key))
 
     async def _debounced(self, key: tuple[int, date]) -> None:
+        task = asyncio.current_task()
         try:
             while True:
-                await asyncio.sleep(self._delay)
+                if task is not None:
+                    self._sleeping.add(task)
+                try:
+                    await asyncio.sleep(self._delay)
+                finally:
+                    if task is not None:
+                        self._sleeping.discard(task)
                 self._dirty[key] = False
                 await self._mirror_in_own_session(*key)
                 if not self._dirty.get(key):
@@ -816,7 +885,8 @@ class MyFitnessPalIntegration:
     # --- sync (the scheduler's 30-minute job) ---------------------------------------------
     async def sync(self, session: AsyncSession, user: User, since: datetime | None) -> list[Event]:
         """Reconcile the last 14 days and keep the session warm. Publishes no events."""
-        row = await repo.get_integration(session, user.id, PROVIDER)
+        user_id = user.id
+        row = await repo.get_integration(session, user_id, PROVIDER)
         if row is None or row.status != IntegrationStatus.connected:
             return []
         today = await self._today(session, user)
@@ -826,33 +896,45 @@ class MyFitnessPalIntegration:
             while day <= today:
                 # today and yesterday are read back even when nothing changed here, so an entry
                 # removed in MFP by hand is put back (the coach's list is the source of truth)
-                await self.mirror_day(session, user, day, verify=day >= today - timedelta(days=1))
+                try:
+                    await self.mirror_day(
+                        session, user, day, verify=day >= today - timedelta(days=1)
+                    )
+                except MfpAuthError:
+                    raise
+                except MfpError as exc:  # one bad day must not hold up the others
+                    # an HTTP failure, not a database one: what was flushed is still true (a
+                    # vanished entry's link removed), so no rollback that would expire ``user``
+                    log.warning(
+                        "mfp_sync_failed", user_id=user_id, day=day.isoformat(), error=str(exc)
+                    )
                 day += timedelta(days=1)
             await self._keepalive(session, user)
         except MfpAuthError:
-            await self._mark_expired(session, user.id)
+            await self._mark_expired(session, user_id)
         except MfpError as exc:
-            log.warning("mfp_sync_failed", user_id=user.id, day=day.isoformat(), error=str(exc))
+            log.warning("mfp_keepalive_failed", user_id=user_id, error=str(exc))
         return []
 
     async def _keepalive(self, session: AsyncSession, user: User) -> None:
         """Every ``KEEPALIVE`` hours trade the cookies again and touch the NextAuth session, so
         MFP keeps re-issuing them; the bearer token alone would let the login quietly lapse."""
-        row = await repo.get_integration(session, user.id, PROVIDER)
-        if row is None or row.status != IntegrationStatus.connected:
-            return
-        data = dict(row.data or {})
         now = self._clock.now()
-        last = _parse_instant(data.get("keepalive_at"))
-        if last is not None and now - last < KEEPALIVE:
-            return
-        async with self._lock(user.id), self._client_factory() as http:
-            api = self._api_for(row, http)
-            await api.authenticate()
-            await api.keepalive()
+        async with self._lock(user.id):
+            row = await store.fresh_integration(session, user.id, PROVIDER)
+            if row is None or row.status != IntegrationStatus.connected:
+                return
+            data = dict(row.data or {})
+            last = _parse_instant(data.get("keepalive_at"))
+            if last is not None and now - last < KEEPALIVE:
+                return
+            async with self._client_factory() as http:
+                api = self._api_for(row, http)
+                await api.authenticate()
+                await api.keepalive()
             await self._store(session, user.id, api, now=now)
-        row.data = {**data, "keepalive_at": now.isoformat()}
-        await session.commit()
+            row.data = {**data, "keepalive_at": now.isoformat()}
+            await session.commit()
 
     def _api_for(self, row: Integration, http: httpx.AsyncClient) -> MfpApi:
         tokens = repo.integration_tokens(self._cipher, row)
@@ -885,12 +967,13 @@ class MyFitnessPalIntegration:
         Without ``verify`` a day whose list still matches what was written is left alone with no
         call at all; ``verify`` reads the diary anyway, so an entry deleted in MFP comes back.
 
-        Commits after every write on MFP's side, so a failure halfway never forgets an entry
-        that exists there (the next run would add it twice). Raises ``MfpAuthError`` when the
+        Commits after every write on MFP's side; an entry whose answer was lost (MFP stored it,
+        the reply never came) is recognised by its Strikt food on the next run and adopted, so
+        it is never added twice. Raises ``MfpAuthError`` when the
         session is gone and ``MfpError`` on anything else; the caller decides what that means.
         """
         async with self._lock(user.id):
-            row = await repo.get_integration(session, user.id, PROVIDER)
+            row = await store.fresh_integration(session, user.id, PROVIDER)
             if row is None or row.status != IntegrationStatus.connected:
                 return MirrorResult(status="not_connected")
             if day < _mirror_from(row, day):
@@ -949,7 +1032,8 @@ class MyFitnessPalIntegration:
                 live.append(link)
             else:  # deleted in MFP by hand: forget it, the list below puts it back
                 await store.delete_link(session, user.id, link.id)
-        ours = {link.external_id for link in links}
+        live.extend(await self._adopt(session, user, day, remote, links))
+        ours = {link.external_id for link in live}
         foreign = [entry for entry in remote if str(entry["id"]) not in ours]
         data = dict(row.data or {})
         connected_on = _parse_day(data.get("connected_on"))
@@ -990,6 +1074,52 @@ class MyFitnessPalIntegration:
         if not to_add and not to_remove:
             return MirrorResult(status="unchanged")
         return MirrorResult(status="mirrored", added=len(to_add), removed=len(to_remove))
+
+    async def _adopt(
+        self,
+        session: AsyncSession,
+        user: User,
+        day: date,
+        remote: list[dict[str, Any]],
+        links: list[IntegrationLink],
+    ) -> list[IntegrationLink]:
+        """Entries made from a Strikt food that no link names: ours, whose answer never came
+        back (a timeout after MFP stored it, a shutdown mid-call, a listing that briefly left it
+        out). They are linked now, so the matching below keeps the one the list needs and
+        deletes any surplus: a write is never left behind as a permanent duplicate."""
+        food_keys = {
+            link.external_id: link.key
+            for link in await store.list_links(session, user.id, PROVIDER, LinkKind.food)
+        }
+        linked = {link.external_id for link in links}
+        adopted: list[IntegrationLink] = []
+        for entry in remote:
+            entry_id = str(entry["id"])
+            raw_food = entry.get("food")
+            food_id = str(raw_food.get("id") or "") if isinstance(raw_food, dict) else ""
+            food_key = food_keys.get(food_id)
+            if entry_id in linked or food_key is None:
+                continue
+            meal = str(entry.get("meal_name") or "Snacks")
+            adopted.append(
+                await store.add_link(
+                    session,
+                    user.id,
+                    PROVIDER,
+                    LinkKind.entry,
+                    key=f"{meal}:{food_key}",
+                    external_id=entry_id,
+                    day=day,
+                    now=self._clock.now(),
+                    data={"meal": meal, "adopted": True},
+                )
+            )
+        if adopted:
+            await session.commit()
+            log.info(
+                "mfp_entries_adopted", user_id=user.id, day=day.isoformat(), count=len(adopted)
+            )
+        return adopted
 
     async def _add(
         self, session: AsyncSession, user: User, api: MfpApi, day: date, entry: DesiredEntry

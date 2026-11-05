@@ -7,7 +7,7 @@ for a bearer token, the CSRF token, a custom food, the food's version, the v2 di
 from __future__ import annotations
 
 import json
-from datetime import date, datetime, timedelta
+from datetime import UTC, date, datetime, timedelta
 from itertools import count
 from typing import Any
 from urllib.parse import urlencode
@@ -28,11 +28,13 @@ from strikt.db.models import (
     ConversationTurn,
     Integration,
     IntegrationStatus,
+    LinkKind,
     MealSlot,
     User,
+    UserStatus,
 )
 from strikt.events import DayStateChanged, EventBus
-from strikt.integrations import myfitnesspal as mfp
+from strikt.integrations import myfitnesspal as mfp, store
 from strikt.integrations.base import link_copy
 from strikt.integrations.myfitnesspal import MyFitnessPalIntegration
 from strikt.integrations.oauth import connect_page_url
@@ -727,3 +729,308 @@ async def test_cookies_pasted_into_the_chat_are_deleted_stored_and_never_a_turn(
     integration = registry["myfitnesspal"]
     assert isinstance(integration, MyFitnessPalIntegration)
     await integration.drain()
+
+
+# ------------------------------------------------------------------ review findings (#18)
+
+
+async def test_an_entry_whose_answer_was_lost_is_adopted_not_doubled(
+    integration: MyFitnessPalIntegration,
+    fake: FakeMfp,
+    session: AsyncSession,
+    user: User,
+    clock: FakeClock,
+) -> None:
+    today = _today(clock, user)
+    await _connect(integration, session, user)
+    await _log(
+        session,
+        user,
+        today,
+        MealSlot.lunch,
+        ("рис", "200 г", 260.0, 5.0, 57.0, 0.6, 0.8),
+        clock=clock,
+    )
+    original = fake.add_entry
+
+    def stored_then_failed(request: httpx.Request) -> httpx.Response:
+        original(request)  # MFP keeps it...
+        return httpx.Response(504, text="gateway timeout")  # ...and the answer never arrives
+
+    fake.router.routes = [
+        (m, path, stored_then_failed if (m, path) == ("POST", mfp.DIARY_URL) else h)
+        for m, path, h in fake.router.routes
+    ]
+    with pytest.raises(mfp.MfpError):
+        await integration.mirror_day(session, user, today)
+    assert len(fake.day_entries(today)) == 1
+    fake.router.routes = [
+        (m, path, original if (m, path) == ("POST", mfp.DIARY_URL) else h)
+        for m, path, h in fake.router.routes
+    ]
+    result = await integration.mirror_day(session, user, today)
+    assert result.status == "unchanged" and len(fake.day_entries(today)) == 1  # adopted
+    # a surplus copy of a Strikt food (a listing that briefly left one out) is removed, too
+    entry = fake.day_entries(today)[0]
+    fake.entries["dup-1"] = {**entry, "id": "dup-1"}
+    result = await integration.mirror_day(session, user, today, verify=True)
+    assert result.removed == 1 and len(fake.day_entries(today)) == 1
+
+
+async def test_a_reconnect_leaves_days_logged_by_hand_while_it_was_down(
+    integration: MyFitnessPalIntegration,
+    fake: FakeMfp,
+    session: AsyncSession,
+    user: User,
+    clock: FakeClock,
+) -> None:
+    await _connect(integration, session, user)
+    fake.valid.clear()  # the session dies; the user logs in MFP by hand meanwhile
+    clock.advance(timedelta(days=4))
+    gap = _today(clock, user) - timedelta(days=1)
+    await _log(
+        session, user, gap, MealSlot.lunch, ("суп", None, 300.0, 15.0, 30.0, 10.0, 5.0), clock=clock
+    )
+    fake.entries["hand-1"] = {
+        "id": "hand-1",
+        "type": "food_entry",
+        "date": gap.isoformat(),
+        "meal_name": "Lunch",
+        "food": {"id": "db-9", "description": "soup"},
+    }
+    fake.valid.add(GOOD)
+    await _connect(integration, session, user)
+    assert [e["id"] for e in fake.day_entries(gap)] == ["hand-1"]
+
+
+async def test_another_mfp_account_starts_from_a_clean_slate(
+    integration: MyFitnessPalIntegration,
+    fake: FakeMfp,
+    session: AsyncSession,
+    user: User,
+    clock: FakeClock,
+) -> None:
+    today = _today(clock, user)
+    await _log(
+        session,
+        user,
+        today,
+        MealSlot.lunch,
+        ("рис", "200 г", 260.0, 5.0, 57.0, 0.6, 0.8),
+        clock=clock,
+    )
+    await _connect(integration, session, user)
+    assert len(await store.list_links(session, user.id, "myfitnesspal", LinkKind.food)) == 1
+    original = fake.auth_token
+
+    def other_account(request: httpx.Request) -> httpx.Response:
+        response = original(request)
+        if response.status_code == 200:
+            return httpx.Response(
+                200, json={"access_token": "bearer-1", "user_id": "888", "expires_in": 86400}
+            )
+        return response
+
+    fake.router.routes = [
+        (m, path, other_account if path == mfp.AUTH_TOKEN_URL else h)
+        for m, path, h in fake.router.routes
+    ]
+    with capture_logs() as logs:
+        await integration.submit_cookies(session, user, CURL)
+    assert any(e["event"] == "mfp_account_changed" and e["links_dropped"] == 2 for e in logs)
+
+
+async def test_a_csrf_hiccup_is_not_a_logout(
+    integration: MyFitnessPalIntegration,
+    fake: FakeMfp,
+    session: AsyncSession,
+    user: User,
+    clock: FakeClock,
+) -> None:
+    today = _today(clock, user)
+    await _connect(integration, session, user)
+    fake.router.routes = [
+        (m, path, (lambda _r: httpx.Response(503)) if path == mfp.CSRF_URL else h)
+        for m, path, h in fake.router.routes
+    ]
+    await _log(
+        session,
+        user,
+        today,
+        MealSlot.snack,
+        ("яблоко", None, 80.0, 0.4, 19.0, 0.3, 3.6),
+        clock=clock,
+    )
+    await integration.sync(session, user, None)
+    session.expunge_all()
+    row = await repo.get_integration(session, user.id, "myfitnesspal")
+    assert row is not None and row.status == IntegrationStatus.connected
+
+
+async def test_one_day_mfp_refuses_does_not_hold_up_the_others(
+    integration: MyFitnessPalIntegration,
+    fake: FakeMfp,
+    session: AsyncSession,
+    user: User,
+    clock: FakeClock,
+) -> None:
+    today = _today(clock, user)
+    bad = today - timedelta(days=1)
+    await _connect(integration, session, user)
+    await _log(
+        session, user, bad, MealSlot.lunch, ("суп", None, 300.0, 15.0, 30.0, 10.0, 5.0), clock=clock
+    )
+    await _log(
+        session,
+        user,
+        today,
+        MealSlot.lunch,
+        ("рис", "200 г", 260.0, 5.0, 57.0, 0.6, 0.8),
+        clock=clock,
+    )
+    original = fake.add_entry
+
+    def refuse_one_day(request: httpx.Request) -> httpx.Response:
+        if json.loads(request.content)["items"][0]["date"] == bad.isoformat():
+            return httpx.Response(500)
+        return original(request)
+
+    fake.router.routes = [
+        (m, path, refuse_one_day if (m, path) == ("POST", mfp.DIARY_URL) else h)
+        for m, path, h in fake.router.routes
+    ]
+    await integration.sync(session, user, None)
+    assert fake.names(today) == [("Lunch", "рис (200 г)")] and fake.day_entries(bad) == []
+
+
+async def test_a_json_cookie_export_in_the_chat_never_reaches_the_model() -> None:
+    export = json.dumps(
+        [{"name": "_mfp_session", "value": GOOD, "domain": ".myfitnesspal.com", "path": "/"}]
+    )
+    assert mfp.looks_like_mfp_cookies(export)
+    tail = "-H 'cookie: _ga=GA1.2.3; _gid=GA1.2.4' --compressed 'https://www.myfitnesspal.com/x'"
+    assert mfp.looks_like_mfp_cookies(tail)  # the second half of a split cURL is a secret too
+    assert mfp.parse_cookie_input(f"_mfp_session=“{GOOD}”; bad=a b") == {"_mfp_session": GOOD}
+
+
+def test_food_key_counts_sodium_and_the_whole_name() -> None:
+    base = mfp.DesiredEntry(
+        meal="Lunch",
+        name="x" * 130,
+        portion=None,
+        kcal=100,
+        protein_g=1,
+        carbs_g=1,
+        fat_g=1,
+        fiber_g=0,
+        sodium_mg=200,
+    )
+    assert mfp.DesiredEntry(**{**base.__dict__, "sodium_mg": 900}).food_key != base.food_key
+    longer = mfp.DesiredEntry(**{**base.__dict__, "name": "x" * 130 + "y"})
+    assert longer.description == base.description and longer.food_key != base.food_key
+
+
+async def test_a_connect_link_works_once_and_is_never_renewed(
+    page_client: Any, user: User, clock: FakeClock, mfp_settings: Any
+) -> None:
+    url = connect_page_url(mfp_settings, "myfitnesspal", user.id, now=clock.now())
+    token = url.split("u=", 1)[1]
+    start = await page_client.get(f"/oauth/myfitnesspal/start?u={token}", allow_redirects=False)
+    assert start.headers["Location"].endswith(f"/connect/myfitnesspal?u={token}")  # not re-signed
+    clock.advance(timedelta(seconds=5))
+    form = urlencode({"u": token, "cookies": CURL})
+    headers = {"content-type": "application/x-www-form-urlencoded"}
+    assert (
+        await page_client.post("/connect/myfitnesspal", data=form, headers=headers)
+    ).status == 200
+    assert (await page_client.get(f"/connect/myfitnesspal?u={token}")).status == 400
+    assert (
+        await page_client.post("/connect/myfitnesspal", data=form, headers=headers)
+    ).status == 400
+    clock.advance(timedelta(seconds=5))
+    fresh = connect_page_url(mfp_settings, "myfitnesspal", user.id, now=clock.now())
+    assert (await page_client.get(fresh.removeprefix("https://coach.example.com"))).status == 200
+
+
+async def test_the_lost_notice_waits_out_quiet_hours_and_skips_paused_users(
+    engine: AsyncEngine,
+    fake: FakeMfp,
+    session: AsyncSession,
+    user: User,
+    clock: FakeClock,
+    mfp_settings: Any,
+) -> None:
+    registry = build_registry(
+        mfp_settings,
+        make_session_factory(engine),
+        EventBus(),
+        clock=clock,
+        client_factory=fake.router.client_factory(),
+        mirror_delay_s=0,
+    )
+    told: list[str] = []
+
+    async def notify(_user: User, text: str) -> None:
+        told.append(text)
+
+    registry.set_notifier(notify)
+    await repo.set_integration_tokens(
+        session,
+        TokenCipher(mfp_settings.token_encryption_key.get_secret_value()),
+        user.id,
+        "whoop",
+        access_token="a",
+        refresh_token="r",
+        expires_at=clock.now(),
+        now=clock.now(),
+    )
+    await repo.set_integration_status(session, user.id, "whoop", IntegrationStatus.expired)
+    await session.commit()
+    clock.set(datetime(2026, 9, 3, 23, 30, tzinfo=UTC))  # 03:30 in Dubai
+    assert await registry.announce_broken() == 0 and told == []
+    clock.set(datetime(2026, 9, 4, 4, 0, tzinfo=UTC))  # 08:00 in Dubai
+    user.status = UserStatus.paused
+    await session.commit()
+    assert await registry.announce_broken() == 0
+    user.status = UserStatus.active
+    await session.commit()
+    assert await registry.announce_broken() == 1
+    assert told == [link_copy("ru", "lost", "whoop")]
+
+
+async def test_disconnect_stops_the_mirror_and_keeps_what_was_made(
+    tool_ctx: Any,
+    integration: MyFitnessPalIntegration,
+    fake: FakeMfp,
+    session: AsyncSession,
+    user: User,
+    clock: FakeClock,
+) -> None:
+    from strikt.agent.tools import profile as profile_tools, schemas
+
+    today = _today(clock, user)
+    await _log(
+        session,
+        user,
+        today,
+        MealSlot.lunch,
+        ("рис", "200 г", 260.0, 5.0, 57.0, 0.6, 0.8),
+        clock=clock,
+    )
+    await _connect(integration, session, user)
+    result = await profile_tools.disconnect_integration(
+        tool_ctx, schemas.DisconnectIntegrationInput(provider="myfitnesspal")
+    )
+    await session.commit()
+    assert not result.is_error
+    assert await repo.get_integration(session, user.id, "myfitnesspal") is None
+    await _log(
+        session,
+        user,
+        today,
+        MealSlot.dinner,
+        ("стейк", None, 500.0, 60.0, 0.0, 28.0, 0.0),
+        clock=clock,
+    )
+    assert (await integration.mirror_day(session, user, today)).status == "not_connected"
+    assert fake.names(today) == [("Lunch", "рис (200 г)")]
