@@ -38,6 +38,7 @@ def _handlers() -> dict[str, Handler]:
         "web_research": research.web_research,
         "render_day_card": state.render_day_card,
         "connect_integration": profile.connect_integration,
+        "disconnect_integration": profile.disconnect_integration,
         "request_key": profile.request_key,
         "set_coaching_intensity": profile.set_coaching_intensity,
         "finish_onboarding": profile.finish_onboarding,

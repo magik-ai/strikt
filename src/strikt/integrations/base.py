@@ -15,8 +15,17 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from strikt.db.models import User
 from strikt.events import Event
+from strikt.telegram.copy import t
 
-ProviderName = Literal["whoop", "withings", "apple_health"]
+ProviderName = Literal["whoop", "withings", "apple_health", "myfitnesspal"]
+
+#: How each provider is written in copy the user reads.
+PROVIDER_NAMES: dict[str, str] = {
+    "whoop": "WHOOP",
+    "withings": "Withings",
+    "apple_health": "Apple Health",
+    "myfitnesspal": "MyFitnessPal",
+}
 
 
 @dataclass(frozen=True, kw_only=True)
@@ -44,10 +53,16 @@ class ConnectInfo:
     """What to show the user when they ask to connect a provider."""
 
     provider: ProviderName
-    kind: Literal["oauth", "webhook", "instructions"]
+    kind: Literal["oauth", "webhook", "instructions", "form"]
     url: str | None = None
     instructions: str = ""
     extra: dict[str, Any] = field(default_factory=dict)
+
+
+def link_copy(lang: str | None, key: str, provider: str, **kwargs: Any) -> str:
+    """A ``link.*`` string (connect, denied, expired, failed, lost…) in the user's language,
+    with the provider's display name filled in. ``lang=None`` (the user is unknown) is English."""
+    return t(lang, f"link.{key}", provider=PROVIDER_NAMES.get(provider, provider), **kwargs)
 
 
 class Integration(Protocol):

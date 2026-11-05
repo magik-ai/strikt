@@ -108,6 +108,25 @@
     "bot.description": "Strikt zapisuje jedzenie, treningi, sen i pomiary z jednego czatu na Telegramie. Wyślij zdjęcie, zrzut ekranu, głosówkę albo tekst: w odpowiedzi kcal, białko, węglowodany, tłuszcz i błonnik dla każdej pozycji, dzień do tej pory i to, co zostało. Karta dnia wisi przypięta i zmienia się w miejscu. Kiedy milkniesz, pisze pierwszy: fakt, potem wzór z twoich danych, potem polecenie z terminem. Dzień kończy werdykt. Bez powitań, bez emoji, bez pochwał.",
     "check.head": "Wczoraj zapisane:",
     "check.tail": "Razem: {total}. Zgadza się? Jeśli czegoś brakuje albo jest błąd, napisz, poprawię.",
-    "check.macros": "{kcal} kcal · B {p} · W {c} · T {f} · błonnik {fib}"
+    "check.macros": "{kcal} kcal · B {p} · W {c} · T {f} · błonnik {fib}",
+    "link.connect": "Otwórz link, zaloguj się do {provider} i zezwól na dostęp.\nPotem dane będą przychodzić same.",
+    "link.not_configured": "{provider} nie jest jeszcze skonfigurowany na tym serwerze: operator musi dodać klucze aplikacji.",
+    "link.denied": "Nie udzielono dostępu do {provider}. Napisz „połącz {provider}”, gdy zechcesz spróbować ponownie.",
+    "link.expired": "Ten link {provider} wygasł albo został już użyty. Poproś mnie o nowy w Telegramie.",
+    "link.failed": "{provider} nie przyjął logowania. Poproś mnie o nowy link w Telegramie.",
+    "link.lost": "{provider} się rozłączył: logowanie wygasło albo zostało cofnięte.\nNapisz „połącz {provider}”, a wyślę nowy link.",
+    "link.back": "Możesz zamknąć tę stronę i wrócić do Telegrama.",
+    "whoop.connected": "WHOOP połączony. Z ostatnich 7 dni: treningi {workouts}, sny {sleeps}, regeneracje {recoveries}.\nNowe będą przychodzić same.",
+    "withings.connected": "Withings połączony. Jest {count} pomiarów z ostatnich 30 dni.\nNowe będą przychodzić same.",
+    "apple.not_oauth": "Apple Health łączy się przez osobisty link, bez logowania. Poproś mnie o niego w Telegramie.",
+    "mfp.connect": "Otwórz link na komputerze, na którym jesteś zalogowany w myfitnesspal.com.\nPokazuje, jak skopiować logowanie z przeglądarki. Potem każdy posiłek zapisany tutaj trafi do MyFitnessPal.",
+    "mfp.connected": "MyFitnessPal połączony: każdy posiłek zapisany tutaj trafia teraz także tam.\nKopiuję teraz dzisiaj i ostatnie {count} dni.",
+    "mfp.skipped": "Nie ruszałem, mają już jedzenie w MyFitnessPal: {dates}.",
+    "mfp.invalid": "MyFitnessPal nie przyjął tego logowania: ciasteczka wygasły albo są niepełne.\nZaloguj się ponownie na myfitnesspal.com i skopiuj je jeszcze raz.",
+    "mfp.unchecked": "Zapisane, ale MyFitnessPal nie odpowiedział na sprawdzenie. Spróbuję ponownie w ciągu pół godziny.",
+    "mfp.delete_it": "Telegram nie pozwolił mi usunąć wiadomości z twoimi ciasteczkami.\nUsuń ją sam: działa jak logowanie.",
+    "mfp.page.title": "Połącz MyFitnessPal",
+    "mfp.page.steps": "1. Na komputerze otwórz myfitnesspal.com w Chrome i zaloguj się.\n2. Naciśnij F12 (na Macu: Cmd+Option+I), otwórz kartę Network i odśwież stronę.\n3. Kliknij prawym przyciskiem pierwsze żądanie (www.myfitnesspal.com): Copy, potem Copy as cURL (w Windows: Copy as cURL (bash)).\n4. Wklej poniżej i naciśnij przycisk.\nZapisuję tylko ciasteczka logowania, zaszyfrowane, i tylko do zapisywania twojego dziennika jedzenia.",
+    "mfp.page.button": "Połącz"
   }
 }

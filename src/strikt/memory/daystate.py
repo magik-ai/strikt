@@ -11,7 +11,7 @@ and the greeting use.
 from __future__ import annotations
 
 from datetime import date, datetime, timedelta
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 
 import structlog
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -146,6 +146,13 @@ def sleep_view(row: Sleep) -> SleepView:
     )
 
 
+def _cycle_number(raw: Any, key: str) -> float | None:
+    """A number from the WHOOP cycle a recovery row carries (``raw["cycle"]``), if any."""
+    cycle = raw.get("cycle") if isinstance(raw, dict) else None
+    value = cycle.get(key) if isinstance(cycle, dict) else None
+    return float(value) if isinstance(value, int | float) and not isinstance(value, bool) else None
+
+
 def sum_meals(meals: list[Meal]) -> DayTotals:
     total = Macros.zero()
     items = 0
@@ -218,6 +225,8 @@ class DayStateBuilder:
                     rhr=recovery.rhr,
                     hrv_ms=recovery.hrv_ms,
                     spo2=recovery.spo2,
+                    day_strain=_cycle_number(recovery.raw, "strain"),
+                    day_kcal=_cycle_number(recovery.raw, "kcal"),
                 )
                 if recovery
                 else None
@@ -378,6 +387,10 @@ def render_context(state: DayState, lang: str | None, *, tz: str = "UTC") -> str
             bits.append(f"hrv {_n(r.hrv_ms)} ms")
         if r.spo2 is not None:
             bits.append(f"spo2 {_n(r.spo2)}%")
+        if r.day_strain is not None:
+            bits.append(f"day strain {r.day_strain:.1f}")
+        if r.day_kcal is not None:
+            bits.append(f"{_n(r.day_kcal)} kcal burned")
         if bits:
             tail.append("recovery: " + " · ".join(bits))
     if state.measurements_due:

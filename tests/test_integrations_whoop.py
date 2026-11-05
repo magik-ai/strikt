@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import contextlib
 import json
 from datetime import UTC, date, datetime, timedelta
 from typing import Any
@@ -365,14 +366,25 @@ async def test_sync_paginates_maps_and_dedupes(
     assert row is not None
     assert row.last_sync_at is not None
 
-    # a second sync re-fetches the same records: rows are updated, not duplicated
+    # a second sync re-fetches the same records: rows are updated, not duplicated; they are
+    # published again (a nudge skipped for quiet hours needs the second chance), marked unchanged,
+    # and the engine's one-message-per-window keeps the coach from repeating itself
     events2 = await integration.sync(session, user, NOW - timedelta(days=7))
     await session.commit()
     assert len(events2) == 4
-    assert all(e.raw["created"] is False for e in events2)
+    assert all(e.raw["created"] is False and e.raw["changed"] is False for e in events2)
     rows_after = (await session.scalars(select(Workout).where(Workout.user_id == user.id))).all()
     assert len(rows_after) == 2
     assert len((await session.scalars(select(Recovery))).all()) == 1
+
+    # a rescored workout (WHOOP bumps updated_at) is news again, and only that one
+    rescored = {**second, "updated_at": "2026-09-02T18:00:00.000Z"}
+    router3 = make_router(workouts_pages=[[rescored], [WHOOP_WORKOUT]])
+    events3 = await make_integration(router3, settings, clock).sync(
+        session, user, NOW - timedelta(days=7)
+    )
+    changed = [(type(e).__name__, e.raw["created"]) for e in events3 if e.raw["changed"]]
+    assert changed == [("WorkoutEvent", False)]
 
 
 async def test_sync_refreshes_expired_token_and_rotates_refresh_token(
@@ -639,3 +651,28 @@ def test_signature_known_answer_vector() -> None:
     assert independent == expected
     assert whoop.compute_signature("whoop-secret", ts, body) == expected
     assert whoop.compute_signature("whoop-secret", ts, body + b" ") != expected
+
+
+async def test_a_refresh_racing_a_disconnect_never_brings_the_tokens_back(
+    session: AsyncSession, user: User, clock: FakeClock
+) -> None:
+    settings = make_settings()
+    cipher = TokenCipher(settings.token_encryption_key.get_secret_value())
+    await seed_tokens(session, cipher, user, expires_at=NOW - timedelta(minutes=1))
+    router = make_router()
+
+    def refresh_after_disconnect(_request: httpx.Request) -> httpx.Response:
+        return httpx.Response(
+            200, json={"access_token": "new", "refresh_token": "new-r", "expires_in": 3600}
+        )
+
+    router.add("POST", whoop.TOKEN_URL, refresh_after_disconnect)
+    integration = make_integration(router, settings, clock)
+    row = await repo.get_integration(session, user.id, "whoop")
+    assert row is not None
+    await repo.clear_integration(session, user.id, "whoop")  # "disconnect WHOOP"
+    async with make_integration(router, settings, clock)._client_factory() as client:
+        with contextlib.suppress(whoop.WhoopAuthError):
+            await integration._refresh(session, row, client)
+    await session.commit()
+    assert await repo.get_integration(session, user.id, "whoop") is None

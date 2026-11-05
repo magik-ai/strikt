@@ -45,7 +45,7 @@ def _walk(node: Any) -> list[dict[str, Any]]:
 def test_every_plan_tool_is_registered(registry: Registry) -> None:
     assert registry.names() == sorted(TOOL_NAMES)
     assert set(SCHEMAS) == set(TOOL_NAMES)
-    assert len(registry) == 30
+    assert len(registry) == 31
 
 
 def test_definitions_are_sorted_strict_and_closed(registry: Registry) -> None:

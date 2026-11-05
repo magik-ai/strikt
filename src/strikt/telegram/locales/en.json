@@ -110,6 +110,25 @@
     "bot.description": "Strikt logs food, training, sleep and measurements from one Telegram chat. Send a photo, a screenshot, a voice note or text; the reply is kcal, protein, carbs, fat and fiber per item, the day so far and what is left. The Today card stays pinned and is edited in place. When you go quiet it writes first: the fact, then the pattern from your own data, then an instruction with a deadline. The day closes with a verdict. No greetings, no emoji, no praise. Invite-only.",
     "check.head": "Yesterday's log:",
     "check.tail": "Total: {total}. Is that right? If something is wrong or missing, tell me and I'll fix it.",
-    "check.macros": "{kcal} kcal · P {p} · C {c} · F {f} · fiber {fib}"
+    "check.macros": "{kcal} kcal · P {p} · C {c} · F {f} · fiber {fib}",
+    "link.connect": "Open the link, log in to {provider} and allow access.\nAfter that the data arrives on its own.",
+    "link.not_configured": "{provider} is not set up on this server yet: the operator has to add its app keys.",
+    "link.denied": "{provider} access was not granted. Write “connect {provider}” when you want to try again.",
+    "link.expired": "This {provider} link expired or was already used. Ask me for a new one in Telegram.",
+    "link.failed": "{provider} did not accept the login. Ask me for a new link in Telegram.",
+    "link.lost": "{provider} got disconnected: the login expired or was revoked.\nWrite “connect {provider}” and I will send a new link.",
+    "link.back": "You can close this page and go back to Telegram.",
+    "whoop.connected": "WHOOP connected. From the last 7 days: {workouts} workouts, {sleeps} sleeps, {recoveries} recoveries.\nNew ones arrive on their own.",
+    "withings.connected": "Withings connected. {count} readings from the last 30 days are in.\nNew ones arrive on their own.",
+    "apple.not_oauth": "Apple Health connects through a personal link, not a login. Ask me for it in Telegram.",
+    "mfp.connect": "Open the link on a computer where you are logged in to myfitnesspal.com.\nIt shows how to copy the login from the browser. After that every meal you log here is copied to MyFitnessPal.",
+    "mfp.connected": "MyFitnessPal connected: every meal you log here now goes there too.\nToday and the last {count} days are being copied now.",
+    "mfp.skipped": "Not touched, they already have food in MyFitnessPal: {dates}.",
+    "mfp.invalid": "MyFitnessPal did not accept this login: the cookies are expired or incomplete.\nLog in to myfitnesspal.com again and copy them once more.",
+    "mfp.unchecked": "Saved, but MyFitnessPal did not answer the check. I will try again within half an hour.",
+    "mfp.delete_it": "Telegram did not let me delete the message with your cookies.\nDelete it yourself: it works as a login.",
+    "mfp.page.title": "Connect MyFitnessPal",
+    "mfp.page.steps": "1. On a computer, open myfitnesspal.com in Chrome and log in.\n2. Press F12 (on a Mac: Cmd+Option+I), open the Network tab and reload the page.\n3. Right-click the first request (www.myfitnesspal.com): Copy, then Copy as cURL (on Windows: Copy as cURL (bash)).\n4. Paste it below and press the button.\nOnly the login cookies are kept, encrypted, and only to write your food diary.",
+    "mfp.page.button": "Connect"
   }
 }

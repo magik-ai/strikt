@@ -20,6 +20,10 @@ _NOISY_LOGGERS = ("httpx2", "httpx", "httpcore", "aiogram.event", "apscheduler",
 #: one into the chat and some log line quotes the message, an exception repr carries a header).
 _KEY_LIKE = re.compile(r"sk-ant-[A-Za-z0-9_\-]{8,}")
 _KEY_MASK = "sk-ant-***"
+#: A MyFitnessPal login cookie works as a password: masked wherever a log line quotes one.
+_MFP_COOKIE = re.compile(
+    r"(_mfp_session|remember_me|known_user|__Secure-next-auth\.session-token)=[^;\s'\"]+"
+)
 
 
 def _is_secret_key(key: object) -> bool:
@@ -37,8 +41,9 @@ def _is_secret(key: object, value: Any) -> bool:
 
 
 def mask_key_like(text: str) -> str:
-    """``"key sk-ant-api03-abc…"`` → ``"key sk-ant-***"``; other text passes through."""
-    return _KEY_LIKE.sub(_KEY_MASK, text)
+    """``"key sk-ant-api03-abc…"`` → ``"key sk-ant-***"`` (and an MFP login cookie's value to
+    ``***``); other text passes through."""
+    return _MFP_COOKIE.sub(r"\1=***", _KEY_LIKE.sub(_KEY_MASK, text))
 
 
 def _redact(value: Any, depth: int = 0) -> Any:

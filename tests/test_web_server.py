@@ -92,7 +92,7 @@ async def test_health_lists_providers(client: TestClient[web.Request, web.Applic
     assert response.status == 200
     assert await response.json() == {
         "status": "ok",
-        "providers": ["apple_health", "whoop", "withings"],
+        "providers": ["apple_health", "myfitnesspal", "whoop", "withings"],
     }
 
 

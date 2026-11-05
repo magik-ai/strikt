@@ -56,6 +56,7 @@ TOOL_NAMES: tuple[str, ...] = (
     "web_research",
     "render_day_card",
     "connect_integration",
+    "disconnect_integration",
     "request_key",
     "set_coaching_intensity",
     "finish_onboarding",
@@ -618,10 +619,25 @@ class RenderDayCardInput(ToolInput):
 
 
 class ConnectIntegrationInput(ToolInput):
-    """Get the connection link or instructions for WHOOP (OAuth), Withings (OAuth) or Apple
-    Health (Shortcuts webhook). Send the link to the user as-is."""
+    """Get the connection link or instructions for WHOOP (OAuth: training, sleep, recovery),
+    Withings (OAuth: scale, blood pressure, steps), Apple Health (Shortcuts webhook) or
+    MyFitnessPal (a page on a computer where the user pastes their browser login; from then on
+    everything set_day_food stores is copied to their MFP food diary on its own). Send the link
+    to the user as-is."""
 
-    provider: Literal["whoop", "withings", "apple_health"] = Field(description="Provider.")
+    provider: Literal["whoop", "withings", "apple_health", "myfitnesspal"] = Field(
+        description="Provider."
+    )
+
+
+class DisconnectIntegrationInput(ToolInput):
+    """Disconnect WHOOP, Withings, Apple Health or MyFitnessPal when the user asks to: the stored
+    login is deleted and syncing stops (for MyFitnessPal: meals are no longer copied there).
+    What was already imported stays here, and entries already in their MFP diary stay there."""
+
+    provider: Literal["whoop", "withings", "apple_health", "myfitnesspal"] = Field(
+        description="Provider."
+    )
 
 
 class RequestKeyInput(ToolInput):
@@ -685,6 +701,7 @@ SCHEMAS: dict[str, type[ToolInput]] = {
     "web_research": WebResearchInput,
     "render_day_card": RenderDayCardInput,
     "connect_integration": ConnectIntegrationInput,
+    "disconnect_integration": DisconnectIntegrationInput,
     "request_key": RequestKeyInput,
     "set_coaching_intensity": SetCoachingIntensityInput,
     "finish_onboarding": FinishOnboardingInput,

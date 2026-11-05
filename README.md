@@ -85,10 +85,10 @@ A message: album parts are gathered for 1.2 s and merged; a pasted Anthropic key
 | `nutrition/` | 4/4/9 math, sanity rules, units, Open Food Facts and USDA clients, food cache |
 | `memory/` | day state, notes, day and week summaries, history retrieval |
 | `proactive/` | scheduler job table, triggers, ladder, engine, send log |
-| `integrations/` | WHOOP, Withings, Apple Health behind one `Integration` protocol; signed OAuth links |
-| `web/server.py` | `/health`, `/oauth/*`, `/webhooks/*`, `/telegram` |
+| `integrations/` | WHOOP, Withings, Apple Health, MyFitnessPal behind one `Integration` protocol; signed OAuth links |
+| `web/server.py` | `/health`, `/oauth/*`, `/connect/*`, `/webhooks/*`, `/telegram` |
 | `onboarding/` | the ten-step checklist and the history importer |
-| `db/` | models (21 tables), repo, engine, Fernet cipher |
+| `db/` | models (23 tables), repo, engine, Fernet cipher |
 | `events.py`, `privacy.py`, `logging.py` | event bus, `/forget_me`, structlog with secret redaction |
 
 ## Why these choices
@@ -134,7 +134,7 @@ Strikt bills every model call to the key of the person it works for. The operato
 |---|---|---|---|---|
 | Anthropic API key (`sk-ant-…`) | **each user**, pasted into the chat | `users.llm_key_enc`, Fernet-encrypted; only the last four characters in clear | console.anthropic.com → Settings → API keys (credit under Billing) | every model call made for that user: turns, the verify rewrite, proactive decisions, day and week summaries (nightly and on `close_day`), `web_research` |
 | `TELEGRAM_BOT_TOKEN` | operator | `.env` | @BotFather, `/newbot` | the bot itself |
-| `TOKEN_ENCRYPTION_KEY` | operator | `.env` | `make keygen` | encrypting users' Anthropic keys and WHOOP/Withings tokens at rest |
+| `TOKEN_ENCRYPTION_KEY` | operator | `.env` | `make keygen` | encrypting users' Anthropic keys, WHOOP/Withings tokens and MyFitnessPal login cookies at rest |
 | `ANTHROPIC_API_KEY` | operator, optional | `.env` | console.anthropic.com → Settings → API keys | `server` mode: everyone; `user` mode: only the ids in `ADMIN_TELEGRAM_IDS` |
 | `OPENAI_API_KEY` | operator, optional | `.env` | platform.openai.com → API keys | voice-note transcription, and only a fallback: a user can paste their own into the chat. Without either, voice notes get "send text" |
 | `USDA_API_KEY` | operator, optional | `.env` | api.data.gov/signup (`DEMO_KEY` works with low limits) | generic-food lookups after the cache and Open Food Facts; a user who pastes their own gets their own rate limit |
@@ -262,9 +262,21 @@ From then on a finished workout, sleep or recovery arrives by webhook within min
 
 1. Create a developer app at developer.withings.com with callback `<PUBLIC_BASE_URL>/oauth/withings/callback`. Put the id and secret into `.env` as `WITHINGS_CLIENT_ID` and `WITHINGS_CLIENT_SECRET`; restart.
 2. In the chat, "connect Withings". Open the link, allow `user.info,user.metrics,user.activity`.
-3. The coach imports the last 30 days of readings and subscribes to weight notifications at `<PUBLIC_BASE_URL>/webhooks/withings`. Withings requires HTTPS on port 443 and a `HEAD` reply there; the Caddy profile gives you both.
+3. The coach imports the last 30 days of readings and daily activity and subscribes to notifications for weight (1), blood pressure and heart rate (4) and activity (16) at `<PUBLIC_BASE_URL>/webhooks/withings`. Withings requires HTTPS on port 443 and a `HEAD` reply there; the Caddy profile gives you both.
+
+What comes in: weight and body composition (fat, lean, muscle, water, bone mass, visceral fat, BMR, metabolic and vascular age where the scale measures them), blood pressure with heart rate, SpO2, and one row a day of steps and active kcal. The coach sees the latest of each in a `<body>` line on every turn.
 
 Notifications are unsigned, so each one is only a hint: its dates are ignored, the readings are re-fetched with your own token from the stored sync cursor (at most once a minute per user), and the cursor moves only with the 30-minute sync, so a forged notification can neither skip a weigh-in nor burn your quota. A weigh-in is compared with your 7-day average, never judged alone.
+
+## Connecting MyFitnessPal
+
+Every meal the coach logs is copied into your MyFitnessPal food diary, and from there to whatever reads MyFitnessPal or Apple Health (WHOOP, Garmin and the rest). Nothing to set on the server: MyFitnessPal has no usable official API, so Strikt uses the session the MFP website itself uses.
+
+1. In the chat, "connect MyFitnessPal". The coach sends a link to a page on your server, signed for you, valid 24 hours and only until it has connected an account.
+2. Open it on a computer where you are logged in to myfitnesspal.com. In Chrome: F12, Network, reload, right-click the first request, Copy, Copy as cURL; paste it into the page and press Connect. (Pasting it into the chat also works: the message is deleted at once.)
+3. Telegram confirms. Today and the 6 days before are copied in the background; a past day that already has food in MFP is left alone, and the coach says which.
+
+One diary entry per line of the coach's list, in Breakfast, Lunch, Dinner or Snacks, with the numbers exactly as logged (each line is a private custom food, brand "Strikt", reused when the same line comes back). Only entries Strikt created are ever changed or deleted. The cookies are Fernet-encrypted, never reach the model and are never logged; when MFP stops accepting them the coach tells you once and you connect again; "disconnect MyFitnessPal" deletes them. The route is unofficial and MFP can change it without notice: details and troubleshooting in `docs/INTEGRATIONS.md`.
 
 ## Connecting Apple Health
 
@@ -306,7 +318,7 @@ The coach prompt and the profile block come from cache on almost every turn, so 
 
 - **Invite-only.** Unknown users get one line and nothing else. Access is by `ALLOWED_TELEGRAM_IDS` or a one-time code from `/invite`.
 - **Your Anthropic key.** Pasted once into the chat, checked with one call, Fernet-encrypted with `TOKEN_ENCRYPTION_KEY`; the message that carried it is deleted; only the last four characters are kept in clear and ever logged, and any `sk-ant-…` string is masked by the log processor; never a conversation turn, never shown to the model; deleted with `/forget_me`.
-- **Tokens at rest.** WHOOP and Withings tokens are Fernet-encrypted with `TOKEN_ENCRYPTION_KEY`. OAuth start links are HMAC-signed per user and expire; the OAuth state is single-use. WHOOP webhooks are signature-checked; Apple Health pushes are keyed by a random per-user token.
+- **Tokens at rest.** WHOOP and Withings tokens and the MyFitnessPal login cookies are Fernet-encrypted with `TOKEN_ENCRYPTION_KEY`. OAuth start links are HMAC-signed per user and expire; the OAuth state is single-use. WHOOP webhooks are signature-checked; Apple Health pushes are keyed by a random per-user token.
 - **Per-user isolation.** Every database query filters by `user_id`. The food cache (`foods`) is shared and holds no personal data.
 - **No files kept.** Photos and PDFs go to the model and stay in the conversation log only as a hash stub (`[image: <sha256>]`). Voice audio is transcribed and dropped.
 - **`/forget_me`.** A confirmation button, then the pinned card is unpinned and every row you own (profile, meals, training, sleep, measurements, labs, notes, reminders, summaries, chat history, tokens, usage and send logs, the user row) is deleted in one transaction; the count is reported and your scheduled jobs are removed.
@@ -352,6 +364,7 @@ To add a tool: input model in `agent/tools/schemas.py`, handler in the owning mo
 
 | File | What it is |
 |---|---|
+| `docs/INTEGRATIONS.md` | where WHOOP, Withings and MyFitnessPal stand, how their data flows, what the operator has to do to turn each one on |
 | `PROMPTS.md` | the coach system prompt, the onboarding interview, the proactive, verify, summarize and import prompts, generated from `agent/prompts/` |
 | `RESEARCH.md` | what was found on Reflexion and Instinct, Claude, Telegram, WHOOP, scales and Apple Health, food databases and memory; the decisions; every source |
 | `UX.md` | the Today card in both languages, message templates, buttons and what each does, the commands, corrections by text, error copy, what is deliberately absent |

@@ -284,6 +284,28 @@ async def connect_integration(
     return ok(result)
 
 
+async def disconnect_integration(
+    ctx: ToolContext, args: schemas.DisconnectIntegrationInput
+) -> ToolResult:
+    """The tokens (MFP: the login cookies) go, the imported data stays. WHOOP, Withings and Apple
+    Health rows are deleted; the MFP row stays as ``revoked`` with its record of what Strikt
+    created, so reconnecting the same account later does not copy those days twice."""
+    integration = None
+    try:
+        integration = _integrations(ctx).get(args.provider)
+    except Exception as exc:
+        log.warning("integrations_unavailable", user_id=ctx.user_id, error=repr(exc))
+    if integration is not None and hasattr(integration, "disconnect"):
+        # MyFitnessPal: under its own lock, so a mirror in flight cannot write the login back
+        removed = await integration.disconnect(ctx.session, ctx.user_id)
+    else:
+        removed = await repo.clear_integration(ctx.session, ctx.user_id, args.provider)
+    log.info(
+        "integration_disconnected", user_id=ctx.user_id, provider=args.provider, removed=removed
+    )
+    return ok({"provider": args.provider, "disconnected": removed, "was_connected": removed})
+
+
 async def import_history(ctx: ToolContext, args: schemas.ImportHistoryInput) -> ToolResult:
     if not args.text.strip():
         return fail("import_history: no rows given")

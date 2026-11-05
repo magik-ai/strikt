@@ -109,6 +109,25 @@
     "bot.description": "Strikt は食事、トレーニング、睡眠、体の数値を Telegram のチャットひとつで記録します。写真、スクリーンショット、音声、文字を送ると、品目ごとの kcal、たんぱく質、炭水化物、脂質、食物繊維、その日の合計、残りが返ります。今日のカードは固定されたまま、その場で更新されます。あなたが黙ると先に書きます。事実、次にあなた自身のデータに出ている傾向、そして期限つきの指示。一日は判定で終わります。あいさつなし、絵文字なし、ほめ言葉なし。",
     "check.head": "昨日の記録:",
     "check.tail": "合計: {total}。合っていますか？違うところや抜けがあれば教えてください。直します。",
-    "check.macros": "{kcal} kcal · たんぱく質 {p} · 炭水化物 {c} · 脂質 {f} · 食物繊維 {fib}"
+    "check.macros": "{kcal} kcal · たんぱく質 {p} · 炭水化物 {c} · 脂質 {f} · 食物繊維 {fib}",
+    "link.connect": "リンクを開き、{provider} にログインしてアクセスを許可してください。\nその後はデータが自動で届きます。",
+    "link.not_configured": "{provider} はこのサーバーでまだ設定されていません。運営者がアプリのキーを追加する必要があります。",
+    "link.denied": "{provider} へのアクセスは許可されませんでした。もう一度試すときは「{provider} を接続」と送ってください。",
+    "link.expired": "この {provider} のリンクは期限切れか、すでに使われています。Telegram で新しいリンクを頼んでください。",
+    "link.failed": "{provider} がログインを受け付けませんでした。Telegram で新しいリンクを頼んでください。",
+    "link.lost": "{provider} の接続が切れました。ログインの期限切れか取り消しです。\n「{provider} を接続」と送れば新しいリンクを送ります。",
+    "link.back": "このページを閉じて Telegram に戻ってください。",
+    "whoop.connected": "WHOOP を接続しました。直近7日分: ワークアウト {workouts} 件、睡眠 {sleeps} 件、リカバリー {recoveries} 件。\n新しいデータは自動で届きます。",
+    "withings.connected": "Withings を接続しました。直近30日分の測定 {count} 件を取り込みました。\n新しいデータは自動で届きます。",
+    "apple.not_oauth": "Apple Health はログインではなく個人用リンクで接続します。Telegram で頼んでください。",
+    "mfp.connect": "myfitnesspal.com にログインしているパソコンでリンクを開いてください。\nブラウザからログイン情報をコピーする手順があります。その後はここで記録した食事がすべて MyFitnessPal にコピーされます。",
+    "mfp.connected": "MyFitnessPal を接続しました。ここで記録した食事はすべてあちらにも入ります。\n今日と過去 {count} 日分を今コピーしています。",
+    "mfp.skipped": "MyFitnessPal にすでに食事があるので触れていません: {dates}。",
+    "mfp.invalid": "MyFitnessPal がこのログインを受け付けませんでした。クッキーが期限切れか不完全です。\nmyfitnesspal.com にログインし直して、もう一度コピーしてください。",
+    "mfp.unchecked": "保存しましたが、MyFitnessPal が確認に応答しませんでした。30分以内にもう一度試します。",
+    "mfp.delete_it": "Telegram がクッキー入りのメッセージを削除させてくれませんでした。\nご自身で削除してください。ログインと同じ働きをします。",
+    "mfp.page.title": "MyFitnessPal を接続",
+    "mfp.page.steps": "1. パソコンの Chrome で myfitnesspal.com を開いてログインします。\n2. F12 を押し(Mac は Cmd+Option+I)、Network タブを開いてページを再読み込みします。\n3. 最初のリクエスト(www.myfitnesspal.com)を右クリック: Copy、次に Copy as cURL(Windows は Copy as cURL (bash))。\n4. 下に貼り付けてボタンを押します。\n保存するのはログイン用クッキーだけで、暗号化して、食事日記の記入にだけ使います。",
+    "mfp.page.button": "接続"
   }
 }

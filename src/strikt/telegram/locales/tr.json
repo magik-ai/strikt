@@ -109,6 +109,25 @@
     "bot.description": "Strikt yemeği, antrenmanı, uykuyu ve ölçümleri tek bir Telegram sohbetinden kaydeder. Fotoğraf, ekran görüntüsü, sesli mesaj ya da metin gönder: cevapta her kalem için kcal, protein, karbonhidrat, yağ ve lif, günün şu ana kadarki toplamı ve kalanı var. Bugün kartı sabit kalır ve yerinde güncellenir. Sustuğunda ilk o yazar: önce gerçek, sonra kendi verindeki örüntü, sonra süreli bir talimat. Gün bir kararla kapanır. Selamsız, emojisiz, övgüsüz.",
     "check.head": "Dün kaydedilenler:",
     "check.tail": "Toplam: {total}. Doğru mu? Yanlış ya da eksik bir şey varsa söyle, düzelteyim.",
-    "check.macros": "{kcal} kcal · P {p} · K {c} · Y {f} · lif {fib}"
+    "check.macros": "{kcal} kcal · P {p} · K {c} · Y {f} · lif {fib}",
+    "link.connect": "Bağlantıyı aç, {provider} hesabına gir ve erişime izin ver.\nSonra veriler kendiliğinden gelir.",
+    "link.not_configured": "{provider} bu sunucuda henüz kurulu değil: işletmecinin uygulama anahtarlarını eklemesi gerekiyor.",
+    "link.denied": "{provider} erişimi verilmedi. Tekrar denemek istediğinde \"{provider} bağla\" yaz.",
+    "link.expired": "Bu {provider} bağlantısının süresi doldu ya da zaten kullanıldı. Telegram'da benden yenisini iste.",
+    "link.failed": "{provider} girişi kabul etmedi. Telegram'da benden yeni bir bağlantı iste.",
+    "link.lost": "{provider} bağlantısı koptu: girişin süresi doldu ya da iptal edildi.\n\"{provider} bağla\" yaz, yeni bir bağlantı göndereyim.",
+    "link.back": "Bu sayfayı kapatıp Telegram'a dönebilirsin.",
+    "whoop.connected": "WHOOP bağlandı. Son 7 günden: {workouts} antrenman, {sleeps} uyku, {recoveries} toparlanma.\nYenileri kendiliğinden gelir.",
+    "withings.connected": "Withings bağlandı. Son 30 günden {count} ölçüm geldi.\nYenileri kendiliğinden gelir.",
+    "apple.not_oauth": "Apple Health giriş ile değil, kişisel bir bağlantıyla bağlanır. Telegram'da benden iste.",
+    "mfp.connect": "Bağlantıyı myfitnesspal.com'a giriş yapılmış bir bilgisayarda aç.\nTarayıcıdan girişi nasıl kopyalayacağını gösteriyor. Sonra burada kaydettiğin her öğün MyFitnessPal'a kopyalanır.",
+    "mfp.connected": "MyFitnessPal bağlandı: burada kaydettiğin her öğün artık oraya da gidiyor.\nBugünü ve son {count} günü şimdi kopyalıyorum.",
+    "mfp.skipped": "Dokunmadım, bu günlerde MyFitnessPal'da zaten yemek var: {dates}.",
+    "mfp.invalid": "MyFitnessPal bu girişi kabul etmedi: çerezlerin süresi dolmuş ya da eksik.\nmyfitnesspal.com'a yeniden gir ve onları bir kez daha kopyala.",
+    "mfp.unchecked": "Kaydedildi ama MyFitnessPal kontrole yanıt vermedi. Yarım saat içinde yeniden deneyeceğim.",
+    "mfp.delete_it": "Telegram çerezlerinin olduğu mesajı silmeme izin vermedi.\nOnu kendin sil: bir giriş gibi çalışır.",
+    "mfp.page.title": "MyFitnessPal'ı bağla",
+    "mfp.page.steps": "1. Bilgisayarda Chrome ile myfitnesspal.com'u aç ve giriş yap.\n2. F12'ye bas (Mac'te: Cmd+Option+I), Network sekmesini aç ve sayfayı yenile.\n3. İlk isteğe (www.myfitnesspal.com) sağ tıkla: Copy, sonra Copy as cURL (Windows'ta: Copy as cURL (bash)).\n4. Aşağıya yapıştır ve düğmeye bas.\nYalnızca giriş çerezleri şifreli olarak saklanır ve yalnızca yemek günlüğünü yazmak için kullanılır.",
+    "mfp.page.button": "Bağla"
   }
 }

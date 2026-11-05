@@ -9,6 +9,13 @@ Facts from research/05-scales-apple-health.md §1 (verified on 2026-09-03):
   1 year and rotate on every refresh.
 - ``POST https://wbsapi.withings.net/measure`` ``action=getmeas`` returns ``measuregrps`` whose
   measures are ``value * 10^unit``; ``more``/``offset`` paginate; ``lastupdate`` is the sync cursor.
+- ``POST https://wbsapi.withings.net/v2/measure`` ``action=getactivity`` returns one row per day
+  (``activities``: ``date``, ``timezone``, ``steps``, ``calories`` = active kcal, ``totalcalories``,
+  ``active`` seconds) with the same ``more``/``offset`` paging and ``lastupdate`` cursor; it needs
+  ``user.activity``. Steps come from a Withings watch or the Health Mate app's phone tracking.
+- Notification categories (``appli``, developer guide "Payload and Categories", 2026-11): 1 weight
+  and body composition, 4 blood pressure and heart rate, 16 activity (posted with ``date``), 44
+  sleep. Strikt subscribes to 1, 4 and 16; sleep comes from WHOOP.
 - ``POST https://wbsapi.withings.net/notify`` ``action=subscribe&appli=1`` needs a public HTTPS
   callback that answers ``HEAD`` with 2xx. Notifications are unsigned form POSTs
   (``userid``, ``appli``, ``startdate``, ``enddate``). They are treated as a *hint only*: the
@@ -22,15 +29,16 @@ from __future__ import annotations
 
 from collections.abc import Callable, Mapping
 from dataclasses import dataclass, field
-from datetime import UTC, datetime, timedelta
+from datetime import UTC, date, datetime, time, timedelta
 from typing import TYPE_CHECKING, Any, cast
 from urllib.parse import parse_qs, urlencode
+from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 import httpx
 import structlog
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from strikt.core.clock import Clock, SystemClock, ensure_utc
+from strikt.core.clock import Clock, SystemClock, ensure_utc, to_local
 from strikt.db import repo
 from strikt.db.models import IntegrationStatus, MeasurementType, User
 from strikt.events import Event, MeasurementEvent
@@ -40,9 +48,10 @@ from strikt.integrations.base import (
     ProviderName,
     WebhookRequest,
     WebhookResponse,
+    link_copy,
 )
 from strikt.integrations.oauth import callback_url, consume_state, issue_state, webhook_url
-from strikt.telegram.copy import resolve_lang
+from strikt.telegram.copy import t
 
 if TYPE_CHECKING:
     from strikt.config import Settings
@@ -52,12 +61,20 @@ if TYPE_CHECKING:
 log = structlog.get_logger(__name__)
 
 PROVIDER: ProviderName = "withings"
+#: Access token lifetime when the token answer leaves ``expires_in`` out.
+DEFAULT_EXPIRES_S = 10800.0
 AUTH_URL = "https://account.withings.com/oauth2_user/authorize2"
 TOKEN_URL = "https://wbsapi.withings.net/v2/oauth2"
 MEASURE_URL = "https://wbsapi.withings.net/measure"
+MEASURE_V2_URL = "https://wbsapi.withings.net/v2/measure"
 NOTIFY_URL = "https://wbsapi.withings.net/notify"
 SCOPES = "user.info,user.metrics,user.activity"
 APPLI_WEIGHT = 1
+APPLI_PRESSURE = 4
+APPLI_ACTIVITY = 16
+#: The notification categories Strikt subscribes to (sleep, 44, comes from WHOOP).
+SUBSCRIBED_APPLIS: tuple[int, ...] = (APPLI_WEIGHT, APPLI_PRESSURE, APPLI_ACTIVITY)
+ACTIVITY_FIELDS = "steps,distance,calories,totalcalories,active"
 DEFAULT_WINDOW_DAYS = 30
 #: A webhook-triggered fetch per user at most this often (the poller covers the rest).
 WEBHOOK_MIN_INTERVAL = timedelta(minutes=1)
@@ -69,37 +86,32 @@ MEASTYPES: dict[int, tuple[MeasurementType, str, str]] = {
     5: (MeasurementType.other, "kg", "lean_mass_kg"),
     6: (MeasurementType.bodyfat, "%", "bodyfat"),
     8: (MeasurementType.other, "kg", "fat_mass_kg"),
+    9: (MeasurementType.bp_dia, "mmHg", "bp_dia"),
+    10: (MeasurementType.bp_sys, "mmHg", "bp_sys"),
+    11: (MeasurementType.other, "bpm", "heart_rate"),
+    54: (MeasurementType.other, "%", "spo2"),
+    71: (MeasurementType.other, "C", "body_temp_c"),
     76: (MeasurementType.other, "kg", "muscle_mass_kg"),
     77: (MeasurementType.other, "kg", "water_kg"),
     88: (MeasurementType.other, "kg", "bone_mass_kg"),
+    91: (MeasurementType.other, "m/s", "pulse_wave_velocity"),
+    155: (MeasurementType.other, "years", "vascular_age"),
+    168: (MeasurementType.other, "kg", "extracellular_water_kg"),
+    169: (MeasurementType.other, "kg", "intracellular_water_kg"),
+    170: (MeasurementType.other, "index", "visceral_fat"),
+    226: (MeasurementType.other, "kcal", "bmr_kcal"),
+    227: (MeasurementType.other, "years", "metabolic_age"),
 }
 MEASTYPES_PARAM = ",".join(str(code) for code in MEASTYPES)
 
 ClientFactory = Callable[[], httpx.AsyncClient]
 
-_COPY: dict[str, dict[str, str]] = {
-    "en": {
-        "connect": "Open the link, log in to Withings and allow access. Every weigh-in will arrive here automatically.",
-        "not_configured": "Withings is not configured on this server (WITHINGS_CLIENT_ID is missing).",
-        "connected": "Withings connected. Imported {count} readings from the last 30 days. Go back to Telegram.",
-        "denied": "Withings access was not granted. Send “connect Withings” again when you want to retry.",
-        "expired": "The Withings link expired or was already used. Ask me for a new one in Telegram.",
-        "failed": "Withings did not accept the login. Ask me for a new link in Telegram.",
-    },
-    "ru": {
-        "connect": "Открой ссылку, войди в Withings и разреши доступ. Каждое взвешивание будет приходить сюда само.",
-        "not_configured": "Withings на этом сервере не настроен (нет WITHINGS_CLIENT_ID).",
-        "connected": "Withings подключён. Импортировал {count} измерений за 30 дней. Возвращайся в Telegram.",
-        "denied": "Доступ к Withings не выдан. Напиши «подключи Withings», когда захочешь повторить.",
-        "expired": "Ссылка Withings устарела или уже использована. Попроси новую в Telegram.",
-        "failed": "Withings не принял вход. Попроси новую ссылку в Telegram.",
-    },
-}
-
 
 def _copy(lang: str | None, key: str, **kwargs: Any) -> str:
-    text = _COPY[resolve_lang(lang)][key]
-    return text.format(**kwargs) if kwargs else text
+    """Callback and connect copy in the user's language (``telegram/locales``)."""
+    if key == "connected":
+        return t(lang, "withings.connected", **kwargs)
+    return link_copy(lang, key, PROVIDER, **kwargs)
 
 
 class WithingsError(RuntimeError):
@@ -108,6 +120,15 @@ class WithingsError(RuntimeError):
 
 class WithingsAuthError(WithingsError):
     """The token is invalid and could not be refreshed."""
+
+
+class WithingsTransportError(WithingsError):
+    """Withings did not answer properly (network, HTTP error, rate limit): try again later. Never
+    a reason to call the connection dead."""
+
+
+#: Withings ``status`` codes that mean "not now", not "no".
+_TRANSIENT_STATUSES = frozenset({601, 2554, 2555})
 
 
 # --------------------------------------------------------------------------------- decoding
@@ -218,6 +239,70 @@ def parse_notification(body: bytes, query: Mapping[str, str]) -> dict[str, str]:
     return fields
 
 
+@dataclass(frozen=True, kw_only=True)
+class ActivityDay:
+    """One day of ``getactivity``: the reading is filed at local noon of that day."""
+
+    day: date
+    measured_at: datetime
+    steps: int | None
+    active_kcal: float | None
+    total_kcal: float | None
+    raw: dict[str, Any] = field(default_factory=dict)
+
+
+def decode_activities(activities: Any, *, default_tz: str = "UTC") -> list[ActivityDay]:
+    """``body.activities`` → one :class:`ActivityDay` per date (malformed rows are skipped)."""
+    days: list[ActivityDay] = []
+    if not isinstance(activities, list):
+        return days
+    for row in activities:
+        if not isinstance(row, dict):
+            continue
+        try:
+            day = date.fromisoformat(str(row.get("date") or ""))
+        except ValueError:
+            continue
+        tz = str(row.get("timezone") or default_tz)
+        try:
+            measured_at = datetime.combine(day, time(12, 0), tzinfo=ZoneInfo(tz)).astimezone(UTC)
+        except (ZoneInfoNotFoundError, ValueError):
+            measured_at = datetime.combine(day, time(12, 0), tzinfo=UTC)
+        steps = _to_int(row.get("steps"))
+        active = _to_float(row.get("calories"))
+        total = _to_float(row.get("totalcalories"))
+        if not steps and not active:
+            continue  # an empty day (no tracker worn, no phone in the pocket) says nothing
+        days.append(
+            ActivityDay(
+                day=day,
+                measured_at=measured_at,
+                steps=steps,
+                active_kcal=active,
+                total_kcal=total,
+                raw={
+                    "date": day.isoformat(),
+                    "timezone": tz,
+                    "distance_m": _to_float(row.get("distance")),
+                    "active_s": _to_int(row.get("active")),
+                    "total_kcal": total,
+                    "is_tracker": row.get("is_tracker"),
+                    "modified": row.get("modified"),
+                },
+            )
+        )
+    return days
+
+
+def _to_float(value: Any) -> float | None:
+    if value is None or isinstance(value, bool):
+        return None
+    try:
+        return round(float(value), 1)
+    except (TypeError, ValueError, OverflowError):
+        return None
+
+
 # ------------------------------------------------------------------------------ integration
 
 
@@ -239,7 +324,7 @@ class WithingsIntegration:
         self._client_factory: ClientFactory = client_factory or (
             lambda: httpx.AsyncClient(timeout=httpx.Timeout(timeout_s))
         )
-        self._webhook_fetch_at: dict[int, datetime] = {}
+        self._webhook_fetch_at: dict[tuple[int, str], datetime] = {}
 
     @property
     def client_id(self) -> str:
@@ -314,8 +399,13 @@ class WithingsIntegration:
                         "redirect_uri": self.redirect_uri,
                     },
                 )
-                await self._store_tokens(session, user.id, body, now=now)
-                await self._subscribe(client, str(body["access_token"]))
+                row = await self._store_tokens(session, user.id, body, now=now)
+                accepted = await self._subscribe(client, str(body["access_token"]))
+                row.data = {
+                    **(row.data or {}),
+                    "subscribed": accepted,
+                    "subscribe_tried": now.date().isoformat(),
+                }
         except WithingsError as exc:
             log.warning("withings_callback_failed", user_id=user.id, error=str(exc))
             await repo.upsert_integration(
@@ -330,25 +420,57 @@ class WithingsIntegration:
         log.info("withings_connected", user_id=user.id, readings=count)
         return user, _copy(user.language, "connected", count=count)
 
-    async def _subscribe(self, client: httpx.AsyncClient, access_token: str) -> bool:
-        """``notify subscribe appli=1``. A failure is logged, not fatal: polling still works."""
-        try:
-            body = await self._call(
-                client,
-                NOTIFY_URL,
-                {
-                    "action": "subscribe",
-                    "callbackurl": self.notify_url,
-                    "appli": str(APPLI_WEIGHT),
-                    "comment": "Strikt weight sync",
-                },
-                access_token=access_token,
-            )
-        except WithingsError as exc:
-            log.warning("withings_subscribe_failed", error=str(exc), callback=self.notify_url)
-            return False
-        log.info("withings_subscribed", callback=self.notify_url, status=body.get("status"))
-        return True
+    async def _subscribe(
+        self,
+        client: httpx.AsyncClient,
+        access_token: str,
+        applis: tuple[int, ...] = SUBSCRIBED_APPLIS,
+    ) -> list[int]:
+        """``notify subscribe`` per category; returns the ones Withings accepted. A failure is
+        logged, not fatal: the 30-minute poll still brings everything in."""
+        accepted: list[int] = []
+        for appli in applis:
+            try:
+                body = await self._call(
+                    client,
+                    NOTIFY_URL,
+                    {
+                        "action": "subscribe",
+                        "callbackurl": self.notify_url,
+                        "appli": str(appli),
+                        "comment": "Strikt sync",
+                    },
+                    access_token=access_token,
+                )
+            except WithingsError as exc:
+                log.warning(
+                    "withings_subscribe_failed",
+                    appli=appli,
+                    error=str(exc),
+                    callback=self.notify_url,
+                )
+                continue
+            accepted.append(appli)
+            log.info("withings_subscribed", appli=appli, status=body.get("status"))
+        return accepted
+
+    async def _ensure_subscribed(
+        self, session: AsyncSession, row: Integration, client: httpx.AsyncClient
+    ) -> None:
+        """A connection made before pressure (4) and activity (16) were subscribed gets them on
+        its next sync; a category Withings refuses is tried again once a day, not every run."""
+        data = dict(row.data or {})
+        done = {int(a) for a in data.get("subscribed") or [] if isinstance(a, int)}
+        missing = tuple(a for a in SUBSCRIBED_APPLIS if a not in done)
+        today = self._clock.now().date().isoformat()
+        if not missing or data.get("subscribe_tried") == today:
+            return
+        token = await self._access_token(session, row, client)
+        accepted = await self._subscribe(client, token, missing)
+        data["subscribed"] = sorted(done | set(accepted))
+        data["subscribe_tried"] = today
+        row.data = data
+        await session.flush()
 
     # --- tokens ---------------------------------------------------------------------------
     async def _token_request(
@@ -401,12 +523,24 @@ class WithingsIntegration:
                     "refresh_token": tokens.refresh_token,
                 },
             )
+        except WithingsTransportError:
+            raise  # Withings did not answer: the refresh token may be fine, try again later
         except WithingsError:
             await repo.set_integration_status(
                 session, row.user_id, PROVIDER, IntegrationStatus.expired
             )
             raise WithingsAuthError("refresh rejected") from None
-        updated = await self._store_tokens(session, row.user_id, fresh, now=self._clock.now())
+        updated = await repo.rotate_integration_tokens(
+            session,
+            self._cipher,
+            row.user_id,
+            PROVIDER,
+            access_token=str(fresh["access_token"]),
+            refresh_token=str(fresh["refresh_token"]) if fresh.get("refresh_token") else None,
+            expires_at=self._clock.now() + timedelta(seconds=_expires_in(fresh.get("expires_in"))),
+        )
+        if updated is None:  # disconnected while the refresh was on its way
+            raise WithingsAuthError("integration gone")
         log.info("withings_token_refreshed", user_id=row.user_id)
         return str(repo.integration_tokens(self._cipher, updated).access_token)
 
@@ -435,18 +569,20 @@ class WithingsIntegration:
         try:
             response = await client.post(url, data=dict(data), headers=headers)
         except httpx.HTTPError as exc:
-            raise WithingsError(f"POST {url} failed: {exc!r}") from exc
+            raise WithingsTransportError(f"POST {url} failed: {type(exc).__name__}") from exc
         if response.status_code >= 300:
-            raise WithingsError(f"POST {url}: HTTP {response.status_code}")
+            raise WithingsTransportError(f"POST {url}: HTTP {response.status_code}")
         try:
             body = response.json()
         except ValueError as exc:
-            raise WithingsError("response is not JSON") from exc
+            raise WithingsTransportError("response is not JSON") from exc
         if not isinstance(body, dict):
-            raise WithingsError("response is not a JSON object")
+            raise WithingsTransportError("response is not a JSON object")
         status = int(body.get("status", -1) or 0)
         if status == 401:
             raise WithingsAuthError(f"status 401: {body.get('error')}")
+        if status in _TRANSIENT_STATUSES:
+            raise WithingsTransportError(f"status {status}: {body.get('error')}")
         if status != 0:
             raise WithingsError(f"status {status}: {body.get('error')}")
         return cast("dict[str, Any]", body)
@@ -483,6 +619,102 @@ class WithingsIntegration:
             break
         return groups
 
+    async def _getactivity(
+        self,
+        session: AsyncSession,
+        row: Integration,
+        client: httpx.AsyncClient,
+        params: Mapping[str, str],
+    ) -> list[dict[str, Any]]:
+        """Every ``activities`` row for the query (``more``/``offset``); one refresh on 401."""
+        token = await self._access_token(session, row, client)
+        rows: list[dict[str, Any]] = []
+        offset: int | None = None
+        for _ in range(20):
+            data = {"action": "getactivity", "data_fields": ACTIVITY_FIELDS, **params}
+            if offset is not None:
+                data["offset"] = str(offset)
+            try:
+                body = await self._call(client, MEASURE_V2_URL, data, access_token=token)
+            except WithingsAuthError:
+                token = await self._refresh(session, row, client)
+                body = await self._call(client, MEASURE_V2_URL, data, access_token=token)
+            raw_inner = body.get("body")
+            inner: dict[str, Any] = raw_inner if isinstance(raw_inner, dict) else {}
+            batch = inner.get("activities")
+            if isinstance(batch, list):
+                rows.extend(item for item in batch if isinstance(item, dict))
+            next_offset = _to_int(inner.get("offset"))
+            if inner.get("more") and next_offset is not None:
+                offset = next_offset
+                continue
+            break
+        return rows
+
+    async def _activity(
+        self,
+        session: AsyncSession,
+        user: User,
+        row: Integration,
+        client: httpx.AsyncClient,
+        params: Mapping[str, str],
+    ) -> int:
+        """Pull and store daily steps and active kcal; never fails the weight sync around it
+        (an account without activity data, or a scope the user unticked, is not a broken one)."""
+        try:
+            rows = await self._getactivity(session, row, client, params)
+        except WithingsError as exc:
+            log.info("withings_activity_unavailable", user_id=user.id, error=str(exc))
+            return 0
+        return await self._store_activity(
+            session, user, decode_activities(rows, default_tz=user.timezone or "UTC")
+        )
+
+    def _activity_params(
+        self, row: Any, now: datetime, since: datetime | None, tz: str
+    ) -> dict[str, str]:
+        if since is not None:
+            return {"lastupdate": str(int(ensure_utc(since).timestamp()))}
+        if row.last_sync_at is not None:
+            cursor = ensure_utc(row.last_sync_at) - timedelta(hours=1)
+            return {"lastupdate": str(int(cursor.timestamp()))}
+        today = to_local(now, tz).date()
+        return {
+            "startdateymd": (today - timedelta(days=DEFAULT_WINDOW_DAYS)).isoformat(),
+            "enddateymd": today.isoformat(),
+        }
+
+    async def _store_activity(
+        self, session: AsyncSession, user: User, days: list[ActivityDay]
+    ) -> int:
+        stored = 0
+        for day in days:
+            if day.steps:
+                await store.upsert_measurement(
+                    session,
+                    user.id,
+                    type=MeasurementType.steps,
+                    value=float(day.steps),
+                    unit="steps",
+                    measured_at=day.measured_at,
+                    source=PROVIDER,
+                    raw=day.raw,
+                )
+                stored += 1
+            if day.active_kcal is not None:
+                await store.upsert_measurement(
+                    session,
+                    user.id,
+                    type=MeasurementType.other,
+                    value=day.active_kcal,
+                    unit="kcal",
+                    measured_at=day.measured_at,
+                    source=PROVIDER,
+                    raw=day.raw,
+                    note="active_kcal",
+                )
+        return stored
+
     # --- sync -----------------------------------------------------------------------------
     def _cursor_params(self, row: Any, now: datetime) -> dict[str, str]:
         """``getmeas`` window from the stored cursor: an hour before the last sync, or the
@@ -503,9 +735,12 @@ class WithingsIntegration:
             params = {"lastupdate": str(int(ensure_utc(since).timestamp()))}
         else:
             params = self._cursor_params(row, now)
+        activity_params = self._activity_params(row, now, since, user.timezone or "UTC")
         try:
             async with self._client_factory() as client:
                 groups = await self._getmeas(session, row, client, params)
+                days = await self._activity(session, user, row, client, activity_params)
+                await self._ensure_subscribed(session, row, client)
         except WithingsAuthError as exc:
             log.warning("withings_sync_unauthorized", user_id=user.id, error=str(exc))
             await repo.set_integration_status(session, user.id, PROVIDER, IntegrationStatus.expired)
@@ -517,7 +752,13 @@ class WithingsIntegration:
         await repo.set_integration_status(
             session, user.id, PROVIDER, IntegrationStatus.connected, last_sync_at=now
         )
-        log.info("withings_synced", user_id=user.id, groups=len(groups), events=len(events))
+        log.info(
+            "withings_synced",
+            user_id=user.id,
+            groups=len(groups),
+            events=len(events),
+            activity_days=days,
+        )
         return events
 
     async def _store_readings(
@@ -564,7 +805,7 @@ class WithingsIntegration:
         if not userid:
             return WebhookResponse(status=400, body="missing userid"), []
         appli = fields.get("appli", str(APPLI_WEIGHT))
-        if appli != str(APPLI_WEIGHT):
+        if appli not in {str(code) for code in SUBSCRIBED_APPLIS}:
             return WebhookResponse(body="ignored"), []
         row = await repo.integration_by_external_user(session, PROVIDER, userid)
         if row is None or row.status != IntegrationStatus.connected:
@@ -574,15 +815,22 @@ class WithingsIntegration:
         if user is None:
             return WebhookResponse(body="unknown user"), []
         now = self._clock.now()
-        last = self._webhook_fetch_at.get(user.id)
+        last = self._webhook_fetch_at.get((user.id, appli))
         if last is not None and now - last < WEBHOOK_MIN_INTERVAL:
             log.info("withings_webhook_throttled", user_id=user.id)
             return WebhookResponse(body="throttled"), []
-        self._webhook_fetch_at[user.id] = now
+        self._webhook_fetch_at[(user.id, appli)] = (
+            now  # per category: steps never hold up a weigh-in
+        )
         # The notification's own startdate/enddate are untrusted input: fetch from our cursor.
         params = self._cursor_params(row, now)
         try:
             async with self._client_factory() as client:
+                if appli == str(APPLI_ACTIVITY):
+                    activity = self._activity_params(row, now, None, user.timezone or "UTC")
+                    days = await self._activity(session, user, row, client, activity)
+                    log.info("withings_webhook_activity", user_id=user.id, days=days)
+                    return WebhookResponse(), []
                 groups = await self._getmeas(session, row, client, params)
         except WithingsAuthError as exc:
             log.warning("withings_webhook_unauthorized", user_id=user.id, error=str(exc))
@@ -595,3 +843,10 @@ class WithingsIntegration:
         # The cursor moves only in ``sync``: a spoofed notification must not skip a weigh-in.
         log.info("withings_webhook", user_id=user.id, groups=len(groups), events=len(events))
         return WebhookResponse(), events
+
+
+def _expires_in(value: Any, default: float = DEFAULT_EXPIRES_S) -> float:
+    try:
+        return float(value) if value else default
+    except (TypeError, ValueError):
+        return default

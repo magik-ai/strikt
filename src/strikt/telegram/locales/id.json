@@ -109,6 +109,25 @@
     "bot.description": "Strikt mencatat makanan, latihan, tidur, dan ukuran badan dari satu obrolan Telegram. Kirim foto, tangkapan layar, pesan suara, atau teks: balasannya berisi kkal, protein, karbohidrat, lemak, dan serat per item, hari sampai sekarang, dan sisanya. Kartu hari ini tetap disematkan dan diperbarui di tempat. Kalau kamu diam, dia menulis duluan: faktanya, lalu polanya dari datamu sendiri, lalu instruksi dengan tenggat. Hari ditutup dengan putusan. Tanpa sapaan, tanpa emoji, tanpa pujian.",
     "check.head": "Catatan kemarin:",
     "check.tail": "Total: {total}. Sudah benar? Kalau ada yang salah atau kurang, bilang saja, aku perbaiki.",
-    "check.macros": "{kcal} kkal · P {p} · K {c} · L {f} · serat {fib}"
+    "check.macros": "{kcal} kkal · P {p} · K {c} · L {f} · serat {fib}",
+    "link.connect": "Buka tautannya, masuk ke {provider}, dan izinkan akses.\nSetelah itu data datang sendiri.",
+    "link.not_configured": "{provider} belum disiapkan di server ini: operator perlu menambahkan kunci aplikasinya.",
+    "link.denied": "Akses ke {provider} tidak diberikan. Tulis \"hubungkan {provider}\" kalau mau mencoba lagi.",
+    "link.expired": "Tautan {provider} ini sudah kedaluwarsa atau sudah dipakai. Minta yang baru di Telegram.",
+    "link.failed": "{provider} tidak menerima login. Minta tautan baru di Telegram.",
+    "link.lost": "{provider} terputus: login kedaluwarsa atau dicabut.\nTulis \"hubungkan {provider}\" dan aku kirim tautan baru.",
+    "link.back": "Kamu bisa menutup halaman ini dan kembali ke Telegram.",
+    "whoop.connected": "WHOOP terhubung. Dari 7 hari terakhir: {workouts} latihan, {sleeps} tidur, {recoveries} pemulihan.\nYang baru datang sendiri.",
+    "withings.connected": "Withings terhubung. {count} pengukuran dari 30 hari terakhir sudah masuk.\nYang baru datang sendiri.",
+    "apple.not_oauth": "Apple Health terhubung lewat tautan pribadi, bukan login. Minta tautannya di Telegram.",
+    "mfp.connect": "Buka tautannya di komputer yang sudah login ke myfitnesspal.com.\nDi sana ada cara menyalin login dari browser. Setelah itu setiap makanan yang kamu catat di sini disalin ke MyFitnessPal.",
+    "mfp.connected": "MyFitnessPal terhubung: setiap makanan yang kamu catat di sini sekarang juga masuk ke sana.\nSekarang aku menyalin hari ini dan {count} hari terakhir.",
+    "mfp.skipped": "Tidak disentuh, sudah ada makanan di MyFitnessPal: {dates}.",
+    "mfp.invalid": "MyFitnessPal tidak menerima login ini: cookie-nya kedaluwarsa atau tidak lengkap.\nLogin lagi ke myfitnesspal.com dan salin sekali lagi.",
+    "mfp.unchecked": "Tersimpan, tapi MyFitnessPal tidak menjawab pemeriksaan. Aku coba lagi dalam setengah jam.",
+    "mfp.delete_it": "Telegram tidak mengizinkanku menghapus pesan berisi cookie-mu.\nHapus sendiri: pesan itu berfungsi seperti login.",
+    "mfp.page.title": "Hubungkan MyFitnessPal",
+    "mfp.page.steps": "1. Di komputer, buka myfitnesspal.com di Chrome dan login.\n2. Tekan F12 (di Mac: Cmd+Option+I), buka tab Network, lalu muat ulang halaman.\n3. Klik kanan permintaan pertama (www.myfitnesspal.com): Copy, lalu Copy as cURL (di Windows: Copy as cURL (bash)).\n4. Tempel di bawah dan tekan tombolnya.\nHanya cookie login yang disimpan, terenkripsi, dan hanya untuk menulis buku harian makananmu.",
+    "mfp.page.button": "Hubungkan"
   }
 }

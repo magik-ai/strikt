@@ -108,6 +108,25 @@
     "bot.description": "Strikt는 텔레그램 대화창 하나에서 식사, 운동, 수면, 신체 수치를 기록합니다. 사진, 스크린샷, 음성, 글을 보내면 항목별 kcal, 단백질, 탄수화물, 지방, 식이섬유와 오늘까지의 합계, 남은 양이 돌아옵니다. 오늘 카드는 고정된 채 그 자리에서 갱신됩니다. 당신이 조용해지면 먼저 씁니다. 사실, 그다음 당신 데이터에 나타난 패턴, 그다음 기한이 있는 지시. 하루는 판정으로 끝납니다. 인사도, 이모지도, 칭찬도 없습니다.",
     "check.head": "어제 기록:",
     "check.tail": "합계: {total}. 맞나요? 틀리거나 빠진 게 있으면 알려 주세요. 고칠게요.",
-    "check.macros": "{kcal} kcal · 단백질 {p} · 탄수 {c} · 지방 {f} · 식이섬유 {fib}"
+    "check.macros": "{kcal} kcal · 단백질 {p} · 탄수 {c} · 지방 {f} · 식이섬유 {fib}",
+    "link.connect": "링크를 열고 {provider}에 로그인한 뒤 접근을 허용하세요.\n그다음부터는 데이터가 알아서 들어옵니다.",
+    "link.not_configured": "{provider}는 이 서버에 아직 설정되지 않았습니다. 운영자가 앱 키를 추가해야 합니다.",
+    "link.denied": "{provider} 접근이 허용되지 않았습니다. 다시 시도하려면 '{provider} 연결'이라고 보내세요.",
+    "link.expired": "이 {provider} 링크는 만료되었거나 이미 사용되었습니다. Telegram에서 새 링크를 요청하세요.",
+    "link.failed": "{provider}가 로그인을 받아들이지 않았습니다. Telegram에서 새 링크를 요청하세요.",
+    "link.lost": "{provider} 연결이 끊어졌습니다. 로그인이 만료되었거나 취소되었습니다.\n'{provider} 연결'이라고 보내면 새 링크를 보내드릴게요.",
+    "link.back": "이 페이지를 닫고 Telegram으로 돌아가면 됩니다.",
+    "whoop.connected": "WHOOP 연결 완료. 최근 7일: 운동 {workouts}회, 수면 {sleeps}회, 회복 {recoveries}회.\n새 데이터는 알아서 들어옵니다.",
+    "withings.connected": "Withings 연결 완료. 최근 30일 측정값 {count}개를 가져왔습니다.\n새 데이터는 알아서 들어옵니다.",
+    "apple.not_oauth": "Apple Health는 로그인이 아니라 개인 링크로 연결합니다. Telegram에서 요청하세요.",
+    "mfp.connect": "myfitnesspal.com에 로그인된 컴퓨터에서 링크를 여세요.\n브라우저에서 로그인 정보를 복사하는 방법이 나와 있습니다. 그다음부터 여기서 기록한 모든 식사가 MyFitnessPal에 복사됩니다.",
+    "mfp.connected": "MyFitnessPal 연결 완료. 여기서 기록하는 모든 식사가 이제 그쪽에도 들어갑니다.\n오늘과 지난 {count}일을 지금 복사하고 있습니다.",
+    "mfp.skipped": "MyFitnessPal에 이미 음식이 있어 건드리지 않았습니다: {dates}.",
+    "mfp.invalid": "MyFitnessPal이 이 로그인을 받아들이지 않았습니다. 쿠키가 만료되었거나 불완전합니다.\nmyfitnesspal.com에 다시 로그인한 뒤 한 번 더 복사하세요.",
+    "mfp.unchecked": "저장했지만 MyFitnessPal이 확인에 응답하지 않았습니다. 30분 안에 다시 시도하겠습니다.",
+    "mfp.delete_it": "Telegram이 쿠키가 담긴 메시지를 삭제하지 못하게 했습니다.\n직접 삭제하세요. 로그인처럼 작동합니다.",
+    "mfp.page.title": "MyFitnessPal 연결",
+    "mfp.page.steps": "1. 컴퓨터의 Chrome에서 myfitnesspal.com을 열고 로그인하세요.\n2. F12를 누르고(Mac: Cmd+Option+I) Network 탭을 연 뒤 페이지를 새로고침하세요.\n3. 첫 번째 요청(www.myfitnesspal.com)을 우클릭: Copy, 그다음 Copy as cURL (Windows: Copy as cURL (bash)).\n4. 아래에 붙여넣고 버튼을 누르세요.\n로그인 쿠키만 암호화해서 보관하며, 식단 일지를 쓰는 데에만 사용합니다.",
+    "mfp.page.button": "연결"
   }
 }

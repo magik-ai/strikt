@@ -200,6 +200,9 @@ class RecoveryView(BaseModel):
     rhr: float | None = None
     hrv_ms: float | None = None
     spo2: float | None = None
+    #: WHOOP day strain (0-21) and kcal burned so far, from the cycle the recovery opens.
+    day_strain: float | None = None
+    day_kcal: float | None = None
 
 
 class DayState(BaseModel):

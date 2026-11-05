@@ -60,7 +60,7 @@ bomiso/                          (repo root; product Strikt)
     agent/tools/registry.py  schemas.py  food.py  training.py  body.py  state.py  profile.py  research.py  memory.py
     telegram/bot.py  handlers.py  media.py  voice.py  render.py  keyboards.py  daycard.py  queue.py  messenger.py
     proactive/scheduler.py  triggers.py  engine.py  ladder.py
-    integrations/base.py  registry.py  whoop.py  withings.py  apple_health.py
+    integrations/base.py  registry.py  whoop.py  withings.py  apple_health.py  myfitnesspal.py
     web/server.py
     onboarding/checklist.py  importer.py
   tests/  (conftest.py with sqlite engine + FakeLLM + FakeMessenger; one test module per package)
@@ -115,9 +115,13 @@ timezone. IDs are integer autoincrement (`BigInteger` with sqlite variant `Integ
   cache_read_tokens, cache_write_tokens.
 - `summaries`: id, user_id, kind enum(day|week), period_start, period_end, text, data JSON, created_at,
   updated_at. Unique (user_id, kind, period_start).
-- `integrations`: id, user_id, provider enum(whoop|withings|apple_health), external_user_id,
-  access_token_enc, refresh_token_enc, expires_at, scopes, status, last_sync_at, webhook_token,
-  created_at. Unique (user_id, provider).
+- `integrations`: id, user_id, provider enum(whoop|withings|apple_health|myfitnesspal),
+  external_user_id, access_token_enc, refresh_token_enc, expires_at, scopes, status, last_sync_at,
+  webhook_token, created_at, notified_at (the user was told the connection broke; cleared on
+  reconnect), data JSON (provider state: MFP's first mirrored day). Unique (user_id, provider).
+- `integration_links` (migration 0004): id, user_id, provider, kind enum(food|entry), day, key,
+  external_id, data JSON, created_at. What Strikt created in a provider's account (MyFitnessPal
+  custom foods and diary entries); only these rows are ever deleted on the provider's side.
 - `proactive_sends`: id, user_id, trigger, window_key, step int, sent_at, telegram_message_id, text,
   responded_at, response_turn_id.
 - `token_usage`: id, user_id, date, model, purpose enum(turn|verify|proactive|summary|research|
@@ -240,7 +244,8 @@ Token budget per turn ≤ ~60k input. Never dump whole tables.
 - `web_research(query, urls?)` → separate LLM call with `web_search_20260209` (+ `web_fetch_20260209`)
   server tools, returns {answer, sources}; degraded → {error}. Keeps the main tool set stable.
 - `render_day_card()` → returns the card text (the same renderer the pinned card uses)
-- `connect_integration(provider)` → returns the OAuth link / Apple Health webhook instructions
+- `connect_integration(provider)` → returns the OAuth link / Apple Health webhook instructions /
+  the signed MyFitnessPal connect page
 - `set_coaching_intensity(level, until?)`, `finish_onboarding()`, `import_history(text)`
 - `delete_everything()` is NOT a tool; it is the `/forget_me` command with a confirm button.
 
@@ -309,12 +314,26 @@ The text is always model-written; never a template.
 - `whoop.py`: OAuth2 (URLs/scopes from research/04), v2 endpoints, pagination, webhook signature
   verification (HMAC-SHA256 base64 over timestamp+body), token refresh, kJ→kcal, zone_durations →
   minutes, dedupe by external id.
-- `withings.py`: OAuth2, `getmeas` decoding `value × 10^unit`, notify subscribe, webhook.
+- `withings.py`: OAuth2, `getmeas` decoding `value × 10^unit` (weight, body composition, blood
+  pressure, heart rate, visceral fat, BMR...), `getactivity` (daily steps, active kcal), notify
+  subscribe for appli 1, 4 and 16, webhook.
+- `myfitnesspal.py` (added 2026-11-05, issue #18): no official API exists, so the website's own
+  session: cookies → `/user/auth_token` bearer → v2 diary; private custom foods via the site's
+  `/api/services/foods`. Mirrors each coaching day of the coach's list into the MFP diary
+  (debounced on `DayStateChanged`, reconciled by `integration_sync`), deleting only what
+  `integration_links` says Strikt created. Connect: `GET|POST /connect/myfitnesspal?u=<signed>`
+  or a chat paste (deleted, never a turn). See `docs/INTEGRATIONS.md`.
 - `apple_health.py`: `POST /webhooks/apple-health/<webhook_token>` accepting the JSON shapes from
   research/05 (Shortcuts and Health Auto Export); maps to measurements/sleep/workouts.
 - `web/server.py`: aiohttp app: `GET /health`, `GET /oauth/<provider>/start?u=<signed>`, `GET
-  /oauth/<provider>/callback`, `POST /webhooks/<provider>[/<token>]`, optional `POST /telegram`
-  webhook. Runs in the same process as the bot (one container).
+  /oauth/<provider>/callback`, `GET|POST /connect/<provider>?u=<signed>` (form-based connect),
+  `POST /webhooks/<provider>[/<token>]`, optional `POST /telegram` webhook. Runs in the same
+  process as the bot (one container).
+- A sync poll republishes what it fetched (WHOOP marks new or rescored records `changed`), and
+  the proactive engine sends at most one message per window unless the trigger escalates and
+  `PROACTIVE_ESCALATE` is on: no repeats, and a nudge skipped for quiet hours comes round again.
+- `disconnect_integration(provider)` deletes the stored login; a dead connection is told to the
+  user once (`integrations.notified_at`), outside quiet hours.
 
 ## 10. Onboarding and import
 

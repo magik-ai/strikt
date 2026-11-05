@@ -42,7 +42,7 @@ from strikt.integrations.base import (
     WebhookResponse,
 )
 from strikt.integrations.oauth import webhook_url
-from strikt.telegram.copy import resolve_lang
+from strikt.telegram.copy import resolve_lang, t
 
 if TYPE_CHECKING:
     from strikt.config import Settings
@@ -162,18 +162,11 @@ _INSTRUCTIONS: dict[str, str] = {
     ),
 }
 
-_COPY: dict[str, dict[str, str]] = {
-    "en": {
-        "not_oauth": "Apple Health uses a webhook, not a login. Ask me for the link in Telegram."
-    },
-    "ru": {
-        "not_oauth": "Apple Health работает через вебхук, без входа. Попроси ссылку в Telegram."
-    },
-}
-
 
 def instructions_text(lang: str | None, *, url: str, token: str) -> str:
-    return _INSTRUCTIONS[resolve_lang(lang)].format(url=url, header=SECRET_HEADER, token=token)
+    # the long guide exists in en and ru; the coach retells it in any other language
+    text = _INSTRUCTIONS.get(resolve_lang(lang), _INSTRUCTIONS["en"])
+    return text.format(url=url, header=SECRET_HEADER, token=token)
 
 
 # ---------------------------------------------------------------------------------- parsing
@@ -617,7 +610,7 @@ class AppleHealthIntegration:
     async def handle_callback(
         self, session: AsyncSession, query: dict[str, str]
     ) -> tuple[User | None, str]:
-        return None, _COPY["en"]["not_oauth"]
+        return None, t(None, "apple.not_oauth")
 
     async def sync(self, session: AsyncSession, user: User, since: datetime | None) -> list[Event]:
         return []  # push-only: the phone sends, we never pull

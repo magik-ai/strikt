@@ -51,7 +51,7 @@ class FakeIntegration:
 def test_build_registry_has_all_providers_and_respects_missing_key() -> None:
     bus = EventBus()
     registry = build_registry(make_settings(), lambda: None, bus)
-    assert set(registry) == {"whoop", "withings", "apple_health"}
+    assert set(registry) == {"whoop", "withings", "apple_health", "myfitnesspal"}
     assert isinstance(registry, dict)
     assert registry.bus is bus
     no_key = build_registry(make_settings(token_encryption_key=""), lambda: None, bus)

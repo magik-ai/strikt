@@ -37,6 +37,7 @@ EXPECTED_TABLES = {
     "conversation_turns",
     "summaries",
     "integrations",
+    "integration_links",
     "proactive_sends",
     "token_usage",
     "invites",

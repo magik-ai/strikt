@@ -48,6 +48,8 @@ from strikt.core.types import Attachment, Button, Incoming
 from strikt.db import repo
 from strikt.db.models import SecretService, User, UserStatus
 from strikt.events import DayStateChanged
+from strikt.integrations.base import link_copy
+from strikt.integrations.myfitnesspal import looks_like_mfp_cookies
 from strikt.keycheck import check_secret
 from strikt.privacy import delete_everything
 from strikt.proactive import stats
@@ -490,6 +492,7 @@ async def handle_message(deps: AppDeps, inbound: InboundMessage) -> None:
         # a pasted key is deleted from the chat by its message id: it never joins a burst
         or extract_key(inbound.text) is not None
         or extract_openai_key(inbound.text) is not None
+        or looks_like_mfp_cookies(inbound.text)
     )
     if not alone:
         # joins whatever else is waiting behind a running turn; the first runner takes it all
@@ -539,6 +542,7 @@ async def _dispatch_message(deps: AppDeps, inbound: InboundMessage) -> None:
         # answer would leave the secret sitting in the chat, unchecked and unstored
         and extract_key(inbound.text) is None
         and extract_openai_key(inbound.text) is None
+        and not looks_like_mfp_cookies(inbound.text)
     ):
         await handle_language_message(deps, user, inbound)
         return
@@ -840,6 +844,9 @@ async def handle_user_message(deps: AppDeps, user_id: int, inbound: InboundMessa
         if optional is not None:
             await handle_secret_message(deps, session, user, inbound, "openai", optional)
             return
+        if looks_like_mfp_cookies(inbound.text):
+            await handle_mfp_cookies(deps, session, user, inbound)
+            return
         if user.awaiting_secret:
             pending = user.awaiting_secret
             candidate = (inbound.text or "").strip()
@@ -1133,6 +1140,36 @@ async def handle_key_message(
         incoming = await build_incoming(deps, user, synthetic)
         if incoming is not None:
             await run_agent_turn(deps, session, user, incoming, llm)
+
+
+async def handle_mfp_cookies(
+    deps: AppDeps, session: AsyncSession, user: User, inbound: InboundMessage
+) -> None:
+    """A MyFitnessPal login pasted into the chat (the connect page is the main way in).
+
+    The cookies work as a password, so they get the key treatment: the message leaves the chat
+    first, never becomes a turn, never reaches the model, is never logged; the MFP integration
+    checks them with one call and stores them encrypted."""
+    lang = resolve_lang(user.language)
+    deleted = await _delete_quietly(deps, inbound.chat_id, inbound.message_id)
+    integration = (deps.integrations or {}).get("myfitnesspal")
+    if integration is None or not hasattr(integration, "submit_cookies"):
+        log.error("mfp_cookies_without_integration", user_id=user.id)
+        await _send(deps, inbound.chat_id, link_copy(lang, "not_configured", "myfitnesspal"))
+        return
+    try:
+        outcome = await integration.submit_cookies(session, user, inbound.text or "")
+        await session.commit()
+    except Exception:
+        await session.rollback()
+        log.exception("mfp_cookies_failed", user_id=user.id)
+        await _send(deps, inbound.chat_id, t(lang, "err.unknown"))
+        return
+    lines = [outcome.message]
+    if not deleted:
+        lines.append(t(lang, "mfp.delete_it"))
+    log.info("mfp_cookies_message", user_id=user.id, status=outcome.status, deleted=deleted)
+    await _send(deps, inbound.chat_id, "\n\n".join(lines))
 
 
 def _looks_like_secret(service: str, text: str) -> bool:

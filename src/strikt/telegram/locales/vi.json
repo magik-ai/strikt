@@ -109,6 +109,25 @@
     "bot.description": "Strikt ghi lại đồ ăn, buổi tập, giấc ngủ và số đo từ một khung chat Telegram. Gửi ảnh, ảnh chụp màn hình, tin nhắn thoại hay chữ: câu trả lời có kcal, đạm, tinh bột, chất béo và chất xơ cho từng món, tổng của ngày và phần còn lại. Thẻ hôm nay được ghim và sửa ngay tại chỗ. Khi bạn im lặng, nó viết trước: sự thật, rồi quy luật trong chính dữ liệu của bạn, rồi một chỉ dẫn có hạn. Ngày khép lại bằng kết luận. Không chào hỏi, không emoji, không khen.",
     "check.head": "Hôm qua đã ghi:",
     "check.tail": "Tổng: {total}. Đúng chưa? Nếu có gì sai hoặc thiếu, nói mình biết để sửa.",
-    "check.macros": "{kcal} kcal · Đạm {p} · Tinh bột {c} · Béo {f} · xơ {fib}"
+    "check.macros": "{kcal} kcal · Đạm {p} · Tinh bột {c} · Béo {f} · xơ {fib}",
+    "link.connect": "Mở liên kết, đăng nhập {provider} và cho phép truy cập.\nSau đó dữ liệu sẽ tự đến.",
+    "link.not_configured": "{provider} chưa được thiết lập trên máy chủ này: người vận hành cần thêm khóa ứng dụng.",
+    "link.denied": "Chưa cấp quyền truy cập {provider}. Viết \"kết nối {provider}\" khi bạn muốn thử lại.",
+    "link.expired": "Liên kết {provider} này đã hết hạn hoặc đã được dùng. Hãy xin tôi liên kết mới trong Telegram.",
+    "link.failed": "{provider} không chấp nhận đăng nhập. Hãy xin tôi liên kết mới trong Telegram.",
+    "link.lost": "{provider} đã ngắt kết nối: phiên đăng nhập hết hạn hoặc bị thu hồi.\nViết \"kết nối {provider}\" và tôi sẽ gửi liên kết mới.",
+    "link.back": "Bạn có thể đóng trang này và quay lại Telegram.",
+    "whoop.connected": "Đã kết nối WHOOP. Trong 7 ngày qua: {workouts} buổi tập, {sleeps} giấc ngủ, {recoveries} lần phục hồi.\nDữ liệu mới sẽ tự đến.",
+    "withings.connected": "Đã kết nối Withings. Đã có {count} lần đo trong 30 ngày qua.\nDữ liệu mới sẽ tự đến.",
+    "apple.not_oauth": "Apple Health kết nối qua một liên kết cá nhân, không cần đăng nhập. Hãy xin tôi trong Telegram.",
+    "mfp.connect": "Mở liên kết trên máy tính đang đăng nhập myfitnesspal.com.\nTrang đó chỉ cách sao chép phiên đăng nhập từ trình duyệt. Sau đó mọi bữa ăn bạn ghi ở đây sẽ được chép sang MyFitnessPal.",
+    "mfp.connected": "Đã kết nối MyFitnessPal: mọi bữa ăn bạn ghi ở đây giờ cũng vào đó.\nTôi đang chép hôm nay và {count} ngày gần nhất.",
+    "mfp.skipped": "Không động vào, đã có món ăn trong MyFitnessPal: {dates}.",
+    "mfp.invalid": "MyFitnessPal không chấp nhận phiên đăng nhập này: cookie đã hết hạn hoặc không đầy đủ.\nĐăng nhập lại myfitnesspal.com và sao chép lại một lần nữa.",
+    "mfp.unchecked": "Đã lưu, nhưng MyFitnessPal không phản hồi kiểm tra. Tôi sẽ thử lại trong vòng nửa giờ.",
+    "mfp.delete_it": "Telegram không cho tôi xóa tin nhắn chứa cookie của bạn.\nHãy tự xóa: nó có tác dụng như một lần đăng nhập.",
+    "mfp.page.title": "Kết nối MyFitnessPal",
+    "mfp.page.steps": "1. Trên máy tính, mở myfitnesspal.com bằng Chrome và đăng nhập.\n2. Nhấn F12 (trên Mac: Cmd+Option+I), mở thẻ Network và tải lại trang.\n3. Nhấp chuột phải vào yêu cầu đầu tiên (www.myfitnesspal.com): Copy, rồi Copy as cURL (trên Windows: Copy as cURL (bash)).\n4. Dán vào bên dưới và nhấn nút.\nChỉ lưu cookie đăng nhập, đã mã hóa, và chỉ để ghi nhật ký ăn uống của bạn.",
+    "mfp.page.button": "Kết nối"
   }
 }

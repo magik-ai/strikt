@@ -6,7 +6,7 @@ Everything here filters by ``user_id`` and flushes; callers commit.
 from __future__ import annotations
 
 from collections.abc import Mapping
-from datetime import datetime
+from datetime import date, datetime
 from typing import Any
 
 import sqlalchemy as sa
@@ -17,7 +17,9 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from strikt.db.models import (
     DataSource,
     Integration,
+    IntegrationLink,
     IntegrationStatus,
+    LinkKind,
     Measurement,
     MeasurementType,
     Provider,
@@ -179,3 +181,137 @@ async def list_connected(
     if provider is not None:
         stmt = stmt.where(Integration.provider == Provider(provider))
     return list((await session.scalars(stmt)).all())
+
+
+# ------------------------------------------------------------------------------------- links
+
+
+async def list_links(
+    session: AsyncSession,
+    user_id: int,
+    provider: Provider | str,
+    kind: LinkKind | str,
+    *,
+    day: date | None = None,
+    key: str | None = None,
+) -> list[IntegrationLink]:
+    """What Strikt created in the provider's account: one day's entries, or a food by key."""
+    stmt = select(IntegrationLink).where(
+        IntegrationLink.user_id == user_id,
+        IntegrationLink.provider == Provider(provider),
+        IntegrationLink.kind == LinkKind(kind),
+    )
+    if day is not None:
+        stmt = stmt.where(IntegrationLink.day == day)
+    if key is not None:
+        stmt = stmt.where(IntegrationLink.key == key)
+    return list((await session.scalars(stmt.order_by(IntegrationLink.id))).all())
+
+
+async def linked_days(
+    session: AsyncSession, user_id: int, provider: Provider | str, *, since: date
+) -> set[date]:
+    """Days from ``since`` on that hold at least one entry Strikt created."""
+    rows = await session.scalars(
+        select(IntegrationLink.day)
+        .where(
+            IntegrationLink.user_id == user_id,
+            IntegrationLink.provider == Provider(provider),
+            IntegrationLink.kind == LinkKind.entry,
+            IntegrationLink.day >= since,
+        )
+        .distinct()
+    )
+    return {day for day in rows.all() if day is not None}
+
+
+async def add_link(
+    session: AsyncSession,
+    user_id: int,
+    provider: Provider | str,
+    kind: LinkKind | str,
+    *,
+    key: str,
+    external_id: str,
+    now: datetime,
+    day: date | None = None,
+    data: Mapping[str, Any] | None = None,
+) -> IntegrationLink:
+    row = IntegrationLink(
+        user_id=user_id,
+        provider=Provider(provider),
+        kind=LinkKind(kind),
+        day=day,
+        key=key,
+        external_id=external_id,
+        data=dict(data) if data is not None else None,
+        created_at=now,
+    )
+    session.add(row)
+    await session.flush()
+    return row
+
+
+async def delete_link(session: AsyncSession, user_id: int, link_id: int) -> bool:
+    result = await session.execute(
+        sa.delete(IntegrationLink).where(
+            IntegrationLink.user_id == user_id, IntegrationLink.id == link_id
+        )
+    )
+    return _rowcount(result) > 0
+
+
+async def list_unannounced(
+    session: AsyncSession, status: IntegrationStatus | str
+) -> list[Integration]:
+    """Rows in ``status`` whose user has not been told yet (``notified_at`` empty)."""
+    stmt = (
+        select(Integration)
+        .where(
+            Integration.status == IntegrationStatus(status),
+            Integration.notified_at.is_(None),
+        )
+        .order_by(Integration.id)
+    )
+    return list((await session.scalars(stmt)).all())
+
+
+async def fresh_integration(
+    session: AsyncSession, user_id: int, provider: Provider | str
+) -> Integration | None:
+    """The row as the database has it now, even when a long-lived session holds an older copy
+    (another task may have stored new cookies or state in the meantime)."""
+    stmt = (
+        select(Integration)
+        .where(Integration.user_id == user_id, Integration.provider == Provider(provider))
+        .execution_options(populate_existing=True)
+    )
+    return (await session.scalars(stmt.limit(1))).first()
+
+
+async def delete_links(session: AsyncSession, user_id: int, provider: Provider | str) -> int:
+    """Forget everything Strikt created in one provider account (the user switched accounts)."""
+    result = await session.execute(
+        sa.delete(IntegrationLink).where(
+            IntegrationLink.user_id == user_id,
+            IntegrationLink.provider == Provider(provider),
+        )
+    )
+    return _rowcount(result)
+
+
+async def update_connected(
+    session: AsyncSession, user_id: int, provider: Provider | str, values: Mapping[str, Any]
+) -> bool:
+    """Update the row only if it exists and is still connected (a write racing a disconnect
+    changes nothing). Returns whether a row was updated."""
+    result = await session.execute(
+        sa.update(Integration)
+        .where(
+            Integration.user_id == user_id,
+            Integration.provider == Provider(provider),
+            Integration.status == IntegrationStatus.connected,
+        )
+        .values(**values)
+    )
+    return _rowcount(result) > 0

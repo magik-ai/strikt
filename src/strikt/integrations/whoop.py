@@ -45,9 +45,10 @@ from strikt.integrations.base import (
     ProviderName,
     WebhookRequest,
     WebhookResponse,
+    link_copy,
 )
 from strikt.integrations.oauth import callback_url, consume_state, issue_state
-from strikt.telegram.copy import resolve_lang
+from strikt.telegram.copy import t
 
 if TYPE_CHECKING:
     from strikt.config import Settings
@@ -57,6 +58,8 @@ if TYPE_CHECKING:
 log = structlog.get_logger(__name__)
 
 PROVIDER: ProviderName = "whoop"
+#: Access token lifetime when the token answer leaves ``expires_in`` out.
+DEFAULT_EXPIRES_S = 3600.0
 AUTH_URL = "https://api.prod.whoop.com/oauth/oauth2/auth"
 TOKEN_URL = "https://api.prod.whoop.com/oauth/oauth2/token"
 API_BASE = "https://api.prod.whoop.com/developer"
@@ -80,29 +83,12 @@ _ZONE_KEYS = (
 
 ClientFactory = Callable[[], httpx.AsyncClient]
 
-_COPY: dict[str, dict[str, str]] = {
-    "en": {
-        "connect": "Open the link, log in to WHOOP and allow access. I will pull the last 7 days.",
-        "not_configured": "WHOOP is not configured on this server (WHOOP_CLIENT_ID is missing).",
-        "connected": "WHOOP connected. Pulled {workouts} workouts, {sleeps} sleeps, {recoveries} recoveries from the last 7 days. Go back to Telegram.",
-        "denied": "WHOOP access was not granted. Send “connect WHOOP” again when you want to retry.",
-        "expired": "The WHOOP link expired or was already used. Ask me for a new one in Telegram.",
-        "failed": "WHOOP did not accept the login. Ask me for a new link in Telegram.",
-    },
-    "ru": {
-        "connect": "Открой ссылку, войди в WHOOP и разреши доступ. Подтяну последние 7 дней.",
-        "not_configured": "WHOOP на этом сервере не настроен (нет WHOOP_CLIENT_ID).",
-        "connected": "WHOOP подключён. Забрал за 7 дней: тренировок {workouts}, снов {sleeps}, восстановлений {recoveries}. Возвращайся в Telegram.",
-        "denied": "Доступ к WHOOP не выдан. Напиши «подключи WHOOP», когда захочешь повторить.",
-        "expired": "Ссылка WHOOP устарела или уже использована. Попроси новую в Telegram.",
-        "failed": "WHOOP не принял вход. Попроси новую ссылку в Telegram.",
-    },
-}
-
 
 def _copy(lang: str | None, key: str, **kwargs: Any) -> str:
-    text = _COPY[resolve_lang(lang)][key]
-    return text.format(**kwargs) if kwargs else text
+    """Callback and connect copy in the user's language (``telegram/locales``)."""
+    if key == "connected":
+        return t(lang, "whoop.connected", **kwargs)
+    return link_copy(lang, key, PROVIDER, **kwargs)
 
 
 # ----------------------------------------------------------------------------------- errors
@@ -607,7 +593,18 @@ class WhoopIntegration:
                 raise
             if not fresh.get("refresh_token"):
                 fresh = {**fresh, "refresh_token": tokens.refresh_token}
-            updated = await self._store_tokens(session, row.user_id, fresh, now=self._clock.now())
+            updated = await repo.rotate_integration_tokens(
+                session,
+                self._cipher,
+                row.user_id,
+                PROVIDER,
+                access_token=str(fresh["access_token"]),
+                refresh_token=(str(fresh["refresh_token"]) if fresh.get("refresh_token") else None),
+                expires_at=self._clock.now()
+                + timedelta(seconds=_expires_in(fresh.get("expires_in"))),
+            )
+            if updated is None:  # disconnected while the refresh was on its way
+                raise WhoopAuthError("integration gone")
             log.info("whoop_token_refreshed", user_id=row.user_id)
             return str(repo.integration_tokens(self._cipher, updated).access_token)
 
@@ -734,6 +731,9 @@ class WhoopIntegration:
         except WhoopError as exc:
             log.warning("whoop_sync_failed", user_id=user.id, error=str(exc))
             return []
+        # Every record in the window is published, also the ones already stored: the engine
+        # sends one message per window, and a recovery skipped at 07:00 for quiet hours must
+        # come round again at 07:30 (``raw["changed"]`` says which ones are new news).
         events = await self._store_batch(session, user, workouts, sleeps, recoveries, cycles)
         await repo.set_integration_status(
             session, user.id, PROVIDER, IntegrationStatus.connected, last_sync_at=now
@@ -805,6 +805,10 @@ class WhoopIntegration:
     async def _store_workout(
         self, session: AsyncSession, user: User, record: WorkoutRecord
     ) -> WorkoutEvent:
+        known = await store.get_workout_by_external(
+            session, user.id, DataSource.whoop, record.external_id
+        )
+        changed = _changed(known.raw if known is not None else None, record.raw)
         row, created = await repo.upsert_workout_by_external(
             session,
             user.id,
@@ -838,12 +842,16 @@ class WhoopIntegration:
             max_hr=record.max_hr,
             zones_min=record.zones_min,
             distance_m=record.distance_m,
-            raw={**record.raw, "created": created, "row_id": row.id},
+            raw={**record.raw, "created": created, "changed": changed, "row_id": row.id},
         )
 
     async def _store_sleep(
         self, session: AsyncSession, user: User, record: SleepRecord
     ) -> SleepEvent | None:
+        known = await store.get_sleep_by_external(
+            session, user.id, DataSource.whoop, record.external_id
+        )
+        changed = _changed(known.raw if known is not None else None, record.raw)
         row, created = await repo.upsert_sleep_by_external(
             session,
             user.id,
@@ -875,12 +883,16 @@ class WhoopIntegration:
             stages_min=record.stages_min,
             respiratory_rate=record.respiratory_rate,
             disturbances=record.disturbances,
-            raw={**record.raw, "created": created, "row_id": row.id},
+            raw={**record.raw, "created": created, "changed": changed, "row_id": row.id},
         )
 
     async def _store_recovery(
         self, session: AsyncSession, user: User, record: RecoveryRecord
     ) -> RecoveryEvent:
+        known = await store.get_recovery_by_external(
+            session, user.id, DataSource.whoop, record.external_id
+        )
+        changed = _changed(known.raw if known is not None else None, record.raw)
         row, created = await repo.upsert_recovery_by_external(
             session,
             user.id,
@@ -905,7 +917,7 @@ class WhoopIntegration:
             hrv_ms=record.hrv_ms,
             spo2=record.spo2,
             skin_temp_c=record.skin_temp_c,
-            raw={**record.raw, "created": created, "row_id": row.id},
+            raw={**record.raw, "created": created, "changed": changed, "row_id": row.id},
         )
 
     # --- webhooks -------------------------------------------------------------------------
@@ -1026,6 +1038,15 @@ class WhoopIntegration:
 # ---------------------------------------------------------------------------------- helpers
 
 
+def _changed(before: Mapping[str, Any] | None, after: Mapping[str, Any]) -> bool:
+    """Is this record new, or did WHOOP change it since we stored it (rescored, edited)?"""
+    if before is None:
+        return True
+    return before.get("updated_at") != after.get("updated_at") or before.get(
+        "score_state"
+    ) != after.get("score_state")
+
+
 def _iso(dt: datetime) -> str:
     return ensure_utc(dt).strftime("%Y-%m-%dT%H:%M:%S.000Z")
 
@@ -1038,3 +1059,10 @@ def _json(response: httpx.Response) -> dict[str, Any]:
     if not isinstance(body, dict):
         raise WhoopError("response is not a JSON object")
     return cast("dict[str, Any]", body)
+
+
+def _expires_in(value: Any, default: float = DEFAULT_EXPIRES_S) -> float:
+    try:
+        return float(value) if value else default
+    except (TypeError, ValueError):
+        return default

@@ -135,3 +135,23 @@ async def test_no_morning_check_without_food(
     out = await eng.fire(user.id, "morning_line")
     assert out.status == "skipped" and out.reason == "nothing_to_check"
     assert messenger.sent == []
+
+
+async def test_no_second_message_in_a_window_without_escalation(
+    eng: ProactiveEngine,
+    user: User,
+    clock: FakeClock,
+    session: AsyncSession,
+    messenger: FakeMessenger,
+) -> None:
+    """Escalation is off by default: a timer that fires again for the same window (a restart,
+    a duplicate job) is not a second nudge, however long the first went unanswered."""
+    await wrote(session, user, "08:30")
+    await session.commit()
+    clock.set(at_local(TODAY, "11:40"))
+    first = await eng.fire(user.id, "no_first_meal")
+    assert first.sent
+    clock.set(at_local(TODAY, "13:40"))
+    again = await eng.fire(user.id, "no_first_meal")
+    assert (again.status, again.reason) == ("skipped", "already_sent")
+    assert len(messenger.sent) == 1
