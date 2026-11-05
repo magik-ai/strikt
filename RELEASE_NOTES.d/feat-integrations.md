@@ -12,5 +12,6 @@
   sent.
 - **Fewer repeats.** A workout from WHOOP is commented on once, not again every half hour.
 - **You hear when a connection breaks.** If WHOOP, Withings or MyFitnessPal stops accepting the
-  login, the coach says so once and how to reconnect.
+  login, the coach says so once (never at night) and how to reconnect. "Disconnect MyFitnessPal"
+  (or WHOOP, or Withings) in the chat removes the connection.
 - Connecting WHOOP or Withings no longer fails for users whose language is not English or Russian.

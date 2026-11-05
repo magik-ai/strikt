@@ -329,8 +329,11 @@ The text is always model-written; never a template.
   /oauth/<provider>/callback`, `GET|POST /connect/<provider>?u=<signed>` (form-based connect),
   `POST /webhooks/<provider>[/<token>]`, optional `POST /telegram` webhook. Runs in the same
   process as the bot (one container).
-- A sync poll publishes only new or changed records, and the proactive engine sends at most one
-  message per window unless the trigger escalates and `PROACTIVE_ESCALATE` is on.
+- A sync poll republishes what it fetched (WHOOP marks new or rescored records `changed`), and
+  the proactive engine sends at most one message per window unless the trigger escalates and
+  `PROACTIVE_ESCALATE` is on: no repeats, and a nudge skipped for quiet hours comes round again.
+- `disconnect_integration(provider)` deletes the stored login; a dead connection is told to the
+  user once (`integrations.notified_at`), outside quiet hours.
 
 ## 10. Onboarding and import
 

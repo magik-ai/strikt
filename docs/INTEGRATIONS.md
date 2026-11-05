@@ -15,14 +15,18 @@ when one goes quiet.
 Every connected source is polled by the scheduler's `integration_sync` job every 30 minutes, so
 data lands every day even when a webhook is lost. A connection that dies (a refresh rejected, the
 MFP session logged out) is told to the user once in Telegram ("WHOOP got disconnected... write
-connect WHOOP"); reconnecting clears it.
+connect WHOOP"), outside quiet hours and only to active users; reconnecting clears it. A network
+error or a 5xx from a provider is never taken for a dead connection. "Disconnect MyFitnessPal"
+(or any other) in the chat deletes the stored login (`disconnect_integration`); what was already
+imported stays.
 
 ## WHOOP
 
 How it works: `integrations/whoop.py`. A finished workout, sleep or recovery arrives by webhook
-within minutes; the 30-minute poll asks for the last run's window plus a day and publishes only
-records that are new or that WHOOP changed (`updated_at` or `score_state` moved). The proactive
-engine sends at most one message per window, so a workout is analysed once.
+within minutes; the 30-minute poll asks for the last run's window plus a day and publishes every
+record again (marked `changed` when it is new or WHOOP rescored it). The proactive engine sends at
+most one message per window, so a workout is analysed once, and a recovery that arrived inside
+quiet hours still gets its message from the first poll after them.
 
 What the coach sees: today's workouts, last night's sleep and the recovery (score, RHR, HRV, SpO2,
 day strain, kcal burned) in `<day>`; 14 days of training, sleep hours and recovery in `<recent>`.
@@ -92,7 +96,12 @@ How it works: `integrations/myfitnesspal.py`.
   last 14 days with the links and reads today and yesterday back from MFP (an entry deleted
   there by hand comes back: the coach's list is the source of truth).
 - On connect, today and the 6 days before are copied in the background. A past day that already
-  holds food in MFP is skipped, and the user is told which ones.
+  holds food in MFP is skipped, and the user is told which ones; after a reconnect that covers the
+  days logged by hand while the connection was down. Connecting another MFP account starts from
+  a clean slate.
+- A write whose answer never came back (MFP stored the entry, the reply timed out) is recognised
+  on the next run by its Strikt food and adopted, never added a second time; a surplus copy of a
+  Strikt food is removed.
 - `/forget_me` deletes Strikt's records of what it created, not the entries in the user's MFP
   account (that account is the user's).
 
@@ -102,7 +111,8 @@ directly. So a meal logged here reaches them too, with no second entry by hand.
 
 Owner's steps (nothing to set on the server):
 
-1. In the chat: "подключи MyFitnessPal". The coach sends a link (valid 24 hours).
+1. In the chat: "подключи MyFitnessPal". The coach sends a link (valid 24 hours, and dead once
+   it has connected an account: a copy left in a browser history cannot rebind it).
 2. Open it on a computer where you are logged in to myfitnesspal.com in Chrome, follow the four
    steps on the page: F12, Network, reload, right-click the first request, Copy, Copy as cURL,
    paste, Connect.

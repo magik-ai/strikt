@@ -272,11 +272,11 @@ Notifications are unsigned, so each one is only a hint: its dates are ignored, t
 
 Every meal the coach logs is copied into your MyFitnessPal food diary, and from there to whatever reads MyFitnessPal or Apple Health (WHOOP, Garmin and the rest). Nothing to set on the server: MyFitnessPal has no usable official API, so Strikt uses the session the MFP website itself uses.
 
-1. In the chat, "connect MyFitnessPal". The coach sends a link to a page on your server, signed for you, valid 24 hours.
+1. In the chat, "connect MyFitnessPal". The coach sends a link to a page on your server, signed for you, valid 24 hours and only until it has connected an account.
 2. Open it on a computer where you are logged in to myfitnesspal.com. In Chrome: F12, Network, reload, right-click the first request, Copy, Copy as cURL; paste it into the page and press Connect. (Pasting it into the chat also works: the message is deleted at once.)
 3. Telegram confirms. Today and the 6 days before are copied in the background; a past day that already has food in MFP is left alone, and the coach says which.
 
-One diary entry per line of the coach's list, in Breakfast, Lunch, Dinner or Snacks, with the numbers exactly as logged (each line is a private custom food, brand "Strikt", reused when the same line comes back). Only entries Strikt created are ever changed or deleted. The cookies are Fernet-encrypted, never reach the model and are never logged; when MFP stops accepting them the coach tells you once and you connect again. The route is unofficial and MFP can change it without notice: details and troubleshooting in `docs/INTEGRATIONS.md`.
+One diary entry per line of the coach's list, in Breakfast, Lunch, Dinner or Snacks, with the numbers exactly as logged (each line is a private custom food, brand "Strikt", reused when the same line comes back). Only entries Strikt created are ever changed or deleted. The cookies are Fernet-encrypted, never reach the model and are never logged; when MFP stops accepting them the coach tells you once and you connect again; "disconnect MyFitnessPal" deletes them. The route is unofficial and MFP can change it without notice: details and troubleshooting in `docs/INTEGRATIONS.md`.
 
 ## Connecting Apple Health
 
