@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import json
-from datetime import UTC, datetime, timedelta
+from datetime import UTC, date, datetime, timedelta
 from typing import Any
 
 import httpx
@@ -152,14 +152,15 @@ async def test_callback_requesttoken_subscribe_and_initial_sync(
     assert token_call["code"] == "c0de"
     assert token_call["client_secret"] == "withings-secret"
     assert token_call["redirect_uri"] == "https://coach.example.com/oauth/withings/callback"
-    notify_call = router.requests("POST", withings.NOTIFY_URL)[0]
+    notify_calls = router.requests("POST", withings.NOTIFY_URL)
+    assert [form(c)["appli"] for c in notify_calls] == ["1", "4", "16"]  # weight, pressure, steps
+    notify_call = notify_calls[0]
     assert notify_call.headers["Authorization"] == "Bearer wacc"
     assert form(notify_call)["action"] == "subscribe"
-    assert form(notify_call)["appli"] == "1"
     assert form(notify_call)["callbackurl"] == "https://coach.example.com/webhooks/withings"
     getmeas = form(router.requests("POST", withings.MEASURE_URL)[0])
     assert getmeas["action"] == "getmeas"
-    assert getmeas["meastypes"] == "1,5,6,8,76,77,88"
+    assert getmeas["meastypes"] == "1,5,6,8,9,10,11,54,71,76,77,88,91,155,168,169,170,226,227"
     assert getmeas["category"] == "1"
     assert "startdate" in getmeas and "enddate" in getmeas  # first sync: 30-day window
     row = await repo.get_integration(session, user.id, "withings")
@@ -398,3 +399,165 @@ async def test_spoofed_webhook_cannot_skip_a_weigh_in(
     assert getmeas["lastupdate"] == str(int((NOW - timedelta(hours=1)).timestamp()))
     row = await repo.get_integration(session, user.id, "withings")
     assert row is not None and ensure_utc(row.last_sync_at) == NOW
+
+
+# ------------------------------------------------------------- pressure, body comp, activity
+
+BPM_GROUP: dict[str, Any] = {
+    "grpid": 555,
+    "attrib": 0,
+    "date": 1788405720,  # 2026-09-03 07:22 +04:00
+    "category": 1,
+    "model": "BPM Connect",
+    "measures": [
+        {"value": 128, "type": 10, "unit": 0},
+        {"value": 84, "type": 9, "unit": 0},
+        {"value": 66, "type": 11, "unit": 0},
+    ],
+}
+SCAN_GROUP: dict[str, Any] = {
+    "grpid": 556,
+    "attrib": 0,
+    "date": 1788405180,
+    "category": 1,
+    "model": "Body Scan",
+    "measures": [
+        {"value": 9, "type": 170, "unit": 0},
+        {"value": 1780, "type": 226, "unit": 0},
+        {"value": 38, "type": 227, "unit": 0},
+    ],
+}
+ACTIVITY: dict[str, Any] = {
+    "status": 0,
+    "body": {
+        "activities": [
+            {
+                "date": "2026-09-02",
+                "timezone": "Asia/Dubai",
+                "steps": 11234,
+                "distance": 8120.5,
+                "calories": 512.3,
+                "totalcalories": 2711.9,
+                "active": 3600,
+                "is_tracker": False,
+            },
+            {"date": "2026-09-03", "timezone": "Asia/Dubai", "steps": 0, "calories": 0},
+            {"date": "not a date", "steps": 5},
+        ],
+        "more": False,
+        "offset": 0,
+    },
+}
+
+
+def test_decode_groups_reads_pressure_pulse_and_body_scan_extras() -> None:
+    readings = {r.metric: r for r in withings.decode_groups([BPM_GROUP, SCAN_GROUP])}
+    assert (readings["bp_sys"].type, readings["bp_sys"].value) == (MeasurementType.bp_sys, 128.0)
+    assert (readings["bp_dia"].type, readings["bp_dia"].unit) == (MeasurementType.bp_dia, "mmHg")
+    assert readings["heart_rate"].value == 66.0
+    assert readings["visceral_fat"].value == 9.0
+    assert readings["bmr_kcal"].unit == "kcal" and readings["metabolic_age"].value == 38.0
+
+
+def test_decode_activities_files_a_day_at_local_noon_and_drops_empty_days() -> None:
+    days = withings.decode_activities(ACTIVITY["body"]["activities"])
+    assert len(days) == 1
+    day = days[0]
+    assert day.day == date(2026, 9, 2) and day.steps == 11234 and day.active_kcal == 512.3
+    assert day.measured_at == datetime(2026, 9, 2, 8, 0, tzinfo=UTC)  # 12:00 in Dubai
+
+
+async def test_sync_stores_pressure_and_daily_activity(
+    session: AsyncSession, user: User, clock: FakeClock
+) -> None:
+    settings = make_settings()
+    cipher = TokenCipher(settings.token_encryption_key.get_secret_value())
+    await seed_tokens(session, cipher, user, expires_at=NOW + timedelta(hours=2))
+    getmeas = json.loads(json.dumps(WITHINGS_GETMEAS))
+    getmeas["body"]["measuregrps"] = [BPM_GROUP]
+    router = Router()
+    router.json("POST", withings.MEASURE_URL, getmeas)
+    router.json("POST", withings.MEASURE_V2_URL, ACTIVITY)
+    integration = make_integration(router, settings, clock)
+
+    events = await integration.sync(session, user, None)
+    await session.commit()
+    assert {e.type for e in events} == {"bp_sys", "bp_dia", "heart_rate"}  # type: ignore[attr-defined]
+    activity_call = form(router.requests("POST", withings.MEASURE_V2_URL)[0])
+    assert activity_call["action"] == "getactivity"
+    assert (
+        activity_call["startdateymd"] == "2026-08-04"
+        and activity_call["enddateymd"] == "2026-09-03"
+    )
+    assert "steps" in activity_call["data_fields"]
+    rows = (await session.scalars(select(Measurement).where(Measurement.user_id == user.id))).all()
+    steps = [r for r in rows if r.type == MeasurementType.steps]
+    assert [(r.value, r.unit) for r in steps] == [(11234.0, "steps")]
+    active = [r for r in rows if r.note == "active_kcal"]
+    assert [r.value for r in active] == [512.3]
+
+    # the day goes on: the same day's steps are updated in place, not duplicated
+    more = json.loads(json.dumps(ACTIVITY))
+    more["body"]["activities"][0]["steps"] = 13000
+    router.routes = [r for r in router.routes if r[1] != withings.MEASURE_V2_URL]
+    router.json("POST", withings.MEASURE_V2_URL, more)
+    await integration.sync(session, user, None)
+    await session.commit()
+    second = form(router.requests("POST", withings.MEASURE_V2_URL)[-1])
+    assert "lastupdate" in second and "startdateymd" not in second
+    rows = (
+        await session.scalars(select(Measurement).where(Measurement.type == MeasurementType.steps))
+    ).all()
+    assert [r.value for r in rows] == [13000.0]
+
+
+async def test_activity_failure_never_breaks_the_weight_sync(
+    session: AsyncSession, user: User, clock: FakeClock
+) -> None:
+    settings = make_settings()
+    cipher = TokenCipher(settings.token_encryption_key.get_secret_value())
+    await seed_tokens(session, cipher, user, expires_at=NOW + timedelta(hours=2))
+    router = Router()
+    router.json("POST", withings.MEASURE_URL, WITHINGS_GETMEAS)
+    router.json("POST", withings.MEASURE_V2_URL, {"status": 401, "error": "scope"})
+    integration = make_integration(router, settings, clock)
+    events = await integration.sync(session, user, None)
+    assert len(events) == 4
+    row = await repo.get_integration(session, user.id, "withings")
+    assert row is not None and row.status == IntegrationStatus.connected
+
+
+async def test_pressure_and_activity_notifications_fetch_the_right_data(
+    session: AsyncSession, user: User, clock: FakeClock
+) -> None:
+    settings = make_settings()
+    cipher = TokenCipher(settings.token_encryption_key.get_secret_value())
+    await seed_tokens(session, cipher, user, expires_at=NOW + timedelta(hours=2))
+    getmeas = json.loads(json.dumps(WITHINGS_GETMEAS))
+    getmeas["body"]["measuregrps"] = [BPM_GROUP]
+    router = Router()
+    router.json("POST", withings.MEASURE_URL, getmeas)
+    router.json("POST", withings.MEASURE_V2_URL, ACTIVITY)
+    integration = make_integration(router, settings, clock)
+
+    def post(body: bytes) -> WebhookRequest:
+        return WebhookRequest(
+            provider="withings",
+            method="POST",
+            path="/webhooks/withings",
+            headers={},
+            query={},
+            body=body,
+        )
+
+    response, events = await integration.handle_webhook(
+        session, post(b"userid=363&appli=16&date=2026-09-02")
+    )
+    assert response.status == 200 and events == []
+    assert len(router.requests("POST", withings.MEASURE_V2_URL)) == 1
+    assert not router.requests("POST", withings.MEASURE_URL)
+    clock.advance(timedelta(minutes=2))
+    response, events = await integration.handle_webhook(
+        session, post(b"userid=363&appli=4&startdate=1&enddate=2")
+    )
+    assert {e.type for e in events} == {"bp_sys", "bp_dia", "heart_rate"}  # type: ignore[attr-defined]
