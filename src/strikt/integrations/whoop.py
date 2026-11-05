@@ -718,7 +718,11 @@ class WhoopIntegration:
         except WhoopError as exc:
             log.warning("whoop_sync_failed", user_id=user.id, error=str(exc))
             return []
-        events = await self._store_batch(session, user, workouts, sleeps, recoveries, cycles)
+        stored = await self._store_batch(session, user, workouts, sleeps, recoveries, cycles)
+        # The window overlaps the last run by a day, so most records come back unchanged. Only a
+        # new or rescored one is news: replaying the rest made the coach comment on the same
+        # workout again every 30 minutes (webhooks still publish whatever WHOOP reports).
+        events = [event for event in stored if _is_news(event)]
         await repo.set_integration_status(
             session, user.id, PROVIDER, IntegrationStatus.connected, last_sync_at=now
         )
@@ -789,6 +793,10 @@ class WhoopIntegration:
     async def _store_workout(
         self, session: AsyncSession, user: User, record: WorkoutRecord
     ) -> WorkoutEvent:
+        known = await store.get_workout_by_external(
+            session, user.id, DataSource.whoop, record.external_id
+        )
+        changed = _changed(known.raw if known is not None else None, record.raw)
         row, created = await repo.upsert_workout_by_external(
             session,
             user.id,
@@ -822,12 +830,16 @@ class WhoopIntegration:
             max_hr=record.max_hr,
             zones_min=record.zones_min,
             distance_m=record.distance_m,
-            raw={**record.raw, "created": created, "row_id": row.id},
+            raw={**record.raw, "created": created, "changed": changed, "row_id": row.id},
         )
 
     async def _store_sleep(
         self, session: AsyncSession, user: User, record: SleepRecord
     ) -> SleepEvent | None:
+        known = await store.get_sleep_by_external(
+            session, user.id, DataSource.whoop, record.external_id
+        )
+        changed = _changed(known.raw if known is not None else None, record.raw)
         row, created = await repo.upsert_sleep_by_external(
             session,
             user.id,
@@ -859,12 +871,16 @@ class WhoopIntegration:
             stages_min=record.stages_min,
             respiratory_rate=record.respiratory_rate,
             disturbances=record.disturbances,
-            raw={**record.raw, "created": created, "row_id": row.id},
+            raw={**record.raw, "created": created, "changed": changed, "row_id": row.id},
         )
 
     async def _store_recovery(
         self, session: AsyncSession, user: User, record: RecoveryRecord
     ) -> RecoveryEvent:
+        known = await store.get_recovery_by_external(
+            session, user.id, DataSource.whoop, record.external_id
+        )
+        changed = _changed(known.raw if known is not None else None, record.raw)
         row, created = await repo.upsert_recovery_by_external(
             session,
             user.id,
@@ -889,7 +905,7 @@ class WhoopIntegration:
             hrv_ms=record.hrv_ms,
             spo2=record.spo2,
             skin_temp_c=record.skin_temp_c,
-            raw={**record.raw, "created": created, "row_id": row.id},
+            raw={**record.raw, "created": created, "changed": changed, "row_id": row.id},
         )
 
     # --- webhooks -------------------------------------------------------------------------
@@ -1008,6 +1024,20 @@ class WhoopIntegration:
 
 
 # ---------------------------------------------------------------------------------- helpers
+
+
+def _changed(before: Mapping[str, Any] | None, after: Mapping[str, Any]) -> bool:
+    """Is this record new, or did WHOOP change it since we stored it (rescored, edited)?"""
+    if before is None:
+        return True
+    return before.get("updated_at") != after.get("updated_at") or before.get(
+        "score_state"
+    ) != after.get("score_state")
+
+
+def _is_news(event: Event) -> bool:
+    raw = getattr(event, "raw", None)
+    return not isinstance(raw, dict) or bool(raw.get("changed", True))
 
 
 def _iso(dt: datetime) -> str:

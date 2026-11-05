@@ -627,3 +627,35 @@ async def test_user_reminders_do_not_consume_the_proactive_cap(
     await session.commit()
     outcome = await engine_.fire(user.id, "no_first_meal")
     assert outcome.sent, outcome
+
+
+async def test_a_replayed_workout_gets_one_analysis_even_unanswered(
+    engine_: ProactiveEngine,
+    user: User,
+    clock: FakeClock,
+    bus: EventBus,
+    messenger: FakeMessenger,
+) -> None:
+    """The WHOOP poll used to republish the last day every 30 minutes; an unanswered analysis
+    then came back as step 2, 3 and 4 an hour apart. A data trigger is one message per window,
+    even with escalation on (only the meal-window triggers escalate)."""
+    clock.set(_at("11:40"))
+    started = _at("10:00")
+    event = WorkoutEvent(
+        user_id=user.id,
+        occurred_at=clock.now(),
+        source="whoop",
+        external_id="w-replayed",
+        sport="running",
+        started_at=started,
+        ended_at=started + timedelta(minutes=50),
+        duration_min=50,
+        kcal=420,
+    )
+    await bus.publish(event)
+    assert len(messenger.sent) == 1
+    for hours in (1, 2, 3):
+        clock.set(_at("11:40") + timedelta(hours=hours))
+        await bus.publish(event)
+    assert len(messenger.sent) == 1
+    assert engine_.outcomes[-1].reason == "already_sent"

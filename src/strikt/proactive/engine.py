@@ -291,6 +291,11 @@ class ProactiveEngine:
             )
             if window.last is not None and window.answered:
                 return self._skip(fire, "window_answered")
+            if window.last is not None and not self._escalates(fire.name):
+                # One message per window. Without this an integration poll that replays a
+                # workout (or a sleep, or a recovery) every 30 minutes got a second, third and
+                # fourth analysis of the same session whenever the first went unanswered.
+                return self._skip(fire, "already_sent")
             if window.exhausted:
                 return self._skip(fire, "ladder_exhausted")
             if ladder_mod.too_soon(window, self._settings):
@@ -377,11 +382,7 @@ class ProactiveEngine:
             await self._after_send(session, user_id, fire, now)
             await session.commit()
 
-        if (
-            self._settings.proactive_escalate
-            and step < ladder_mod.MAX_STEP
-            and fire.name in ESCALATING
-        ):
+        if self._escalates(fire.name) and step < ladder_mod.MAX_STEP:
             self._schedule_followup(user_id, fire, now)
         return FireOutcome(
             name=fire.name,
@@ -393,6 +394,10 @@ class ProactiveEngine:
             message_id=message_id,
             text=decision.text,
         )
+
+    def _escalates(self, name: TriggerName) -> bool:
+        """Whether an unanswered send in this trigger's window may be followed by a sharper one."""
+        return self._settings.proactive_escalate and name in ESCALATING
 
     @staticmethod
     def _skip(fire: TriggerFire, reason: str, step: int = 0) -> FireOutcome:

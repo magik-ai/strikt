@@ -365,14 +365,22 @@ async def test_sync_paginates_maps_and_dedupes(
     assert row is not None
     assert row.last_sync_at is not None
 
-    # a second sync re-fetches the same records: rows are updated, not duplicated
+    # a second sync re-fetches the same records: rows are updated, not duplicated, and nothing
+    # is published again (the coach would comment on the same workout every 30 minutes)
     events2 = await integration.sync(session, user, NOW - timedelta(days=7))
     await session.commit()
-    assert len(events2) == 4
-    assert all(e.raw["created"] is False for e in events2)
+    assert events2 == []
     rows_after = (await session.scalars(select(Workout).where(Workout.user_id == user.id))).all()
     assert len(rows_after) == 2
     assert len((await session.scalars(select(Recovery))).all()) == 1
+
+    # a rescored workout (WHOOP bumps updated_at) is news again, and only that one
+    rescored = {**second, "updated_at": "2026-09-02T18:00:00.000Z"}
+    router3 = make_router(workouts_pages=[[rescored], [WHOOP_WORKOUT]])
+    events3 = await make_integration(router3, settings, clock).sync(
+        session, user, NOW - timedelta(days=7)
+    )
+    assert [(type(e).__name__, e.raw["created"]) for e in events3] == [("WorkoutEvent", False)]
 
 
 async def test_sync_refreshes_expired_token_and_rotates_refresh_token(
