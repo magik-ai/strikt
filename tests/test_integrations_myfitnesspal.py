@@ -676,6 +676,8 @@ async def test_connect_page_shows_the_form_and_takes_the_paste(
     row = await repo.get_integration(session, user.id, "myfitnesspal")
     assert row is not None and row.status == IntegrationStatus.connected
 
+    start = await page_client.get(f"/oauth/myfitnesspal/start?u={token}", allow_redirects=False)
+    assert start.status == 302 and "/connect/myfitnesspal?u=" in start.headers["Location"]
     forged = await page_client.get("/connect/myfitnesspal?u=" + token[:-2] + "xx")
     assert forged.status == 400
     assert (await page_client.get(f"/connect/whoop?u={token}")).status == 404

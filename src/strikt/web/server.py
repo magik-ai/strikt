@@ -147,8 +147,8 @@ async def oauth_start(request: web.Request) -> web.StreamResponse:
             return _page(
                 "Strikt", "Could not start the connection. Try again in a minute.", status=500
             )
-    if info.kind == "oauth" and info.url:
-        raise web.HTTPFound(info.url)
+    if info.kind in ("oauth", "form") and info.url:
+        raise web.HTTPFound(info.url)  # the provider's login, or our own connect form
     body = info.instructions or (info.url or "")
     return _page("Strikt", body)
 
