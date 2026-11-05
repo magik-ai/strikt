@@ -59,6 +59,7 @@ _SLUGS: dict[str, ProviderName] = {
     "whoop": "whoop",
     "withings": "withings",
     "apple_health": "apple_health",
+    "myfitnesspal": "myfitnesspal",
 }
 
 
@@ -140,6 +141,14 @@ def start_url(
     """The link the bot shows the user (``connect_integration`` tool)."""
     token = sign_user(user_id, secret=link_secret(settings), now=now)
     return f"{public_base_url(settings)}/oauth/{provider_slug(provider)}/start?u={token}"
+
+
+def connect_page_url(
+    settings: Settings, provider: ProviderName | str, user_id: int, *, now: datetime
+) -> str:
+    """Our own connect page (a form, for providers without OAuth), signed like a start link."""
+    token = sign_user(user_id, secret=link_secret(settings), now=now)
+    return f"{public_base_url(settings)}/connect/{provider_slug(provider)}?u={token}"
 
 
 # --------------------------------------------------------------------------- single-use state

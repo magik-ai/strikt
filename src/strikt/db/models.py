@@ -143,6 +143,14 @@ class Provider(StrEnum):
     whoop = "whoop"
     withings = "withings"
     apple_health = "apple_health"
+    myfitnesspal = "myfitnesspal"
+
+
+class LinkKind(StrEnum):
+    """What an ``integration_links`` row points at on the provider's side."""
+
+    food = "food"  # a custom food Strikt created (MyFitnessPal)
+    entry = "entry"  # a diary entry Strikt created (MyFitnessPal)
 
 
 class IntegrationStatus(StrEnum):
@@ -672,6 +680,37 @@ class Integration(Base):
     last_sync_at: Mapped[datetime | None] = mapped_column(TZDateTime)
     webhook_token: Mapped[str | None] = mapped_column(sa.String(64), unique=True)
     created_at: Mapped[datetime] = mapped_column(TZDateTime, nullable=False)
+    #: When the user was told this connection broke (expired / error); cleared on reconnect, so
+    #: a dead connection is announced once, not every 30 minutes.
+    notified_at: Mapped[datetime | None] = mapped_column(TZDateTime)
+    #: Provider state that is not a token: MyFitnessPal keeps the first mirrored day here.
+    data: Mapped[dict[str, Any] | None] = mapped_column(JSONType)
+
+
+class IntegrationLink(Base):
+    """Something Strikt created in a provider's account, so it can find, reuse or remove it.
+
+    MyFitnessPal: ``food`` rows are the private custom foods (``key`` = fingerprint of name,
+    portion and numbers, reused across days), ``entry`` rows the diary entries of one ``day``
+    (``key`` = meal + food fingerprint). Only rows listed here are ever deleted on the provider's
+    side: whatever the user logged there themselves is never touched.
+    """
+
+    __tablename__ = "integration_links"
+    __table_args__ = (
+        sa.Index("ix_integration_links_user_kind_day", "user_id", "provider", "kind", "day"),
+        sa.Index("ix_integration_links_user_kind_key", "user_id", "provider", "kind", "key"),
+    )
+
+    id: Mapped[int] = mapped_column(BigIntPK, primary_key=True, autoincrement=True)
+    user_id: Mapped[int] = mapped_column(sa.BigInteger, user_fk(), nullable=False)
+    provider: Mapped[Provider] = mapped_column(enum_col(Provider, "provider"), nullable=False)
+    kind: Mapped[LinkKind] = mapped_column(enum_col(LinkKind, "link_kind"), nullable=False)
+    day: Mapped[date | None] = mapped_column(sa.Date)
+    key: Mapped[str] = mapped_column(sa.String(96), nullable=False)
+    external_id: Mapped[str] = mapped_column(sa.String(128), nullable=False)
+    data: Mapped[dict[str, Any] | None] = mapped_column(JSONType)
+    created_at: Mapped[datetime] = mapped_column(TZDateTime, nullable=False)
 
 
 class ProactiveSend(Base):
@@ -758,6 +797,7 @@ USER_OWNED_TABLES: tuple[type[Base], ...] = (
     ConversationTurn,
     Summary,
     Integration,
+    IntegrationLink,
     ProactiveSend,
     TokenUsage,
     OAuthState,

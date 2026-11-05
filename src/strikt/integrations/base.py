@@ -53,7 +53,7 @@ class ConnectInfo:
     """What to show the user when they ask to connect a provider."""
 
     provider: ProviderName
-    kind: Literal["oauth", "webhook", "instructions"]
+    kind: Literal["oauth", "webhook", "instructions", "form"]
     url: str | None = None
     instructions: str = ""
     extra: dict[str, Any] = field(default_factory=dict)

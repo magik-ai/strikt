@@ -1676,6 +1676,7 @@ async def set_integration_tokens(
     row.refresh_token_enc = cipher.encrypt_optional(refresh_token)
     row.expires_at = expires_at
     row.status = IntegrationStatus.connected
+    row.notified_at = None  # a fresh login: the next breakage is news again
     await session.flush()
     return row
 

@@ -618,10 +618,15 @@ class RenderDayCardInput(ToolInput):
 
 
 class ConnectIntegrationInput(ToolInput):
-    """Get the connection link or instructions for WHOOP (OAuth), Withings (OAuth) or Apple
-    Health (Shortcuts webhook). Send the link to the user as-is."""
+    """Get the connection link or instructions for WHOOP (OAuth: training, sleep, recovery),
+    Withings (OAuth: scale, blood pressure, steps), Apple Health (Shortcuts webhook) or
+    MyFitnessPal (a page on a computer where the user pastes their browser login; from then on
+    everything set_day_food stores is copied to their MFP food diary on its own). Send the link
+    to the user as-is."""
 
-    provider: Literal["whoop", "withings", "apple_health"] = Field(description="Provider.")
+    provider: Literal["whoop", "withings", "apple_health", "myfitnesspal"] = Field(
+        description="Provider."
+    )
 
 
 class RequestKeyInput(ToolInput):

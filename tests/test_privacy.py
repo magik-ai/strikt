@@ -12,6 +12,7 @@ from strikt.core.types import FoodItemIn, LabMarker, Macros
 from strikt.db import repo
 from strikt.db.crypto import TokenCipher
 from strikt.db.models import USER_OWNED_TABLES, Invite, User, UserStatus
+from strikt.integrations import store
 from strikt.privacy import delete_everything
 
 
@@ -89,6 +90,16 @@ async def _seed(session: AsyncSession, user_id: int, clock: FakeClock, cipher: T
         cost_usd=0,
     )
     await repo.create_oauth_state(session, user_id, "whoop", now=now)
+    await store.add_link(
+        session,
+        user_id,
+        "myfitnesspal",
+        "entry",
+        key="Lunch:abc",
+        external_id=f"mfp-{user_id}",
+        day=today,
+        now=now,
+    )
     await repo.set_user_secret(session, user_id, "openai", "sk-proj-" + "x" * 30, cipher, now=now)
     await repo.create_invite(session, now=now, created_by=user_id, code=f"inv{user_id}")
 

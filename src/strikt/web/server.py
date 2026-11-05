@@ -6,6 +6,8 @@ Routes:
 - ``GET  /oauth/{provider}/start?u=<signed>`` → verifies the signed user link, asks the provider
   for its ``ConnectInfo`` and redirects to the authorize URL (or shows webhook instructions).
 - ``GET  /oauth/{provider}/callback`` → ``Integration.handle_callback``; shows a one-line result.
+- ``GET|POST /connect/{provider}?u=<signed>`` → the connect form of a provider without OAuth
+  (MyFitnessPal: the user pastes the browser's login cookies); the result goes to Telegram too.
 - ``POST|HEAD /webhooks/{provider}`` and ``/webhooks/{provider}/{token}`` → builds a
   ``WebhookRequest``, calls the integration, publishes the returned events on the bus and
   answers inside the handler.
@@ -30,6 +32,7 @@ from strikt.core.clock import Clock, SystemClock
 from strikt.db import repo
 from strikt.integrations.base import Integration, ProviderName, WebhookRequest
 from strikt.integrations.oauth import LinkError, link_secret, provider_from_slug, verify_user
+from strikt.telegram.copy import resolve_lang, t
 from strikt.web.export import make_handler as make_export_handler
 from strikt.web.repair import make_repair_handler
 
@@ -69,6 +72,36 @@ def _page(title: str, body: str, *, status: int = 200) -> web.Response:
         f"<body><h1>{html.escape(title)}</h1><pre>{html.escape(body)}</pre></body></html>"
     )
     return web.Response(text=text, content_type="text/html", status=status)
+
+
+_PRIVATE_HEADERS = {
+    "Cache-Control": "no-store",
+    "Referrer-Policy": "no-referrer",
+    "X-Robots-Tag": "noindex",
+}
+
+
+def _form_page(
+    title: str, steps: str, button: str, *, token: str, action: str, lang: str
+) -> web.Response:
+    """The connect form: the steps, one textarea, one button. The signed ``u`` rides along."""
+    rtl = lang in {"ar", "fa", "ur"}
+    text = (
+        f"<!doctype html><html lang='{html.escape(lang)}'{' dir=rtl' if rtl else ''}><head>"
+        "<meta charset='utf-8'><meta name='viewport' content='width=device-width,initial-scale=1'>"
+        f"<title>{html.escape(title)}</title>"
+        "<style>body{font:17px/1.5 -apple-system,system-ui,sans-serif;margin:0;padding:32px 20px;"
+        "max-width:640px;color:#111;background:#fafafa}pre{white-space:pre-wrap;"
+        "word-break:break-word;font:inherit}h1{font-size:20px;margin:0 0 12px}textarea{width:100%;"
+        "box-sizing:border-box;height:160px;font:13px/1.4 ui-monospace,monospace;padding:8px}"
+        "button{margin-top:12px;font:inherit;padding:8px 20px}</style></head>"
+        f"<body><h1>{html.escape(title)}</h1><pre>{html.escape(steps)}</pre>"
+        f"<form method='post' action='{html.escape(action)}'>"
+        f"<input type='hidden' name='u' value='{html.escape(token)}'>"
+        "<textarea name='cookies' required autocomplete='off' spellcheck='false'></textarea>"
+        f"<button type='submit'>{html.escape(button)}</button></form></body></html>"
+    )
+    return web.Response(text=text, content_type="text/html", headers=_PRIVATE_HEADERS)
 
 
 def _provider(request: web.Request) -> tuple[ProviderName, Integration]:
@@ -146,6 +179,80 @@ async def oauth_callback(request: web.Request) -> web.Response:
     return _page("Strikt", message, status=200 if user is not None else 400)
 
 
+async def _form_user(request: web.Request, token: str) -> tuple[Any, Any] | web.Response:
+    """The integration with a connect form and the user the signed token names, or a page."""
+    _name, integration = _provider(request)
+    if not hasattr(integration, "connect_form") or not hasattr(integration, "submit_cookies"):
+        raise web.HTTPNotFound(text="unknown provider")
+    settings: Settings = request.app[SETTINGS_KEY]
+    clock: Clock = request.app[CLOCK_KEY]
+    try:
+        user_id = verify_user(token, secret=link_secret(settings), now=clock.now())
+    except (LinkError, ValueError):
+        return _page(
+            "Strikt", "This link is invalid or expired. Ask for a new one in Telegram.", status=400
+        )
+    return integration, user_id
+
+
+async def connect_form(request: web.Request) -> web.Response:
+    token = request.query.get("u", "")
+    found = await _form_user(request, token)
+    if isinstance(found, web.Response):
+        return found
+    integration, user_id = found
+    sessions: SessionFactory = request.app[SESSIONS_KEY]
+    async with sessions() as session:
+        user = await repo.get_user(session, user_id)
+    if user is None:
+        return _page("Strikt", "Unknown user.", status=404)
+    lang = resolve_lang(user.language)
+    form = integration.connect_form(lang)
+    return _form_page(
+        form.title, form.steps, form.button, token=token, action=request.path, lang=lang
+    )
+
+
+async def connect_submit(request: web.Request) -> web.Response:
+    name, _integration = _provider(request)
+    fields = await request.post()
+    token = str(fields.get("u") or "")
+    text = str(fields.get("cookies") or "")
+    found = await _form_user(request, token)
+    if isinstance(found, web.Response):
+        return found
+    integration, user_id = found
+    sessions: SessionFactory = request.app[SESSIONS_KEY]
+    notify: Notify | None = request.app[NOTIFY_KEY]
+    async with sessions() as session:
+        user = await repo.get_user(session, user_id)
+        if user is None:
+            return _page("Strikt", "Unknown user.", status=404)
+        try:
+            outcome = await integration.submit_cookies(session, user, text)
+            await session.commit()
+        except Exception:
+            await session.rollback()
+            log.exception("connect_submit_failed", provider=name, user_id=user_id)
+            return _page(
+                "Strikt", "The connection failed on our side. Try again in a minute.", status=500
+            )
+    if outcome.status != "invalid" and notify is not None:
+        try:
+            await notify(user, outcome.message)
+        except Exception as exc:
+            log.warning("connect_notify_failed", provider=name, user_id=user_id, error=repr(exc))
+    log.info("connect_submit", provider=name, user_id=user_id, status=outcome.status)
+    lang = resolve_lang(user.language)
+    page = _page(
+        integration.connect_form(lang).title,
+        f"{outcome.message}\n\n{t(lang, 'link.back')}",
+        status=200 if outcome.status != "invalid" else 400,
+    )
+    page.headers.update(_PRIVATE_HEADERS)
+    return page
+
+
 async def webhook(request: web.Request) -> web.Response:
     name, integration = _provider(request)
     sessions: SessionFactory = request.app[SESSIONS_KEY]
@@ -208,6 +315,8 @@ def make_app(
     app.router.add_get("/health", health)
     app.router.add_get("/oauth/{provider}/start", oauth_start)
     app.router.add_get("/oauth/{provider}/callback", oauth_callback)
+    app.router.add_get("/connect/{provider}", connect_form)
+    app.router.add_post("/connect/{provider}", connect_submit)
     for path in ("/webhooks/{provider}", "/webhooks/{provider}/{token}"):
         app.router.add_post(path, webhook)
         app.router.add_head(path, webhook)

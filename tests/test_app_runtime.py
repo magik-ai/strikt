@@ -112,6 +112,7 @@ def test_import_and_wiring(harness: Harness) -> None:
     assert rt.deps.card is rt.card and rt.deps.scheduler is rt.scheduler
     assert rt.deps.integrations is rt.integrations and set(rt.integrations) == {
         "apple_health",
+        "myfitnesspal",
         "whoop",
         "withings",
     }

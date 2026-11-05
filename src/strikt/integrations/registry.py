@@ -13,26 +13,32 @@ from typing import TYPE_CHECKING, Any
 
 import structlog
 
-from strikt.core.clock import Clock, SystemClock
+from strikt.core.clock import Clock, SystemClock, ensure_utc
 from strikt.db import repo
 from strikt.db.crypto import TokenCipher
-from strikt.db.models import IntegrationStatus
+from strikt.db.models import Integration as IntegrationRow, IntegrationStatus
+from strikt.events import DayStateChanged
 from strikt.integrations import store
 from strikt.integrations.apple_health import AppleHealthIntegration
-from strikt.integrations.base import Integration, ProviderName
+from strikt.integrations.base import Integration, ProviderName, link_copy
+from strikt.integrations.myfitnesspal import MyFitnessPalIntegration
 from strikt.integrations.whoop import WhoopIntegration
 from strikt.integrations.withings import WithingsIntegration
 
 if TYPE_CHECKING:
+    from collections.abc import Awaitable
+
     import httpx
 
     from strikt.config import Settings
+    from strikt.db.models import User
     from strikt.events import EventBus
 
 log = structlog.get_logger(__name__)
 
 SessionFactory = Callable[[], Any]  # async_sessionmaker[AsyncSession] or a compatible callable
 ClientFactory = Callable[[], "httpx.AsyncClient"]
+Notify = Callable[["User", str], "Awaitable[None]"]
 
 
 class Integrations(dict[ProviderName, Integration]):
@@ -49,10 +55,59 @@ class Integrations(dict[ProviderName, Integration]):
         self._sessions = session_factory
         self._bus = bus
         self._clock: Clock = clock or SystemClock()
+        self._notify: Notify | None = None
 
     @property
     def bus(self) -> EventBus:
         return self._bus
+
+    def set_notifier(self, notify: Notify) -> None:
+        """How integrations talk to the user in Telegram (the app wires the messenger in)."""
+        self._notify = notify
+        mfp = self.get("myfitnesspal")
+        if isinstance(mfp, MyFitnessPalIntegration):
+            mfp.notify = notify
+
+    async def aclose(self) -> None:
+        """Stop background work (MyFitnessPal mirrors still waiting) on shutdown."""
+        mfp = self.get("myfitnesspal")
+        if isinstance(mfp, MyFitnessPalIntegration):
+            await mfp.aclose()
+
+    async def announce_broken(self) -> int:
+        """Tell each user once that a connection died (a refresh MFP or WHOOP rejected).
+
+        The sync marks such a row ``expired`` and stops pulling; before this nothing said so,
+        and the coach went quiet about sleep and training while the user thought it was all
+        connected. ``notified_at`` makes it once per breakage; a reconnect clears it.
+        """
+        if self._notify is None:
+            return 0
+        told = 0
+        async with self._sessions() as session:
+            rows = await store.list_unannounced(session, IntegrationStatus.expired)
+            for row in rows:
+                if row.provider.value not in self:
+                    continue
+                user = await repo.get_user(session, row.user_id)
+                if user is None:
+                    continue
+                try:
+                    await self._notify(user, link_copy(user.language, "lost", row.provider.value))
+                except Exception as exc:
+                    log.warning(
+                        "integration_lost_notice_failed",
+                        provider=row.provider.value,
+                        user_id=row.user_id,
+                        error=repr(exc),
+                    )
+                    continue
+                await _mark_announced(session, row, self._clock)
+                told += 1
+            await session.commit()
+        if told:
+            log.info("integration_lost_announced", count=told)
+        return told
 
     async def sync_user(self, user_id: int, provider: ProviderName) -> int:
         """Sync one user's provider in its own session; returns the number of events published."""
@@ -91,7 +146,16 @@ class Integrations(dict[ProviderName, Integration]):
         for user_id, name in targets:
             total += await self.sync_user(user_id, name)  # type: ignore[arg-type]
         log.info("integration_sync_run", provider=provider, integrations=len(targets), events=total)
+        try:
+            await self.announce_broken()
+        except Exception as exc:
+            log.warning("integration_lost_announce_failed", error=repr(exc))
         return total
+
+
+async def _mark_announced(session: Any, row: IntegrationRow, clock: Clock) -> None:
+    row.notified_at = ensure_utc(clock.now())
+    await session.flush()
 
 
 def build_registry(
@@ -101,6 +165,7 @@ def build_registry(
     *,
     clock: Clock | None = None,
     client_factory: ClientFactory | None = None,
+    mirror_delay_s: float | None = None,
 ) -> Integrations:
     """Every provider the server knows. WHOOP and Withings need the Fernet key for tokens; when
     it is missing they are still registered (``connect`` explains) but cannot store tokens."""
@@ -115,6 +180,18 @@ def build_registry(
         registry["withings"] = WithingsIntegration(
             settings, cipher=cipher, clock=clock, client_factory=client_factory
         )
+        mfp = MyFitnessPalIntegration(
+            settings,
+            cipher=cipher,
+            clock=clock,
+            client_factory=client_factory,
+            session_factory=session_factory,
+            **({} if mirror_delay_s is None else {"mirror_delay_s": mirror_delay_s}),
+        )
+        registry["myfitnesspal"] = mfp
+        bus.subscribe(DayStateChanged, mfp.on_day_changed)
     else:
-        log.warning("integrations_without_token_key", providers=["whoop", "withings"])
+        log.warning(
+            "integrations_without_token_key", providers=["whoop", "withings", "myfitnesspal"]
+        )
     return registry

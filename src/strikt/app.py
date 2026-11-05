@@ -331,6 +331,8 @@ class Runtime:
                 log.warning("polling_stop_failed", error=repr(exc))
         self.scheduler.shutdown()
         self.proactive.close()
+        with contextlib.suppress(Exception):
+            await self.integrations.aclose()
         if self.runner is not None:
             await self.runner.cleanup()
         with contextlib.suppress(Exception):
@@ -422,6 +424,9 @@ def build_runtime(
     if settings.telegram_mode == "webhook":
         secret = settings.telegram_webhook_secret
         telegram = webhook_handler(dispatcher, bot, secret.get_secret_value() if secret else "")
+    notify = make_notifier(messenger)
+    # integrations tell the user themselves: a connection that died, MFP days left alone
+    integrations.set_notifier(notify)
     web_app = make_app(
         settings,
         sessions,
@@ -429,7 +434,7 @@ def build_runtime(
         integrations,
         telegram,
         clock=clock,
-        notify=make_notifier(messenger),
+        notify=notify,
     )
     if telegram is not None:
         attach_webhook_lifecycle(web_app, dispatcher, bot)
