@@ -718,11 +718,10 @@ class WhoopIntegration:
         except WhoopError as exc:
             log.warning("whoop_sync_failed", user_id=user.id, error=str(exc))
             return []
-        stored = await self._store_batch(session, user, workouts, sleeps, recoveries, cycles)
-        # The window overlaps the last run by a day, so most records come back unchanged. Only a
-        # new or rescored one is news: replaying the rest made the coach comment on the same
-        # workout again every 30 minutes (webhooks still publish whatever WHOOP reports).
-        events = [event for event in stored if _is_news(event)]
+        # Every record in the window is published, also the ones already stored: the engine
+        # sends one message per window, and a recovery skipped at 07:00 for quiet hours must
+        # come round again at 07:30 (``raw["changed"]`` says which ones are new news).
+        events = await self._store_batch(session, user, workouts, sleeps, recoveries, cycles)
         await repo.set_integration_status(
             session, user.id, PROVIDER, IntegrationStatus.connected, last_sync_at=now
         )
@@ -1033,11 +1032,6 @@ def _changed(before: Mapping[str, Any] | None, after: Mapping[str, Any]) -> bool
     return before.get("updated_at") != after.get("updated_at") or before.get(
         "score_state"
     ) != after.get("score_state")
-
-
-def _is_news(event: Event) -> bool:
-    raw = getattr(event, "raw", None)
-    return not isinstance(raw, dict) or bool(raw.get("changed", True))
 
 
 def _iso(dt: datetime) -> str:

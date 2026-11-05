@@ -659,3 +659,33 @@ async def test_a_replayed_workout_gets_one_analysis_even_unanswered(
         await bus.publish(event)
     assert len(messenger.sent) == 1
     assert engine_.outcomes[-1].reason == "already_sent"
+
+
+async def test_a_recovery_skipped_for_quiet_hours_goes_out_when_the_poll_brings_it_again(
+    engine_: ProactiveEngine,
+    user: User,
+    clock: FakeClock,
+    bus: EventBus,
+    messenger: FakeMessenger,
+) -> None:
+    """The WHOOP poll republishes the stored records every run; a recovery that arrived at
+    07:00 inside quiet hours gets its message from the 07:40 run, once."""
+    event = RecoveryEvent(
+        user_id=user.id,
+        occurred_at=_at("07:00"),
+        source="whoop",
+        external_id="cycle-9",
+        date=TODAY,
+        score=21.0,
+        rhr=62.0,
+        hrv_ms=31.0,
+    )
+    clock.set(_at("07:00"))
+    await bus.publish(event)
+    assert messenger.sent == []
+    clock.set(_at("07:40"))
+    await bus.publish(event)
+    assert len(messenger.sent) == 1
+    clock.set(_at("09:40"))
+    await bus.publish(event)
+    assert len(messenger.sent) == 1

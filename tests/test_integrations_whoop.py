@@ -365,11 +365,13 @@ async def test_sync_paginates_maps_and_dedupes(
     assert row is not None
     assert row.last_sync_at is not None
 
-    # a second sync re-fetches the same records: rows are updated, not duplicated, and nothing
-    # is published again (the coach would comment on the same workout every 30 minutes)
+    # a second sync re-fetches the same records: rows are updated, not duplicated; they are
+    # published again (a nudge skipped for quiet hours needs the second chance), marked unchanged,
+    # and the engine's one-message-per-window keeps the coach from repeating itself
     events2 = await integration.sync(session, user, NOW - timedelta(days=7))
     await session.commit()
-    assert events2 == []
+    assert len(events2) == 4
+    assert all(e.raw["created"] is False and e.raw["changed"] is False for e in events2)
     rows_after = (await session.scalars(select(Workout).where(Workout.user_id == user.id))).all()
     assert len(rows_after) == 2
     assert len((await session.scalars(select(Recovery))).all()) == 1
@@ -380,7 +382,8 @@ async def test_sync_paginates_maps_and_dedupes(
     events3 = await make_integration(router3, settings, clock).sync(
         session, user, NOW - timedelta(days=7)
     )
-    assert [(type(e).__name__, e.raw["created"]) for e in events3] == [("WorkoutEvent", False)]
+    changed = [(type(e).__name__, e.raw["created"]) for e in events3 if e.raw["changed"]]
+    assert changed == [("WorkoutEvent", False)]
 
 
 async def test_sync_refreshes_expired_token_and_rotates_refresh_token(
