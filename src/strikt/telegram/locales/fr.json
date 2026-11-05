@@ -109,6 +109,25 @@
     "bot.description": "Strikt enregistre repas, entraînement, sommeil et mesures depuis un seul chat Telegram. Envoie une photo, une capture, un vocal ou du texte : la réponse donne kcal, protéines, glucides, lipides et fibres par élément, la journée et ce qu'il reste. La carte du jour reste épinglée et s'actualise sur place. Si tu te tais, il écrit le premier : le fait, puis le schéma dans tes données, puis une consigne avec une échéance. La journée finit par un verdict. Sans emoji, sans flatterie.",
     "check.head": "Ce qui est noté pour hier :",
     "check.tail": "Total : {total}. C'est juste ? S'il manque quelque chose ou s'il y a une erreur, dis-le-moi et je corrige.",
-    "check.macros": "{kcal} kcal · P {p} · G {c} · L {f} · fibres {fib}"
+    "check.macros": "{kcal} kcal · P {p} · G {c} · L {f} · fibres {fib}",
+    "link.connect": "Ouvre le lien, connecte-toi à {provider} et autorise l’accès.\nEnsuite les données arrivent toutes seules.",
+    "link.not_configured": "{provider} n’est pas encore configuré sur ce serveur : l’opérateur doit ajouter les clés de l’app.",
+    "link.denied": "L’accès à {provider} n’a pas été accordé. Écris « connecte {provider} » quand tu veux réessayer.",
+    "link.expired": "Ce lien {provider} a expiré ou a déjà servi. Demande-m’en un nouveau dans Telegram.",
+    "link.failed": "{provider} n’a pas accepté la connexion. Demande-moi un nouveau lien dans Telegram.",
+    "link.lost": "{provider} s’est déconnecté : la connexion a expiré ou a été révoquée.\nÉcris « connecte {provider} » et je t’envoie un nouveau lien.",
+    "link.back": "Tu peux fermer cette page et revenir dans Telegram.",
+    "whoop.connected": "WHOOP connecté. Sur les 7 derniers jours : {workouts} entraînements, {sleeps} sommeils, {recoveries} récupérations.\nLes nouveaux arrivent tout seuls.",
+    "withings.connected": "Withings connecté. {count} mesures des 30 derniers jours sont là.\nLes nouvelles arrivent toutes seules.",
+    "apple.not_oauth": "Apple Health se connecte par un lien personnel, pas par une connexion. Demande-le-moi dans Telegram.",
+    "mfp.connect": "Ouvre le lien sur un ordinateur où tu es connecté à myfitnesspal.com.\nIl explique comment copier la connexion depuis le navigateur. Ensuite chaque repas noté ici est copié dans MyFitnessPal.",
+    "mfp.connected": "MyFitnessPal connecté : chaque repas noté ici y va aussi désormais.\nJours précédents copiés : {count}.",
+    "mfp.skipped": "Pas touchés, ils contiennent déjà des aliments dans MyFitnessPal : {dates}.",
+    "mfp.invalid": "MyFitnessPal n’a pas accepté cette connexion : les cookies sont expirés ou incomplets.\nReconnecte-toi sur myfitnesspal.com et copie-les à nouveau.",
+    "mfp.unchecked": "Enregistré, mais MyFitnessPal n’a pas répondu à la vérification. Je réessaie dans la demi-heure.",
+    "mfp.delete_it": "Telegram ne m’a pas laissé supprimer le message avec tes cookies.\nSupprime-le toi-même : il sert de connexion.",
+    "mfp.page.title": "Connecter MyFitnessPal",
+    "mfp.page.steps": "1. Sur un ordinateur, ouvre myfitnesspal.com dans Chrome et connecte-toi.\n2. Appuie sur F12 (sur Mac : Cmd+Option+I), ouvre l’onglet Network et recharge la page.\n3. Clic droit sur la première requête (www.myfitnesspal.com) : Copy, puis Copy as cURL (sous Windows : Copy as cURL (bash)).\n4. Colle-le ci-dessous et appuie sur le bouton.\nSeuls les cookies de connexion sont gardés, chiffrés, et seulement pour écrire ton journal alimentaire.",
+    "mfp.page.button": "Connecter"
   }
 }

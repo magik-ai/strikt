@@ -45,9 +45,10 @@ from strikt.integrations.base import (
     ProviderName,
     WebhookRequest,
     WebhookResponse,
+    link_copy,
 )
 from strikt.integrations.oauth import callback_url, consume_state, issue_state
-from strikt.telegram.copy import resolve_lang
+from strikt.telegram.copy import t
 
 if TYPE_CHECKING:
     from strikt.config import Settings
@@ -80,29 +81,12 @@ _ZONE_KEYS = (
 
 ClientFactory = Callable[[], httpx.AsyncClient]
 
-_COPY: dict[str, dict[str, str]] = {
-    "en": {
-        "connect": "Open the link, log in to WHOOP and allow access. I will pull the last 7 days.",
-        "not_configured": "WHOOP is not configured on this server (WHOOP_CLIENT_ID is missing).",
-        "connected": "WHOOP connected. Pulled {workouts} workouts, {sleeps} sleeps, {recoveries} recoveries from the last 7 days. Go back to Telegram.",
-        "denied": "WHOOP access was not granted. Send “connect WHOOP” again when you want to retry.",
-        "expired": "The WHOOP link expired or was already used. Ask me for a new one in Telegram.",
-        "failed": "WHOOP did not accept the login. Ask me for a new link in Telegram.",
-    },
-    "ru": {
-        "connect": "Открой ссылку, войди в WHOOP и разреши доступ. Подтяну последние 7 дней.",
-        "not_configured": "WHOOP на этом сервере не настроен (нет WHOOP_CLIENT_ID).",
-        "connected": "WHOOP подключён. Забрал за 7 дней: тренировок {workouts}, снов {sleeps}, восстановлений {recoveries}. Возвращайся в Telegram.",
-        "denied": "Доступ к WHOOP не выдан. Напиши «подключи WHOOP», когда захочешь повторить.",
-        "expired": "Ссылка WHOOP устарела или уже использована. Попроси новую в Telegram.",
-        "failed": "WHOOP не принял вход. Попроси новую ссылку в Telegram.",
-    },
-}
-
 
 def _copy(lang: str | None, key: str, **kwargs: Any) -> str:
-    text = _COPY[resolve_lang(lang)][key]
-    return text.format(**kwargs) if kwargs else text
+    """Callback and connect copy in the user's language (``telegram/locales``)."""
+    if key == "connected":
+        return t(lang, "whoop.connected", **kwargs)
+    return link_copy(lang, key, PROVIDER, **kwargs)
 
 
 # ----------------------------------------------------------------------------------- errors

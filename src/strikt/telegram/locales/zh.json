@@ -112,6 +112,25 @@
     "bot.description": "Strikt 在一个 Telegram 对话框里记录饮食、训练、睡眠和身体数据。发照片、截图、语音或文字，回复会给出每一项的千卡、蛋白质、碳水、脂肪和纤维，当天累计以及还剩多少。今天的卡片一直置顶，并在原处更新。你安静下来时它先开口：先讲事实，再讲你自己数据里的规律，然后给一条有期限的指令。一天以结论收尾。没有寒暄，没有表情符号，没有夸奖。",
     "check.head": "昨天的记录：",
     "check.tail": "合计：{total}。对吗？如果有错或漏了什么，告诉我，我来改。",
-    "check.macros": "{kcal} 千卡 · 蛋白 {p} · 碳水 {c} · 脂肪 {f} · 纤维 {fib}"
+    "check.macros": "{kcal} 千卡 · 蛋白 {p} · 碳水 {c} · 脂肪 {f} · 纤维 {fib}",
+    "link.connect": "打开链接,登录 {provider} 并允许访问。\n之后数据会自动过来。",
+    "link.not_configured": "这台服务器还没有设置 {provider}:需要运营者添加应用密钥。",
+    "link.denied": "没有授予 {provider} 访问权限。想再试时发送“连接 {provider}”。",
+    "link.expired": "这个 {provider} 链接已过期或已被使用。请在 Telegram 里向我要一个新的。",
+    "link.failed": "{provider} 没有接受登录。请在 Telegram 里向我要一个新链接。",
+    "link.lost": "{provider} 已断开:登录已过期或被撤销。\n发送“连接 {provider}”,我会发一个新链接。",
+    "link.back": "可以关闭此页面,回到 Telegram。",
+    "whoop.connected": "WHOOP 已连接。最近 7 天:训练 {workouts} 次,睡眠 {sleeps} 次,恢复 {recoveries} 次。\n新的数据会自动过来。",
+    "withings.connected": "Withings 已连接。已导入最近 30 天的 {count} 条测量。\n新的数据会自动过来。",
+    "apple.not_oauth": "Apple Health 通过个人链接连接,不需要登录。请在 Telegram 里向我要。",
+    "mfp.connect": "在已登录 myfitnesspal.com 的电脑上打开链接。\n页面上有从浏览器复制登录信息的步骤。之后你在这里记录的每一餐都会复制到 MyFitnessPal。",
+    "mfp.connected": "MyFitnessPal 已连接:你在这里记录的每一餐现在也会进入那里。\n已复制的过去天数:{count}。",
+    "mfp.skipped": "没有改动,这些天在 MyFitnessPal 里已经有食物:{dates}。",
+    "mfp.invalid": "MyFitnessPal 没有接受这次登录:Cookie 已过期或不完整。\n请重新登录 myfitnesspal.com,再复制一次。",
+    "mfp.unchecked": "已保存,但 MyFitnessPal 没有回应检查。我会在半小时内再试一次。",
+    "mfp.delete_it": "Telegram 不让我删除含有你 Cookie 的消息。\n请自己删除:它相当于一次登录。",
+    "mfp.page.title": "连接 MyFitnessPal",
+    "mfp.page.steps": "1. 在电脑上用 Chrome 打开 myfitnesspal.com 并登录。\n2. 按 F12(Mac:Cmd+Option+I),打开 Network 标签并刷新页面。\n3. 右键点击第一个请求(www.myfitnesspal.com):Copy,然后 Copy as cURL(Windows:Copy as cURL (bash))。\n4. 粘贴到下方并点击按钮。\n只保存登录用的 Cookie,加密存储,只用于写你的饮食日记。",
+    "mfp.page.button": "连接"
   }
 }

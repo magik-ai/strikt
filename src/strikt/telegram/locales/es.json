@@ -109,6 +109,25 @@
     "bot.description": "Strikt registra comida, entrenamiento, sueño y medidas desde un solo chat de Telegram. Manda una foto, una captura, un audio o texto: la respuesta trae kcal, proteína, carbohidratos, grasa y fibra por cada cosa, el día hasta ahora y lo que queda. La tarjeta de hoy queda fijada y se edita en su sitio. Si te callas, escribe primero: el hecho, luego el patrón de tus propios datos, luego una instrucción con plazo. El día cierra con un veredicto. Sin saludos, sin emoji, sin halagos.",
     "check.head": "Lo registrado ayer:",
     "check.tail": "Total: {total}. ¿Está bien? Si falta algo o hay un error, dímelo y lo corrijo.",
-    "check.macros": "{kcal} kcal · P {p} · C {c} · G {f} · fibra {fib}"
+    "check.macros": "{kcal} kcal · P {p} · C {c} · G {f} · fibra {fib}",
+    "link.connect": "Abre el enlace, inicia sesión en {provider} y permite el acceso.\nDespués los datos llegarán solos.",
+    "link.not_configured": "{provider} todavía no está configurado en este servidor: el operador tiene que añadir las claves de la app.",
+    "link.denied": "No se concedió el acceso a {provider}. Escribe «conecta {provider}» cuando quieras intentarlo de nuevo.",
+    "link.expired": "Este enlace de {provider} caducó o ya se usó. Pídeme uno nuevo en Telegram.",
+    "link.failed": "{provider} no aceptó el inicio de sesión. Pídeme un enlace nuevo en Telegram.",
+    "link.lost": "{provider} se desconectó: la sesión caducó o fue revocada.\nEscribe «conecta {provider}» y te mando un enlace nuevo.",
+    "link.back": "Puedes cerrar esta página y volver a Telegram.",
+    "whoop.connected": "WHOOP conectado. De los últimos 7 días: {workouts} entrenamientos, {sleeps} sueños, {recoveries} recuperaciones.\nLos nuevos llegarán solos.",
+    "withings.connected": "Withings conectado. Ya están {count} mediciones de los últimos 30 días.\nLas nuevas llegarán solas.",
+    "apple.not_oauth": "Apple Health se conecta con un enlace personal, sin inicio de sesión. Pídemelo en Telegram.",
+    "mfp.connect": "Abre el enlace en un ordenador donde tengas la sesión iniciada en myfitnesspal.com.\nAhí se explica cómo copiar el inicio de sesión del navegador. Después cada comida que registres aquí se copiará a MyFitnessPal.",
+    "mfp.connected": "MyFitnessPal conectado: cada comida que registres aquí ahora también va allí.\nDías anteriores copiados: {count}.",
+    "mfp.skipped": "Sin tocar, ya tienen comida en MyFitnessPal: {dates}.",
+    "mfp.invalid": "MyFitnessPal no aceptó este inicio de sesión: las cookies están caducadas o incompletas.\nInicia sesión de nuevo en myfitnesspal.com y cópialas otra vez.",
+    "mfp.unchecked": "Guardado, pero MyFitnessPal no respondió a la comprobación. Lo intentaré de nuevo en menos de media hora.",
+    "mfp.delete_it": "Telegram no me dejó borrar el mensaje con tus cookies.\nBórralo tú: funciona como un inicio de sesión.",
+    "mfp.page.title": "Conectar MyFitnessPal",
+    "mfp.page.steps": "1. En un ordenador, abre myfitnesspal.com en Chrome e inicia sesión.\n2. Pulsa F12 (en Mac: Cmd+Option+I), abre la pestaña Network y recarga la página.\n3. Clic derecho en la primera petición (www.myfitnesspal.com): Copy y luego Copy as cURL (en Windows: Copy as cURL (bash)).\n4. Pégalo abajo y pulsa el botón.\nSolo se guardan las cookies de sesión, cifradas, y solo para escribir tu diario de comidas.",
+    "mfp.page.button": "Conectar"
   }
 }

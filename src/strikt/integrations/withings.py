@@ -40,9 +40,10 @@ from strikt.integrations.base import (
     ProviderName,
     WebhookRequest,
     WebhookResponse,
+    link_copy,
 )
 from strikt.integrations.oauth import callback_url, consume_state, issue_state, webhook_url
-from strikt.telegram.copy import resolve_lang
+from strikt.telegram.copy import t
 
 if TYPE_CHECKING:
     from strikt.config import Settings
@@ -77,29 +78,12 @@ MEASTYPES_PARAM = ",".join(str(code) for code in MEASTYPES)
 
 ClientFactory = Callable[[], httpx.AsyncClient]
 
-_COPY: dict[str, dict[str, str]] = {
-    "en": {
-        "connect": "Open the link, log in to Withings and allow access. Every weigh-in will arrive here automatically.",
-        "not_configured": "Withings is not configured on this server (WITHINGS_CLIENT_ID is missing).",
-        "connected": "Withings connected. Imported {count} readings from the last 30 days. Go back to Telegram.",
-        "denied": "Withings access was not granted. Send “connect Withings” again when you want to retry.",
-        "expired": "The Withings link expired or was already used. Ask me for a new one in Telegram.",
-        "failed": "Withings did not accept the login. Ask me for a new link in Telegram.",
-    },
-    "ru": {
-        "connect": "Открой ссылку, войди в Withings и разреши доступ. Каждое взвешивание будет приходить сюда само.",
-        "not_configured": "Withings на этом сервере не настроен (нет WITHINGS_CLIENT_ID).",
-        "connected": "Withings подключён. Импортировал {count} измерений за 30 дней. Возвращайся в Telegram.",
-        "denied": "Доступ к Withings не выдан. Напиши «подключи Withings», когда захочешь повторить.",
-        "expired": "Ссылка Withings устарела или уже использована. Попроси новую в Telegram.",
-        "failed": "Withings не принял вход. Попроси новую ссылку в Telegram.",
-    },
-}
-
 
 def _copy(lang: str | None, key: str, **kwargs: Any) -> str:
-    text = _COPY[resolve_lang(lang)][key]
-    return text.format(**kwargs) if kwargs else text
+    """Callback and connect copy in the user's language (``telegram/locales``)."""
+    if key == "connected":
+        return t(lang, "withings.connected", **kwargs)
+    return link_copy(lang, key, PROVIDER, **kwargs)
 
 
 class WithingsError(RuntimeError):

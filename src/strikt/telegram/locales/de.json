@@ -109,6 +109,25 @@
     "bot.description": "Strikt erfasst Essen, Training, Schlaf und Messwerte aus einem Telegram-Chat. Schick ein Foto, einen Screenshot, eine Sprachnachricht oder Text: die Antwort bringt kcal, Eiweiß, Kohlenhydrate, Fett und Ballaststoffe pro Position, den Tag bis jetzt und den Rest. Die Heute-Karte bleibt angepinnt und wird an Ort und Stelle aktualisiert. Wirst du still, schreibt er zuerst: die Tatsache, dann das Muster aus deinen Daten, dann eine Anweisung mit Frist. Ohne Emoji, ohne Lob.",
     "check.head": "Gestern eingetragen:",
     "check.tail": "Summe: {total}. Stimmt das? Wenn etwas fehlt oder falsch ist, sag es mir, dann korrigiere ich es.",
-    "check.macros": "{kcal} kcal · E {p} · KH {c} · F {f} · Ballaststoffe {fib}"
+    "check.macros": "{kcal} kcal · E {p} · KH {c} · F {f} · Ballaststoffe {fib}",
+    "link.connect": "Öffne den Link, melde dich bei {provider} an und erlaube den Zugriff.\nDanach kommen die Daten von allein.",
+    "link.not_configured": "{provider} ist auf diesem Server noch nicht eingerichtet: Der Betreiber muss die App-Schlüssel hinterlegen.",
+    "link.denied": "Der Zugriff auf {provider} wurde nicht erteilt. Schreib „{provider} verbinden“, wenn du es nochmal versuchen willst.",
+    "link.expired": "Dieser {provider}-Link ist abgelaufen oder wurde schon benutzt. Frag mich in Telegram nach einem neuen.",
+    "link.failed": "{provider} hat die Anmeldung nicht angenommen. Frag mich in Telegram nach einem neuen Link.",
+    "link.lost": "{provider} ist getrennt: Die Anmeldung ist abgelaufen oder wurde widerrufen.\nSchreib „{provider} verbinden“, dann schicke ich einen neuen Link.",
+    "link.back": "Du kannst diese Seite schließen und zu Telegram zurückkehren.",
+    "whoop.connected": "WHOOP verbunden. Aus den letzten 7 Tagen: {workouts} Trainings, {sleeps} Schlafphasen, {recoveries} Erholungswerte.\nNeue kommen von allein.",
+    "withings.connected": "Withings verbunden. {count} Messwerte der letzten 30 Tage sind da.\nNeue kommen von allein.",
+    "apple.not_oauth": "Apple Health wird über einen persönlichen Link verbunden, nicht über eine Anmeldung. Frag mich in Telegram danach.",
+    "mfp.connect": "Öffne den Link an einem Computer, an dem du bei myfitnesspal.com angemeldet bist.\nDort steht, wie du die Anmeldung aus dem Browser kopierst. Danach landet jede Mahlzeit von hier auch in MyFitnessPal.",
+    "mfp.connected": "MyFitnessPal verbunden: Jede Mahlzeit, die du hier einträgst, landet jetzt auch dort.\nKopierte frühere Tage: {count}.",
+    "mfp.skipped": "Nicht angefasst, dort steht schon Essen in MyFitnessPal: {dates}.",
+    "mfp.invalid": "MyFitnessPal hat diese Anmeldung nicht angenommen: Die Cookies sind abgelaufen oder unvollständig.\nMelde dich neu bei myfitnesspal.com an und kopiere sie noch einmal.",
+    "mfp.unchecked": "Gespeichert, aber MyFitnessPal hat auf die Prüfung nicht geantwortet. Ich versuche es innerhalb einer halben Stunde erneut.",
+    "mfp.delete_it": "Telegram hat mich die Nachricht mit deinen Cookies nicht löschen lassen.\nLösch sie selbst: Sie funktioniert wie eine Anmeldung.",
+    "mfp.page.title": "MyFitnessPal verbinden",
+    "mfp.page.steps": "1. Öffne am Computer myfitnesspal.com in Chrome und melde dich an.\n2. Drück F12 (am Mac: Cmd+Option+I), öffne den Tab Network und lade die Seite neu.\n3. Rechtsklick auf die erste Anfrage (www.myfitnesspal.com): Copy, dann Copy as cURL (unter Windows: Copy as cURL (bash)).\n4. Füg es unten ein und drück den Knopf.\nGespeichert werden nur die Login-Cookies, verschlüsselt, und nur um dein Ernährungstagebuch zu schreiben.",
+    "mfp.page.button": "Verbinden"
   }
 }
