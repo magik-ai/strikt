@@ -64,7 +64,7 @@ src/strikt/
   telegram/       messenger (Protocol + aiogram + Fake), copy + locales/ (20 languages), render (card),
                   keyboards, queue,
                   keys (sk-ant-… detection; the key handler itself is handlers.handle_key_message)
-migrations/       alembic (async env); 0001_initial + 0002_user_llm_key match Base.metadata (tested)
+migrations/       alembic (async env); 0001..0004 match Base.metadata (tested)
 tests/            conftest: sqlite engine, session, FakeClock, FakeLLM, FakeMessenger, seeded user
 ```
 
@@ -72,7 +72,7 @@ Every package is built: `nutrition/` (math, units, sanity rules, food resolution
 Facts → USDA), `memory/` (day state, summaries, notes, retrieval, period parsing), `agent/` (context
 assembly, turn loop, Reflexion verify, proactive decider, tools), `onboarding/` (checklist, importer),
 `telegram/` (bot, handlers, commands, media, voice, day card), `proactive/` (scheduler, triggers,
-ladder, engine), `integrations/` (WHOOP, Withings, Apple Health, OAuth links), `web/` (aiohttp
+ladder, engine), `integrations/` (WHOOP, Withings, Apple Health, the MyFitnessPal food mirror, OAuth links), `web/` (aiohttp
 server: health, OAuth callbacks, webhooks, optional Telegram webhook), `app.py` (wiring).
 `scripts/setup_telegram.py` sets the bot's name, descriptions, commands and avatar through the Bot API.
 
