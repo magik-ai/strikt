@@ -125,16 +125,27 @@ def _pressure(readings: list[_Reading], tz: str) -> str | None:
     return text + f" ({to_local(sys_.at, tz):%m-%d})"
 
 
+def _day_total(rows: list[_Reading]) -> float | None:
+    """One day's total: summed within a source (Apple Health can send hourly points, Withings
+    sends one row a day), the largest source wins (two sources count the same steps)."""
+    by_source: dict[str, float] = {}
+    for row in rows:
+        by_source[row.source] = by_source.get(row.source, 0.0) + row.value
+    return max(by_source.values()) if by_source else None
+
+
 def _activity(readings: list[_Reading], today: date, tz: str) -> str | None:
     """Yesterday's steps and active kcal (today's are still counting)."""
     start, end = local_day_bounds(today - timedelta(days=1), tz)
-    steps = [r for r in readings if r.type == MeasurementType.steps and start <= r.at < end]
-    active = [r for r in readings if r.note == "active_kcal" and start <= r.at < end]
+    steps = _day_total(
+        [r for r in readings if r.type == MeasurementType.steps and start <= r.at < end]
+    )
+    active = _day_total([r for r in readings if r.note == "active_kcal" and start <= r.at < end])
     bits: list[str] = []
     if steps:
-        bits.append(f"steps yesterday {round(max(r.value for r in steps))}")
+        bits.append(f"steps yesterday {round(steps)}")
     if active:
-        bits.append(f"active {round(max(r.value for r in active))} kcal")
+        bits.append(f"active {round(active)} kcal")
     return ", ".join(bits) or None
 
 

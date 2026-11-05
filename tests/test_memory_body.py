@@ -109,3 +109,15 @@ async def test_day_block_shows_whoop_day_strain_and_burn(
     assert state.recovery is not None and state.recovery.day_strain == 9.4321
     text = render_context(state, "en", tz=DUBAI)
     assert "recovery: 71% · hrv 48 ms · day strain 9.4 · 2310 kcal burned" in text
+
+
+async def test_steps_add_up_within_a_source_and_two_sources_do_not_double(
+    session: AsyncSession, user: User
+) -> None:
+    day = TODAY - timedelta(days=1)
+    for hour, steps in ((5, 3000.0), (9, 4000.0), (13, 2500.0)):  # hourly points, Dubai time +4
+        await _m(session, user, "steps", steps, "count", _at(day, hour), source="apple_health")
+    await _m(session, user, "steps", 9100.0, "steps", _at(day, 8), source="withings")
+    await session.commit()
+    text = await body_block(session, user.id, today=TODAY, tz=DUBAI)
+    assert text == "steps yesterday 9500"
