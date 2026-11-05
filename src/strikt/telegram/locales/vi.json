@@ -121,7 +121,7 @@
     "withings.connected": "Đã kết nối Withings. Đã có {count} lần đo trong 30 ngày qua.\nDữ liệu mới sẽ tự đến.",
     "apple.not_oauth": "Apple Health kết nối qua một liên kết cá nhân, không cần đăng nhập. Hãy xin tôi trong Telegram.",
     "mfp.connect": "Mở liên kết trên máy tính đang đăng nhập myfitnesspal.com.\nTrang đó chỉ cách sao chép phiên đăng nhập từ trình duyệt. Sau đó mọi bữa ăn bạn ghi ở đây sẽ được chép sang MyFitnessPal.",
-    "mfp.connected": "Đã kết nối MyFitnessPal: mọi bữa ăn bạn ghi ở đây giờ cũng vào đó.\nSố ngày trước đã chép: {count}.",
+    "mfp.connected": "Đã kết nối MyFitnessPal: mọi bữa ăn bạn ghi ở đây giờ cũng vào đó.\nTôi đang chép hôm nay và {count} ngày gần nhất.",
     "mfp.skipped": "Không động vào, đã có món ăn trong MyFitnessPal: {dates}.",
     "mfp.invalid": "MyFitnessPal không chấp nhận phiên đăng nhập này: cookie đã hết hạn hoặc không đầy đủ.\nĐăng nhập lại myfitnesspal.com và sao chép lại một lần nữa.",
     "mfp.unchecked": "Đã lưu, nhưng MyFitnessPal không phản hồi kiểm tra. Tôi sẽ thử lại trong vòng nửa giờ.",

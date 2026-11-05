@@ -121,7 +121,7 @@
     "withings.connected": "Withings conectado. Ya están {count} mediciones de los últimos 30 días.\nLas nuevas llegarán solas.",
     "apple.not_oauth": "Apple Health se conecta con un enlace personal, sin inicio de sesión. Pídemelo en Telegram.",
     "mfp.connect": "Abre el enlace en un ordenador donde tengas la sesión iniciada en myfitnesspal.com.\nAhí se explica cómo copiar el inicio de sesión del navegador. Después cada comida que registres aquí se copiará a MyFitnessPal.",
-    "mfp.connected": "MyFitnessPal conectado: cada comida que registres aquí ahora también va allí.\nDías anteriores copiados: {count}.",
+    "mfp.connected": "MyFitnessPal conectado: cada comida que registres aquí ahora también va allí.\nAhora copio hoy y los últimos {count} días.",
     "mfp.skipped": "Sin tocar, ya tienen comida en MyFitnessPal: {dates}.",
     "mfp.invalid": "MyFitnessPal no aceptó este inicio de sesión: las cookies están caducadas o incompletas.\nInicia sesión de nuevo en myfitnesspal.com y cópialas otra vez.",
     "mfp.unchecked": "Guardado, pero MyFitnessPal no respondió a la comprobación. Lo intentaré de nuevo en menos de media hora.",

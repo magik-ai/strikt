@@ -121,7 +121,7 @@
     "withings.connected": "Withings を接続しました。直近30日分の測定 {count} 件を取り込みました。\n新しいデータは自動で届きます。",
     "apple.not_oauth": "Apple Health はログインではなく個人用リンクで接続します。Telegram で頼んでください。",
     "mfp.connect": "myfitnesspal.com にログインしているパソコンでリンクを開いてください。\nブラウザからログイン情報をコピーする手順があります。その後はここで記録した食事がすべて MyFitnessPal にコピーされます。",
-    "mfp.connected": "MyFitnessPal を接続しました。ここで記録した食事はすべてあちらにも入ります。\nコピーした過去の日数: {count}。",
+    "mfp.connected": "MyFitnessPal を接続しました。ここで記録した食事はすべてあちらにも入ります。\n今日と過去 {count} 日分を今コピーしています。",
     "mfp.skipped": "MyFitnessPal にすでに食事があるので触れていません: {dates}。",
     "mfp.invalid": "MyFitnessPal がこのログインを受け付けませんでした。クッキーが期限切れか不完全です。\nmyfitnesspal.com にログインし直して、もう一度コピーしてください。",
     "mfp.unchecked": "保存しましたが、MyFitnessPal が確認に応答しませんでした。30分以内にもう一度試します。",

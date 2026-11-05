@@ -121,7 +121,7 @@
     "withings.connected": "Withings terhubung. {count} pengukuran dari 30 hari terakhir sudah masuk.\nYang baru datang sendiri.",
     "apple.not_oauth": "Apple Health terhubung lewat tautan pribadi, bukan login. Minta tautannya di Telegram.",
     "mfp.connect": "Buka tautannya di komputer yang sudah login ke myfitnesspal.com.\nDi sana ada cara menyalin login dari browser. Setelah itu setiap makanan yang kamu catat di sini disalin ke MyFitnessPal.",
-    "mfp.connected": "MyFitnessPal terhubung: setiap makanan yang kamu catat di sini sekarang juga masuk ke sana.\nHari sebelumnya yang disalin: {count}.",
+    "mfp.connected": "MyFitnessPal terhubung: setiap makanan yang kamu catat di sini sekarang juga masuk ke sana.\nSekarang aku menyalin hari ini dan {count} hari terakhir.",
     "mfp.skipped": "Tidak disentuh, sudah ada makanan di MyFitnessPal: {dates}.",
     "mfp.invalid": "MyFitnessPal tidak menerima login ini: cookie-nya kedaluwarsa atau tidak lengkap.\nLogin lagi ke myfitnesspal.com dan salin sekali lagi.",
     "mfp.unchecked": "Tersimpan, tapi MyFitnessPal tidak menjawab pemeriksaan. Aku coba lagi dalam setengah jam.",

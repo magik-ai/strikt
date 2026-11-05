@@ -120,7 +120,7 @@
     "withings.connected": "Withings 연결 완료. 최근 30일 측정값 {count}개를 가져왔습니다.\n새 데이터는 알아서 들어옵니다.",
     "apple.not_oauth": "Apple Health는 로그인이 아니라 개인 링크로 연결합니다. Telegram에서 요청하세요.",
     "mfp.connect": "myfitnesspal.com에 로그인된 컴퓨터에서 링크를 여세요.\n브라우저에서 로그인 정보를 복사하는 방법이 나와 있습니다. 그다음부터 여기서 기록한 모든 식사가 MyFitnessPal에 복사됩니다.",
-    "mfp.connected": "MyFitnessPal 연결 완료. 여기서 기록하는 모든 식사가 이제 그쪽에도 들어갑니다.\n복사한 지난 날짜 수: {count}.",
+    "mfp.connected": "MyFitnessPal 연결 완료. 여기서 기록하는 모든 식사가 이제 그쪽에도 들어갑니다.\n오늘과 지난 {count}일을 지금 복사하고 있습니다.",
     "mfp.skipped": "MyFitnessPal에 이미 음식이 있어 건드리지 않았습니다: {dates}.",
     "mfp.invalid": "MyFitnessPal이 이 로그인을 받아들이지 않았습니다. 쿠키가 만료되었거나 불완전합니다.\nmyfitnesspal.com에 다시 로그인한 뒤 한 번 더 복사하세요.",
     "mfp.unchecked": "저장했지만 MyFitnessPal이 확인에 응답하지 않았습니다. 30분 안에 다시 시도하겠습니다.",

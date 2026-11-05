@@ -120,7 +120,7 @@
     "withings.connected": "Withings collegato. Ci sono {count} misurazioni degli ultimi 30 giorni.\nLe nuove arriveranno da sole.",
     "apple.not_oauth": "Apple Health si collega con un link personale, senza accesso. Chiedimelo su Telegram.",
     "mfp.connect": "Apri il link su un computer dove hai già fatto l’accesso a myfitnesspal.com.\nSpiega come copiare l’accesso dal browser. Dopo, ogni pasto registrato qui viene copiato in MyFitnessPal.",
-    "mfp.connected": "MyFitnessPal collegato: ogni pasto che registri qui ora va anche lì.\nGiorni precedenti copiati: {count}.",
+    "mfp.connected": "MyFitnessPal collegato: ogni pasto che registri qui ora va anche lì.\nSto copiando oggi e gli ultimi {count} giorni.",
     "mfp.skipped": "Non toccati, hanno già cibo in MyFitnessPal: {dates}.",
     "mfp.invalid": "MyFitnessPal non ha accettato questo accesso: i cookie sono scaduti o incompleti.\nAccedi di nuovo a myfitnesspal.com e copiali ancora una volta.",
     "mfp.unchecked": "Salvato, ma MyFitnessPal non ha risposto al controllo. Riprovo entro mezz’ora.",

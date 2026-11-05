@@ -122,7 +122,7 @@
     "withings.connected": "Withings connected. {count} readings from the last 30 days are in.\nNew ones arrive on their own.",
     "apple.not_oauth": "Apple Health connects through a personal link, not a login. Ask me for it in Telegram.",
     "mfp.connect": "Open the link on a computer where you are logged in to myfitnesspal.com.\nIt shows how to copy the login from the browser. After that every meal you log here is copied to MyFitnessPal.",
-    "mfp.connected": "MyFitnessPal connected: every meal you log here now goes there too.\nPast days copied: {count}.",
+    "mfp.connected": "MyFitnessPal connected: every meal you log here now goes there too.\nToday and the last {count} days are being copied now.",
     "mfp.skipped": "Not touched, they already have food in MyFitnessPal: {dates}.",
     "mfp.invalid": "MyFitnessPal did not accept this login: the cookies are expired or incomplete.\nLog in to myfitnesspal.com again and copy them once more.",
     "mfp.unchecked": "Saved, but MyFitnessPal did not answer the check. I will try again within half an hour.",

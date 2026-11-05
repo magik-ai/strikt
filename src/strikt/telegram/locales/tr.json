@@ -121,7 +121,7 @@
     "withings.connected": "Withings bağlandı. Son 30 günden {count} ölçüm geldi.\nYenileri kendiliğinden gelir.",
     "apple.not_oauth": "Apple Health giriş ile değil, kişisel bir bağlantıyla bağlanır. Telegram'da benden iste.",
     "mfp.connect": "Bağlantıyı myfitnesspal.com'a giriş yapılmış bir bilgisayarda aç.\nTarayıcıdan girişi nasıl kopyalayacağını gösteriyor. Sonra burada kaydettiğin her öğün MyFitnessPal'a kopyalanır.",
-    "mfp.connected": "MyFitnessPal bağlandı: burada kaydettiğin her öğün artık oraya da gidiyor.\nKopyalanan geçmiş günler: {count}.",
+    "mfp.connected": "MyFitnessPal bağlandı: burada kaydettiğin her öğün artık oraya da gidiyor.\nBugünü ve son {count} günü şimdi kopyalıyorum.",
     "mfp.skipped": "Dokunmadım, bu günlerde MyFitnessPal'da zaten yemek var: {dates}.",
     "mfp.invalid": "MyFitnessPal bu girişi kabul etmedi: çerezlerin süresi dolmuş ya da eksik.\nmyfitnesspal.com'a yeniden gir ve onları bir kez daha kopyala.",
     "mfp.unchecked": "Kaydedildi ama MyFitnessPal kontrole yanıt vermedi. Yarım saat içinde yeniden deneyeceğim.",

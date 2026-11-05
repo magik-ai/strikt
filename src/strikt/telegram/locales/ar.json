@@ -121,7 +121,7 @@
     "withings.connected": "تم ربط Withings. وصلت {count} قياسات من آخر 30 يومًا.\nالجديدة ستصل وحدها.",
     "apple.not_oauth": "يرتبط Apple Health عبر رابط شخصي وليس بتسجيل دخول. اطلبه مني في Telegram.",
     "mfp.connect": "افتح الرابط على حاسوب مسجّل فيه الدخول إلى myfitnesspal.com.\nيشرح كيف تنسخ الدخول من المتصفح. بعدها تُنسخ كل وجبة تسجّلها هنا إلى MyFitnessPal.",
-    "mfp.connected": "تم ربط MyFitnessPal: كل وجبة تسجّلها هنا تذهب الآن إلى هناك أيضًا.\nالأيام السابقة المنسوخة: {count}.",
+    "mfp.connected": "تم ربط MyFitnessPal: كل وجبة تسجّلها هنا تذهب الآن إلى هناك أيضًا.\nأنسخ الآن اليوم وآخر {count} أيام.",
     "mfp.skipped": "لم ألمسها، فيها طعام مسجّل في MyFitnessPal: {dates}.",
     "mfp.invalid": "لم يقبل MyFitnessPal هذا الدخول: ملفات تعريف الارتباط منتهية أو ناقصة.\nسجّل الدخول من جديد إلى myfitnesspal.com وانسخها مرة أخرى.",
     "mfp.unchecked": "تم الحفظ، لكن MyFitnessPal لم يرد على الفحص. سأحاول مجددًا خلال نصف ساعة.",

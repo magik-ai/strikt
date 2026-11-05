@@ -124,7 +124,7 @@
     "withings.connected": "Withings 已连接。已导入最近 30 天的 {count} 条测量。\n新的数据会自动过来。",
     "apple.not_oauth": "Apple Health 通过个人链接连接,不需要登录。请在 Telegram 里向我要。",
     "mfp.connect": "在已登录 myfitnesspal.com 的电脑上打开链接。\n页面上有从浏览器复制登录信息的步骤。之后你在这里记录的每一餐都会复制到 MyFitnessPal。",
-    "mfp.connected": "MyFitnessPal 已连接:你在这里记录的每一餐现在也会进入那里。\n已复制的过去天数:{count}。",
+    "mfp.connected": "MyFitnessPal 已连接:你在这里记录的每一餐现在也会进入那里。\n正在复制今天和过去 {count} 天。",
     "mfp.skipped": "没有改动,这些天在 MyFitnessPal 里已经有食物:{dates}。",
     "mfp.invalid": "MyFitnessPal 没有接受这次登录:Cookie 已过期或不完整。\n请重新登录 myfitnesspal.com,再复制一次。",
     "mfp.unchecked": "已保存,但 MyFitnessPal 没有回应检查。我会在半小时内再试一次。",
