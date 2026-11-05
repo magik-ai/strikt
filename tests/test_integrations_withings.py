@@ -561,3 +561,78 @@ async def test_pressure_and_activity_notifications_fetch_the_right_data(
         session, post(b"userid=363&appli=4&startdate=1&enddate=2")
     )
     assert {e.type for e in events} == {"bp_sys", "bp_dia", "heart_rate"}  # type: ignore[attr-defined]
+
+
+async def test_a_network_error_on_refresh_is_not_a_dead_connection(
+    session: AsyncSession, user: User, clock: FakeClock
+) -> None:
+    """A timeout or a 5xx from the token endpoint used to mark the row expired (and now that
+    would tell the user "disconnected"); only Withings refusing the refresh token does."""
+    settings = make_settings()
+    cipher = TokenCipher(settings.token_encryption_key.get_secret_value())
+    await seed_tokens(session, cipher, user, expires_at=NOW - timedelta(minutes=5))
+    router = Router()
+
+    def down(_request: httpx.Request) -> httpx.Response:
+        raise httpx.ConnectTimeout("token endpoint down")
+
+    router.add("POST", withings.TOKEN_URL, down)
+    integration = make_integration(router, settings, clock)
+    assert await integration.sync(session, user, None) == []
+    row = await repo.get_integration(session, user.id, "withings")
+    assert row is not None and row.status == IntegrationStatus.connected
+    router.routes = []
+    router.json("POST", withings.TOKEN_URL, {"status": 503, "error": "invalid refresh_token"})
+    user_id = user.id
+    await integration.sync(session, user, None)
+    session.expunge_all()
+    row = await repo.get_integration(session, user_id, "withings")
+    assert row is not None and row.status == IntegrationStatus.expired
+
+
+async def test_the_webhook_throttle_is_per_category(
+    session: AsyncSession, user: User, clock: FakeClock
+) -> None:
+    settings = make_settings()
+    cipher = TokenCipher(settings.token_encryption_key.get_secret_value())
+    await seed_tokens(session, cipher, user, expires_at=NOW + timedelta(hours=2))
+    router = Router()
+    router.json("POST", withings.MEASURE_URL, WITHINGS_GETMEAS)
+    router.json("POST", withings.MEASURE_V2_URL, ACTIVITY)
+    integration = make_integration(router, settings, clock)
+
+    def post(body: bytes) -> WebhookRequest:
+        return WebhookRequest(
+            provider="withings",
+            method="POST",
+            path="/webhooks/withings",
+            headers={},
+            query={},
+            body=body,
+        )
+
+    await integration.handle_webhook(session, post(b"userid=363&appli=16&date=2026-09-03"))
+    response, events = await integration.handle_webhook(
+        session, post(b"userid=363&appli=1&startdate=1&enddate=2")
+    )
+    assert response.body != "throttled" and len(events) == 4  # steps never hold up a weigh-in
+
+
+async def test_an_old_connection_is_subscribed_to_the_new_categories_once(
+    session: AsyncSession, user: User, clock: FakeClock
+) -> None:
+    settings = make_settings()
+    cipher = TokenCipher(settings.token_encryption_key.get_secret_value())
+    await seed_tokens(session, cipher, user, expires_at=NOW + timedelta(hours=2))
+    router = Router()
+    router.json("POST", withings.MEASURE_URL, WITHINGS_GETMEAS)
+    router.json("POST", withings.NOTIFY_URL, {"status": 0, "body": {}})
+    integration = make_integration(router, settings, clock)
+    await integration.sync(session, user, None)
+    assert [form(c)["appli"] for c in router.requests("POST", withings.NOTIFY_URL)] == [
+        "1",
+        "4",
+        "16",
+    ]
+    await integration.sync(session, user, None)
+    assert len(router.requests("POST", withings.NOTIFY_URL)) == 3  # done, not repeated

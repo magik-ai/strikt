@@ -120,6 +120,15 @@ class WithingsAuthError(WithingsError):
     """The token is invalid and could not be refreshed."""
 
 
+class WithingsTransportError(WithingsError):
+    """Withings did not answer properly (network, HTTP error, rate limit): try again later. Never
+    a reason to call the connection dead."""
+
+
+#: Withings ``status`` codes that mean "not now", not "no".
+_TRANSIENT_STATUSES = frozenset({601, 2554, 2555})
+
+
 # --------------------------------------------------------------------------------- decoding
 
 
@@ -313,7 +322,7 @@ class WithingsIntegration:
         self._client_factory: ClientFactory = client_factory or (
             lambda: httpx.AsyncClient(timeout=httpx.Timeout(timeout_s))
         )
-        self._webhook_fetch_at: dict[int, datetime] = {}
+        self._webhook_fetch_at: dict[tuple[int, str], datetime] = {}
 
     @property
     def client_id(self) -> str:
@@ -388,8 +397,13 @@ class WithingsIntegration:
                         "redirect_uri": self.redirect_uri,
                     },
                 )
-                await self._store_tokens(session, user.id, body, now=now)
-                await self._subscribe(client, str(body["access_token"]))
+                row = await self._store_tokens(session, user.id, body, now=now)
+                accepted = await self._subscribe(client, str(body["access_token"]))
+                row.data = {
+                    **(row.data or {}),
+                    "subscribed": accepted,
+                    "subscribe_tried": now.date().isoformat(),
+                }
         except WithingsError as exc:
             log.warning("withings_callback_failed", user_id=user.id, error=str(exc))
             await repo.upsert_integration(
@@ -404,11 +418,16 @@ class WithingsIntegration:
         log.info("withings_connected", user_id=user.id, readings=count)
         return user, _copy(user.language, "connected", count=count)
 
-    async def _subscribe(self, client: httpx.AsyncClient, access_token: str) -> bool:
-        """``notify subscribe`` for weight, pressure and activity. A failure is logged, not
-        fatal: the 30-minute poll still brings everything in."""
-        ok = True
-        for appli in SUBSCRIBED_APPLIS:
+    async def _subscribe(
+        self,
+        client: httpx.AsyncClient,
+        access_token: str,
+        applis: tuple[int, ...] = SUBSCRIBED_APPLIS,
+    ) -> list[int]:
+        """``notify subscribe`` per category; returns the ones Withings accepted. A failure is
+        logged, not fatal: the 30-minute poll still brings everything in."""
+        accepted: list[int] = []
+        for appli in applis:
             try:
                 body = await self._call(
                     client,
@@ -428,10 +447,28 @@ class WithingsIntegration:
                     error=str(exc),
                     callback=self.notify_url,
                 )
-                ok = False
                 continue
+            accepted.append(appli)
             log.info("withings_subscribed", appli=appli, status=body.get("status"))
-        return ok
+        return accepted
+
+    async def _ensure_subscribed(
+        self, session: AsyncSession, row: Integration, client: httpx.AsyncClient
+    ) -> None:
+        """A connection made before pressure (4) and activity (16) were subscribed gets them on
+        its next sync; a category Withings refuses is tried again once a day, not every run."""
+        data = dict(row.data or {})
+        done = {int(a) for a in data.get("subscribed") or [] if isinstance(a, int)}
+        missing = tuple(a for a in SUBSCRIBED_APPLIS if a not in done)
+        today = self._clock.now().date().isoformat()
+        if not missing or data.get("subscribe_tried") == today:
+            return
+        token = await self._access_token(session, row, client)
+        accepted = await self._subscribe(client, token, missing)
+        data["subscribed"] = sorted(done | set(accepted))
+        data["subscribe_tried"] = today
+        row.data = data
+        await session.flush()
 
     # --- tokens ---------------------------------------------------------------------------
     async def _token_request(
@@ -484,6 +521,8 @@ class WithingsIntegration:
                     "refresh_token": tokens.refresh_token,
                 },
             )
+        except WithingsTransportError:
+            raise  # Withings did not answer: the refresh token may be fine, try again later
         except WithingsError:
             await repo.set_integration_status(
                 session, row.user_id, PROVIDER, IntegrationStatus.expired
@@ -518,18 +557,20 @@ class WithingsIntegration:
         try:
             response = await client.post(url, data=dict(data), headers=headers)
         except httpx.HTTPError as exc:
-            raise WithingsError(f"POST {url} failed: {exc!r}") from exc
+            raise WithingsTransportError(f"POST {url} failed: {type(exc).__name__}") from exc
         if response.status_code >= 300:
-            raise WithingsError(f"POST {url}: HTTP {response.status_code}")
+            raise WithingsTransportError(f"POST {url}: HTTP {response.status_code}")
         try:
             body = response.json()
         except ValueError as exc:
-            raise WithingsError("response is not JSON") from exc
+            raise WithingsTransportError("response is not JSON") from exc
         if not isinstance(body, dict):
-            raise WithingsError("response is not a JSON object")
+            raise WithingsTransportError("response is not a JSON object")
         status = int(body.get("status", -1) or 0)
         if status == 401:
             raise WithingsAuthError(f"status 401: {body.get('error')}")
+        if status in _TRANSIENT_STATUSES:
+            raise WithingsTransportError(f"status {status}: {body.get('error')}")
         if status != 0:
             raise WithingsError(f"status {status}: {body.get('error')}")
         return cast("dict[str, Any]", body)
@@ -687,6 +728,7 @@ class WithingsIntegration:
             async with self._client_factory() as client:
                 groups = await self._getmeas(session, row, client, params)
                 days = await self._activity(session, user, row, client, activity_params)
+                await self._ensure_subscribed(session, row, client)
         except WithingsAuthError as exc:
             log.warning("withings_sync_unauthorized", user_id=user.id, error=str(exc))
             await repo.set_integration_status(session, user.id, PROVIDER, IntegrationStatus.expired)
@@ -761,11 +803,13 @@ class WithingsIntegration:
         if user is None:
             return WebhookResponse(body="unknown user"), []
         now = self._clock.now()
-        last = self._webhook_fetch_at.get(user.id)
+        last = self._webhook_fetch_at.get((user.id, appli))
         if last is not None and now - last < WEBHOOK_MIN_INTERVAL:
             log.info("withings_webhook_throttled", user_id=user.id)
             return WebhookResponse(body="throttled"), []
-        self._webhook_fetch_at[user.id] = now
+        self._webhook_fetch_at[(user.id, appli)] = (
+            now  # per category: steps never hold up a weigh-in
+        )
         # The notification's own startdate/enddate are untrusted input: fetch from our cursor.
         params = self._cursor_params(row, now)
         try:
