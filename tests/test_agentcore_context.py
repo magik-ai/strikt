@@ -89,7 +89,7 @@ async def test_system_blocks_are_static_and_cache_marked(
     assert "onboarding_checklist" not in str(system[1]["text"])
     assert [t["name"] for t in tools] == sorted(t["name"] for t in tools)
     assert budget["total"] > 0
-    assert budget["system_static"] > 1000  # cacheable on Sonnet 5 (≥ 1024 tokens)
+    assert budget["system_static"] > 1000  # cacheable on Opus 5.5 (≥ 1024 tokens)
 
 
 async def test_profile_block_has_sorted_keys_and_no_timestamps(

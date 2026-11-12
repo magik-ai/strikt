@@ -24,7 +24,7 @@ LogLevel = Literal["DEBUG", "INFO", "WARNING", "ERROR", "CRITICAL"]
 #: server key (if any) serves only ``ADMIN_TELEGRAM_IDS``. ``server``: one key for everyone.
 LlmKeyMode = Literal["user", "server"]
 
-DEFAULT_MODEL = "claude-sonnet-5"
+DEFAULT_MODEL = "claude-opus-5-5"
 DEFAULT_DATABASE_URL = "postgresql+asyncpg://strikt:strikt@postgres:5432/strikt"
 
 
@@ -45,6 +45,14 @@ class ModelPrice(BaseModel):
 
 
 DEFAULT_PRICES: dict[str, ModelPrice] = {
+    "claude-opus-5-5": ModelPrice(
+        input=4.00,
+        output=20.00,
+        cache_read=0.20,
+        cache_write=5.00,
+        cache_write_1h=8.00,
+        web_search_per_1000=10.00,
+    ),
     "claude-sonnet-5": ModelPrice(
         input=2.00,
         output=10.00,

@@ -7,7 +7,7 @@ and the agent says so in its report.
 
 Product name: **Strikt** ("strict" with one letter changed: a homophone of strict in English, the real word for strict in German, Dutch and Scandinavian languages).
 Repo on GitHub is still `magik-ai/bomiso` (placeholder name); the Python package is `strikt`.
-Bot runtime model: `claude-sonnet-5`. Voice transcription: OpenAI (best model per research/09).
+Bot runtime model: `claude-opus-5-5`. Voice transcription: OpenAI (best model per research/09).
 
 ## 0. Non-negotiables
 
@@ -76,7 +76,7 @@ timezone. IDs are integer autoincrement (`BigInteger` with sqlite variant `Integ
   language (bcp47, default from Telegram), timezone (IANA), created_at, last_seen_at, invite_code.
 - `profiles` (1:1 user): name, city, country, height_cm, birth_year, sex, goal_text, primary_kpi
   enum(waist|weight|bodyfat|performance), kpi_target_low, kpi_target_high, kpi_unit, wake_time (time),
-  bed_time (time), work_pattern text, training_plan JSON ({days:[..], sessions_per_week:int, kinds:[..]}),
+  bed_time (time), breakfast_time (time), lunch_time (time), dinner_time (time), work_pattern text, training_plan JSON ({days:[..], sessions_per_week:int, kinds:[..]}),
   meal_sources JSON, wearable text, likes JSON list, dislikes JSON list, allergies JSON, dietary_rules JSON,
   alcohol text, sweet_tooth text, comfort_food text, health_context text, medications text,
   coaching_intensity enum(gentle|direct|pushy|drill_sergeant) default pushy, explanation_level
@@ -168,7 +168,7 @@ class Outgoing(BaseModel): text (HTML); keyboard: list[list[Button]] | None; rep
 ## 6. Agent (`agent/`)
 
 ### 6.1 LLM wrapper (`client.py`)
-`class LLM` wrapping `AsyncAnthropic`: `async def message(*, purpose, system, messages, tools, max_tokens, effort, output_schema=None, user_id) -> LLMResult` records usage into `token_usage` (cost from a price table in config), handles `refusal` stop reason, retries via SDK defaults. `FakeLLM` in tests with scripted responses. Model id from `settings.model` (default `claude-sonnet-5`), `thinking={"type":"adaptive"}`, `output_config={"effort": ...}`, default effort `medium` for turns, `low` for verify/proactive/summaries.
+`class LLM` wrapping `AsyncAnthropic`: `async def message(*, purpose, system, messages, tools, max_tokens, effort, output_schema=None, user_id) -> LLMResult` records usage into `token_usage` (cost from a price table in config), handles `refusal` stop reason, retries via SDK defaults. `FakeLLM` in tests with scripted responses. Model id from `settings.model` (default `claude-opus-5-5`), `thinking={"type":"adaptive"}`, `output_config={"effort": ...}`, default effort `medium` for turns, `low` for verify/proactive/summaries.
 
 ### 6.1a Bring-your-own-key (added 2026-09-03)
 Every model call for a user is billed to that user's own Anthropic key. `users` gains
@@ -283,8 +283,9 @@ The text is always model-written; never a template.
 ## 8. Proactive engine (`proactive/`)
 
 - `scheduler.py`: `AsyncIOScheduler`; `reschedule_user(user)` computes jobs from the profile in the
-  user's timezone: `morning_line` (wake+0:15), `no_first_meal` (wake+3h), `no_lunch` (15:00),
-  `fiber_check` (13:30), `protein_check` (18:00), `no_dinner` (21:00), `day_not_closed` (23:00),
+  user's timezone: `morning_line` (wake+0:15), `no_first_meal` / `no_lunch` / `no_dinner` /
+  `day_not_closed` (meal deadlines: check-in time, else meal time + 1 h, else wake+3h / 15:00 /
+  21:00 / 23:00), `fiber_check` (13:30), `protein_check` (18:00),
   `bedtime_minus_30` (bed-0:30), `weekend_risk` (Fri 17:00), `weekly_review` (Sun 20:00),
   `measurement_overdue` (daily 08:05), `silence_check` (daily 12:00), `nightly_summary` (03:00),
   `integration_sync` (every 30 min). Jobs are recomputed on profile change.

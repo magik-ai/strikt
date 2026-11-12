@@ -77,6 +77,80 @@ async def test_update_profile_saves_fields_and_marks_steps(
     assert refreshed is not None and refreshed.timezone == "Asia/Dubai"
 
 
+async def test_update_profile_saves_meal_times(
+    session: AsyncSession, clock: FakeClock, settings: Settings, fake_llm: FakeLLM
+) -> None:
+    ctx = await fresh_ctx(session, clock, settings, fake_llm)
+    result = parsed(
+        await profile_tools.update_profile(
+            ctx,
+            schemas.UpdateProfileInput(
+                fields=schemas.ProfileFields(
+                    wake_time=time(9, 30),
+                    breakfast_time=time(10, 0),
+                    lunch_time=time(17, 0),
+                    dinner_time=time(21, 0),
+                )
+            ),
+        )
+    )
+    assert set(result["saved"]) == {"wake_time", "breakfast_time", "lunch_time", "dinner_time"}
+    assert ctx.profile is not None
+    assert ctx.profile.wake_time == time(9, 30)
+    assert ctx.profile.breakfast_time == time(10, 0)
+    assert ctx.profile.lunch_time == time(17, 0)
+    assert ctx.profile.dinner_time == time(21, 0)
+
+
+async def test_update_profile_rejects_meal_times_out_of_order(
+    session: AsyncSession, clock: FakeClock, settings: Settings, fake_llm: FakeLLM
+) -> None:
+    ctx = await fresh_ctx(session, clock, settings, fake_llm)
+    swapped = await profile_tools.update_profile(
+        ctx,
+        schemas.UpdateProfileInput(
+            fields=schemas.ProfileFields(
+                wake_time=time(9, 30), lunch_time=time(18, 0), dinner_time=time(17, 0)
+            )
+        ),
+    )
+    assert swapped.is_error and "dinner_time" in str(swapped.content)
+    early = await profile_tools.update_profile(
+        ctx,
+        schemas.UpdateProfileInput(
+            fields=schemas.ProfileFields(wake_time=time(9, 30), breakfast_time=time(6, 0))
+        ),
+    )
+    assert early.is_error and "breakfast_time" in str(early.content)
+
+
+async def test_update_profile_accepts_night_shift_meal_times(
+    session: AsyncSession, clock: FakeClock, settings: Settings, fake_llm: FakeLLM
+) -> None:
+    ctx = await fresh_ctx(session, clock, settings, fake_llm)
+    result = parsed(
+        await profile_tools.update_profile(
+            ctx,
+            schemas.UpdateProfileInput(
+                fields=schemas.ProfileFields(
+                    wake_time=time(18, 0),
+                    bed_time=time(6, 0),
+                    breakfast_time=time(19, 0),
+                    lunch_time=time(0, 30),
+                    dinner_time=time(5, 0),
+                )
+            ),
+        )
+    )
+    assert set(result["saved"]) == {
+        "wake_time",
+        "bed_time",
+        "breakfast_time",
+        "lunch_time",
+        "dinner_time",
+    }
+
+
 async def test_update_profile_rejects_bad_timezone_and_empty(
     session: AsyncSession, clock: FakeClock, settings: Settings, fake_llm: FakeLLM
 ) -> None:

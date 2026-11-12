@@ -728,6 +728,112 @@ def test_checkin_deadlines_drive_the_silence_preconditions() -> None:
     assert t.check_no_dinner(empty, make_ctx("20:05")) is None
 
 
+def test_meal_times_drive_the_silence_preconditions() -> None:
+    """Stated meal times move the silence deadlines and windows: a 17:00 lunch is lunch,
+    not dinner, and the lunch ping waits until after it."""
+    profile = make_profile(
+        wake_time=time(9, 30),
+        breakfast_time=time(10, 0),
+        lunch_time=time(17, 0),
+        dinner_time=time(21, 0),
+    )
+    assert t.meal_deadlines(profile) == {
+        "no_first_meal": time(11, 0),
+        "no_lunch": time(18, 0),
+        "no_dinner": time(22, 0),
+        "day_not_closed": time(23, 0),
+    }
+    assert t.meal_windows(profile) == {
+        "breakfast": (time(8, 0), time(12, 0)),
+        "lunch": (time(15, 0), time(19, 0)),
+        "dinner": (time(19, 0), time(3, 0)),
+    }
+    assert t.meal_windows(make_profile()) == {
+        "breakfast": None,
+        "lunch": (time(11, 0), time(16, 0)),
+        "dinner": (time(17, 0), time(3, 0)),
+    }
+    assert t.meal_deadlines(make_profile()) == {
+        "no_first_meal": time(11, 0),
+        "no_lunch": time(15, 0),
+        "no_dinner": time(21, 0),
+        "day_not_closed": time(23, 0),
+    }
+    assert t.meal_deadlines(None) == t.meal_deadlines(make_profile())
+    empty = make_state()
+    # no lunch ping before 18:00, and a 17:00 meal counts as lunch
+    assert t.check_no_lunch(empty, make_ctx("15:05", profile=profile)) is None
+    assert t.check_no_lunch(empty, make_ctx("17:05", profile=profile)) is None
+    assert t.check_no_lunch(empty, make_ctx("18:05", profile=profile)) is not None
+    lunch_at_five = make_state(meals=[("17:00", 700, 40, "unknown")])
+    assert t.check_no_lunch(lunch_at_five, make_ctx("18:05", profile=profile)) is None
+    early_meal = make_state(meals=[("14:00", 700, 40, "unknown")])
+    assert t.check_no_lunch(early_meal, make_ctx("18:05", profile=profile)) is not None
+    # the 17:00 lunch is not dinner: the dinner ping still fires at 22:00
+    assert t.check_no_dinner(lunch_at_five, make_ctx("22:05", profile=profile)) is not None
+    dinner = make_state(meals=[("20:00", 800, 50, "unknown")])
+    assert t.check_no_dinner(dinner, make_ctx("22:05", profile=profile)) is None
+    # first meal: breakfast at 10:00, ping at 11:00
+    assert t.check_no_first_meal(empty, make_ctx("10:30", profile=profile)) is None
+    assert t.check_no_first_meal(empty, make_ctx("11:05", profile=profile)) is not None
+    # an explicit check-in still wins over the meal time
+    checked_in = make_profile(lunch_time=time(17, 0), checkin_times=["13:00"])
+    assert t.meal_deadlines(checked_in)["no_lunch"] == time(13, 0)
+
+
+def test_first_meal_hours_since_wake_uses_the_coaching_day() -> None:
+    """A first-meal deadline that wraps past midnight still reports the hours since the
+    morning's wake, not a negative number against tomorrow's wake."""
+    profile = make_profile(wake_time=time(9, 30), breakfast_time=time(23, 0))
+    fire = t.check_no_first_meal(make_state(), make_ctx("00:05", profile=profile))
+    assert fire is not None
+    assert fire.facts["hours_since_wake"] == 14.6
+
+
+def test_meal_windows_wrap_past_midnight() -> None:
+    """A late lunch or dinner still matches its meal: the windows wrap past midnight, and a
+    deadline that wraps fires on the evening's coaching day, not the empty new day."""
+    late_lunch = make_profile(lunch_time=time(22, 0))
+    assert t.meal_windows(late_lunch)["lunch"] == (time(20, 0), time(0, 0))
+    late_meal = make_state(meals=[("21:00", 700, 40, "unknown")])
+    assert t.check_no_lunch(late_meal, make_ctx("23:05", profile=late_lunch)) is None
+    assert t.check_no_lunch(make_state(), make_ctx("23:05", profile=late_lunch)) is not None
+    late_dinner = make_profile(dinner_time=time(0, 30))
+    assert t.meal_windows(late_dinner)["dinner"] == (time(22, 30), time(3, 0))
+    midnight_meal = make_state(meals=[("00:30", 800, 50, "unknown")])
+    assert t.check_no_dinner(midnight_meal, make_ctx("01:35", profile=late_dinner)) is None
+    fire = t.check_no_dinner(make_state(), make_ctx("01:35", profile=late_dinner))
+    assert fire is not None
+    assert fire.day == TODAY - timedelta(days=1)  # still the evening's day
+    assert fire.facts["date"] == (TODAY - timedelta(days=1)).isoformat()
+
+
+def test_breakfast_window_ignores_a_snack() -> None:
+    """A 06:00 snack is not breakfast when breakfast is at 10:00: the first-meal ping still
+    fires at 11:00, but a meal in the breakfast window (or tagged breakfast) counts."""
+    profile = make_profile(wake_time=time(9, 30), breakfast_time=time(10, 0))
+    snack = make_state(meals=[("06:00", 200, 5, "unknown")])
+    assert t.check_no_first_meal(snack, make_ctx("11:05", profile=profile)) is not None
+    breakfast = make_state(meals=[("10:00", 500, 30, "unknown")])
+    assert t.check_no_first_meal(breakfast, make_ctx("11:05", profile=profile)) is None
+    tagged = make_state(meals=[("06:00", 500, 30, "breakfast")])
+    assert t.check_no_first_meal(tagged, make_ctx("11:05", profile=profile)) is None
+    # no breakfast time set: any meal still counts as the first meal
+    assert t.check_no_first_meal(snack, make_ctx("11:05")) is None
+
+
+def test_dinner_window_runs_to_the_rollover() -> None:
+    """Dinner runs until the coaching-day rollover, so a meal after midnight still belongs
+    to the evening: a 23:30 dinner checked at 00:30 sees the 00:10 meal."""
+    late = make_profile(dinner_time=time(23, 30))
+    assert t.meal_windows(late)["dinner"] == (time(21, 30), time(3, 0))
+    assert t.meal_deadlines(late)["no_dinner"] == time(0, 30)
+    late_meal = make_state(meals=[("00:10", 800, 50, "unknown")])
+    assert t.check_no_dinner(late_meal, make_ctx("00:35", profile=late)) is None
+    fire = t.check_no_dinner(make_state(), make_ctx("00:35", profile=late))
+    assert fire is not None and fire.day == TODAY - timedelta(days=1)
+
+
 def test_sick_and_travel_days_pause_the_meal_pressure() -> None:
     for flag in ("sick", "travel"):
         flagged = make_state(flags=[flag])

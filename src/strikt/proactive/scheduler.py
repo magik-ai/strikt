@@ -7,15 +7,17 @@ idempotent); ``remove_user`` drops them. Global jobs: ``integration_sync`` every
 are one-shot ``date`` jobs ``user:<id>:followup:<window_key>`` that fire the parent trigger
 again through ``escalation_followup``.
 
-The job table (local time; ``wake``/``bed`` from the profile, defaults 08:00 / 00:30):
+The job table (local time; ``wake``/``bed`` from the profile, defaults 08:00 / 00:30;
+meal-silence jobs fire at the deadlines in ``triggers.meal_deadlines``: an explicit check-in
+time, the stated meal time + 1 h, else the default):
 
     morning_line  max(wake+0:15, 10:00)    event_planned, post_travel_reentry  wake + 0:20
-    sleep_debt_accumulating wake + 0:45    no_first_meal                       wake + 3:00
+    sleep_debt_accumulating wake + 0:45    no_first_meal                       meal deadline
     measurement_overdue    08:05           clean_streak, two_off_days, intensity_restored 09:00
     whoop_no_workout       10:00           silence_check 12:00     same_meal_streak 12:05
-    fiber_check            13:30           no_lunch 15:00          weekend_risk Fri 17:00
-    protein_check          18:00           weekly_review Sun 20:00 no_dinner 21:00
-    day_not_closed         23:00           bedtime_minus_30 bed - 0:30
+    fiber_check            13:30           no_lunch  meal deadline  weekend_risk Fri 17:00
+    protein_check          18:00           weekly_review Sun 20:00 no_dinner meal deadline
+    day_not_closed         meal deadline   bedtime_minus_30 bed - 0:30
     nightly_summary        03:00 (callback into the memory module)
 
 The profile's ``checkin_times`` (brief §4 step 9: "proactive check-ins and at what times") move
@@ -44,7 +46,7 @@ from strikt.core.clock import Clock, ensure_utc, to_local, zone
 from strikt.db import repo
 from strikt.db.models import Profile, User, UserStatus
 from strikt.proactive.engine import ProactiveEngine
-from strikt.proactive.triggers import checkin_deadlines
+from strikt.proactive.triggers import meal_deadlines
 from strikt.proactive.types import SessionFactory, TriggerName
 
 log = structlog.get_logger(__name__)
@@ -92,11 +94,10 @@ def build_job_specs(profile: Profile | None) -> list[JobSpec]:
     """The per-user job table from the profile (pure; tested against a fixture profile)."""
     wake = (profile.wake_time if profile is not None else None) or DEFAULT_WAKE
     bed = (profile.bed_time if profile is not None else None) or DEFAULT_BED
-    checkins = checkin_deadlines(profile)
+    deadlines = meal_deadlines(profile)
     plus15 = _plus(wake, timedelta(minutes=15))
     plus20 = _plus(wake, timedelta(minutes=20))
     plus45 = _plus(wake, timedelta(minutes=45))
-    plus3h = checkins.get("no_first_meal", _plus(wake, timedelta(hours=3)))
     bed30 = _plus(bed, timedelta(minutes=-30))
     specs: list[tuple[str, time, str | None]] = [
         # the morning check of yesterday's list: when the user is up, not at the crack of dawn
@@ -104,7 +105,7 @@ def build_job_specs(profile: Profile | None) -> list[JobSpec]:
         ("event_planned", plus20, None),
         ("post_travel_reentry", plus20, None),
         ("sleep_debt_accumulating", plus45, None),
-        ("no_first_meal", plus3h, None),
+        ("no_first_meal", deadlines["no_first_meal"], None),
         ("measurement_overdue", time(8, 5), None),
         ("clean_streak", time(9, 0), None),
         ("two_off_days", time(9, 0), None),
@@ -113,12 +114,12 @@ def build_job_specs(profile: Profile | None) -> list[JobSpec]:
         ("silence_check", time(12, 0), None),
         ("same_meal_streak", time(12, 5), None),
         ("fiber_check", time(13, 30), None),
-        ("no_lunch", checkins.get("no_lunch", time(15, 0)), None),
+        ("no_lunch", deadlines["no_lunch"], None),
         ("weekend_risk", time(17, 0), "fri"),
         ("protein_check", time(18, 0), None),
         ("weekly_review", time(20, 0), "sun"),
-        ("no_dinner", checkins.get("no_dinner", time(21, 0)), None),
-        ("day_not_closed", checkins.get("day_not_closed", time(23, 0)), None),
+        ("no_dinner", deadlines["no_dinner"], None),
+        ("day_not_closed", deadlines["day_not_closed"], None),
         ("bedtime_minus_30", bed30, None),
         (NIGHTLY_SUMMARY, time(3, 0), None),
     ]

@@ -1,6 +1,6 @@
 # Strikt - working in this repo
 
-Strikt is a one-window Telegram health coach on Claude Sonnet 5 (`claude-sonnet-5`). Python
+Strikt is a one-window Telegram health coach on Claude Opus 5.5 (`claude-opus-5-5`). Python
 package `strikt`, `src/` layout, GitHub repo `magik-ai/bomiso` (to be renamed).
 
 ## Laws

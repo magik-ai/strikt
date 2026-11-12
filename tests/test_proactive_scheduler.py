@@ -373,3 +373,31 @@ def test_checkin_times_move_the_silence_slots() -> None:
     assert sched.build_job_specs(make_profile(checkin_times=None)) == sched.build_job_specs(
         make_profile()
     )
+
+
+def test_meal_times_move_the_silence_slots() -> None:
+    """Stated meal times move the silence jobs the same way check-in times do: a 17:00
+    lunch waits until 18:00, and the scheduler and the preconditions agree."""
+    profile = make_profile(
+        wake_time=time(9, 30),
+        breakfast_time=time(10, 0),
+        lunch_time=time(17, 0),
+        dinner_time=time(21, 0),
+    )
+    specs = {s.trigger: s for s in sched.build_job_specs(profile)}
+    assert specs["morning_line"].at == "10:00"  # max(wake+0:15, 10:00)
+    assert specs["no_first_meal"].at == "11:00"
+    assert specs["no_lunch"].at == "18:00"
+    assert specs["no_dinner"].at == "22:00"
+    assert specs["day_not_closed"].at == "23:00"
+    assert set(specs) == EXPECTED_TRIGGERS
+
+
+def test_meal_deadlines_can_wrap_past_midnight() -> None:
+    """A late lunch or dinner moves its job past midnight: the job fires at 00:00 / 00:30,
+    and the precondition keys that fire to the evening's coaching day."""
+    profile = make_profile(lunch_time=time(23, 0), dinner_time=time(23, 30))
+    specs = {s.trigger: s for s in sched.build_job_specs(profile)}
+    assert specs["no_lunch"].at == "00:00"
+    assert specs["no_dinner"].at == "00:30"
+    assert set(specs) == EXPECTED_TRIGGERS

@@ -22,9 +22,11 @@ and let the user correct them; never interrogate.
 3. **Body** - height, current weight, waist, age, sex. Log weight and waist with
    `log_measurement` (source manual) so the baseline exists.
    → `height_cm, birth_year, sex` + measurements.
-4. **Schedule** - wake and bed times (the wake time is the anchor), work pattern, training days
-   and times, where meals usually come from (delivery / home / office / restaurants).
-   → `wake_time, bed_time, work_pattern, training_plan, meal_sources`.
+4. **Schedule** - wake and bed times (the wake time is the anchor), usual meal times
+   (breakfast, lunch, dinner - the proactive checks follow them, not the clock), work pattern,
+   training days and times, where meals usually come from (delivery / home / office / restaurants).
+   → `wake_time, bed_time, breakfast_time, lunch_time, dinner_time, work_pattern, training_plan,
+   meal_sources`.
 5. **Training and wearable** - what, how often, WHOOP / Garmin / Apple Watch / none. WHOOP →
    `connect_integration whoop` and send the link right there. Withings scale →
    `connect_integration withings`. iPhone without an API → `connect_integration apple_health`.

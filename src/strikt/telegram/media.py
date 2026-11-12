@@ -5,7 +5,7 @@ Facts this module is built on (research/03 §3-6, research/02 §8-9, research/09
 - Bots can download files of at most 20 MB (``getFile``); ``file_id`` is persistent.
 - Claude vision accepts JPEG/PNG/GIF/WebP only - never HEIC - at most 10 MB of base64 per image,
   and every image must stay within 2000 px per side once a request carries more than 20 images.
-  Sonnet 5 downscales to a 2576 px long edge anyway, so 2000 px loses nothing that matters.
+  The 2000 px cap loses nothing that matters for food photos.
 - PDFs go in as ``document`` blocks: at most 32 MB per request and 100 pages when the context
   window is under 1M tokens (PLAN §7 pins 100).
 - iPhones send HEIC only as a *document* (``image/heic`` mime or ``.heic`` filename, both
@@ -46,7 +46,7 @@ MAX_TELEGRAM_DOWNLOAD = 20 * 1024 * 1024  # Bot API getFile hard cap
 MAX_PDF_BYTES = 32 * 1024 * 1024  # Claude request cap for documents
 MAX_PDF_PAGES = 100  # PLAN §7 (600 on 1M-context requests; 100 is the safe floor)
 MAX_IMAGE_B64 = 10 * 1024 * 1024  # Claude per-image base64 cap
-MAX_IMAGE_EDGE = 2000  # px; keeps many-image requests valid and stays under Sonnet 5's 2576
+MAX_IMAGE_EDGE = 2000  # px; keeps many-image requests valid
 JPEG_QUALITY = 85
 JPEG_QUALITY_STEPS = (85, 70, 55, 40)  # retried when the encoded image would exceed the cap
 ALBUM_DEBOUNCE_S = 1.2
