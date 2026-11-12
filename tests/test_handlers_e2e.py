@@ -9,7 +9,7 @@ from __future__ import annotations
 
 import asyncio
 from dataclasses import dataclass, field
-from datetime import datetime, timedelta
+from datetime import datetime, time, timedelta
 from io import BytesIO
 from typing import Any
 from zoneinfo import ZoneInfo
@@ -331,6 +331,30 @@ async def test_start_for_active_user_runs_a_turn_without_welcome(
     fake_llm.queue(FakeLLM.text("Вчера 1 910. Талия просрочена."))
     await handle_message(deps, msg("/start"))
     assert messenger.texts(CHAT_ID) == ["Вчера 1 910. Талия просрочена."]
+
+
+async def test_meal_times_set_by_message_save_and_reschedule(
+    deps: AppDeps,
+    messenger: FakeMessenger,
+    fake_llm: FakeLLM,
+    session: AsyncSession,
+    user: User,
+    planner: FakePlanner,
+) -> None:
+    fake_llm.queue(
+        FakeLLM.tool_use(
+            "update_profile",
+            {"fields": {"wake_time": "09:30", "lunch_time": "17:00"}},
+        ),
+        FakeLLM.text("Записал: встаёшь в 09:30, обед в 17:00."),
+    )
+    await handle_message(deps, msg("Встаю в 9:30, а обедаю обычно в пять", message_id=103))
+    profile = await repo.get_profile(session, user.id)
+    assert profile is not None
+    assert profile.wake_time == time(9, 30)
+    assert profile.lunch_time == time(17, 0)
+    assert messenger.texts(CHAT_ID)[-1] == "Записал: встаёшь в 09:30, обед в 17:00."
+    assert planner.rescheduled == [user.id]
 
 
 # ------------------------------------------------------------------------------------ photos

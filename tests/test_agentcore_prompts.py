@@ -78,6 +78,12 @@ def test_coach_prompt_has_no_first_user_numbers() -> None:
         assert leaked not in coach, leaked
 
 
+def test_coach_prompt_saves_stated_meal_times_and_confirms_them() -> None:
+    coach = load_prompt("coach")
+    assert "lunch is usually at five" in coach
+    assert "confirm the saved times back to the user" in coach
+
+
 def test_onboarding_prompt_has_ten_steps_and_the_minimum_set() -> None:
     text = _flat("onboarding")
     for step in range(1, 11):
