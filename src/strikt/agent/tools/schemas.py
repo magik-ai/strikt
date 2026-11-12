@@ -460,6 +460,11 @@ class ProfileFields(ToolInput):
     kpi_unit: str | None = Field(default=None, description="Unit of the KPI (cm, kg, %).")
     wake_time: time | None = Field(default=None, description="Fixed wake time, HH:MM local.")
     bed_time: time | None = Field(default=None, description="Target bedtime, HH:MM local.")
+    breakfast_time: time | None = Field(
+        default=None, description="Usual breakfast time, HH:MM local."
+    )
+    lunch_time: time | None = Field(default=None, description="Usual lunch time, HH:MM local.")
+    dinner_time: time | None = Field(default=None, description="Usual dinner time, HH:MM local.")
     work_pattern: str | None = Field(default=None, description="Work schedule in one line.")
     training_plan: TrainingPlan | None = Field(default=None, description="Training schedule.")
     meal_sources: list[str] | None = Field(

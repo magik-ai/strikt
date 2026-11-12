@@ -9,6 +9,8 @@ numbers: everything arrives through these calls.
 
 from __future__ import annotations
 
+from datetime import time
+from itertools import pairwise
 from typing import TYPE_CHECKING, Any
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
@@ -16,13 +18,14 @@ import structlog
 from sqlalchemy.ext.asyncio import AsyncEngine, async_sessionmaker
 
 from strikt.agent.tools.common import build_state, fail, macros_dict, ok, rnd, state_numbers, to_utc
-from strikt.core.clock import to_local
+from strikt.core.clock import day_rollover, to_local
 from strikt.db import repo
 from strikt.db.models import (
     CoachingIntensity,
     ExplanationLevel,
     MeasurementType,
     PrimaryKpi,
+    Profile,
     UserStatus,
 )
 from strikt.nutrition.math import kcal_from_macros, mismatch_ratio
@@ -54,6 +57,48 @@ def _valid_timezone(name: str) -> bool:
     except (ZoneInfoNotFoundError, ValueError, KeyError):
         return False
     return True
+
+
+def _meal_time_error(changes: dict[str, Any], profile: Profile | None) -> str | None:
+    """Meal times must fit the user's day: breakfast after wake, then lunch, then dinner.
+    Offsets are measured from the wake time, so a night-shift day (wake 18:00, lunch 00:30)
+    orders correctly; the day ends at the coaching-day rollover. Returns the problem, or None."""
+    wake = changes.get("wake_time", profile.wake_time if profile is not None else None)
+    if wake is None:
+        return None
+    bed = changes.get("bed_time", profile.bed_time if profile is not None else None)
+    rollover = day_rollover(bed, wake)
+    wake_m = wake.hour * 60 + wake.minute
+    day_len = (rollover.hour * 60 + rollover.minute - wake_m) % 1440
+    if day_len == 0:
+        return None
+    effective: dict[str, time] = {}
+    for field in ("breakfast_time", "lunch_time", "dinner_time"):
+        value = changes.get(field, getattr(profile, field, None) if profile is not None else None)
+        if value is not None:
+            effective[field] = value
+    if not effective:
+        return None
+    offsets = {
+        field: (value.hour * 60 + value.minute - wake_m) % 1440
+        for field, value in effective.items()
+    }
+    for field, offset in offsets.items():
+        if offset >= day_len:
+            return (
+                f"{field} ({effective[field]:%H:%M}) falls outside the waking day "
+                f"(wake {wake:%H:%M}, day ends {rollover:%H:%M})"
+            )
+    ordered = [
+        field for field in ("breakfast_time", "lunch_time", "dinner_time") if field in offsets
+    ]
+    for earlier, later in pairwise(ordered):
+        if offsets[earlier] >= offsets[later]:
+            return (
+                f"{later} ({effective[later]:%H:%M}) must be after "
+                f"{earlier} ({effective[earlier]:%H:%M})"
+            )
+    return None
 
 
 async def _facts(ctx: ToolContext) -> checklist.Facts:
@@ -108,6 +153,10 @@ async def update_profile(ctx: ToolContext, args: schemas.UpdateProfileInput) -> 
     for key in ("height_cm", "waist_cadence_days", "weight_cadence_days"):
         if key in changes and float(changes[key]) <= 0:
             return fail(f"update_profile: {key} must be positive")
+
+    meal_error = _meal_time_error(changes, ctx.profile)
+    if meal_error is not None:
+        return fail(f"update_profile: {meal_error}")
 
     unknown = set(changes) - repo.PROFILE_FIELDS
     if unknown:

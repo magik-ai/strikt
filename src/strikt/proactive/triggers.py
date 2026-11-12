@@ -17,9 +17,9 @@ import dataclasses
 from collections.abc import Callable, Mapping
 from dataclasses import dataclass, field
 from datetime import date, datetime, time, timedelta
-from typing import Any, cast
+from typing import Any, TypedDict, cast
 
-from strikt.core.clock import ensure_utc, to_local
+from strikt.core.clock import coaching_day, day_rollover, ensure_utc, to_local
 from strikt.core.types import DayState, Macros, MealView
 from strikt.db.models import Note, ProactiveSend, Profile, Protocol, Summary
 from strikt.proactive.stats import minutes_after_noon
@@ -35,6 +35,10 @@ from strikt.proactive.types import TriggerClass, TriggerFire, TriggerName
 # ------------------------------------------------------------------------------- thresholds
 
 FIRST_MEAL_GRACE = timedelta(hours=3)
+#: How long after the stated meal time the silence check fires (the user may eat a little late).
+MEAL_GRACE = timedelta(hours=1)
+#: A meal logged within this long either side of the stated meal time counts as that meal.
+MEAL_WINDOW_HALF = timedelta(hours=2)
 LUNCH_DEADLINE = time(15, 0)
 FIBER_CHECK_AT = time(13, 30)
 PROTEIN_CHECK_AT = time(18, 0)
@@ -90,10 +94,6 @@ class TriggerContext:
     def clock(self) -> str:
         return self.local_now.strftime("%H:%M")
 
-    def deadline(self, trigger: str, default: time) -> time:
-        """The check-in time the user chose for this silence trigger, else ``default``."""
-        return checkin_deadlines(self.profile).get(trigger, default)
-
 
 Precondition = Callable[[DayState | None, TriggerContext], TriggerFire | None]
 
@@ -137,6 +137,75 @@ def checkin_deadlines(profile: Profile | None) -> dict[str, time]:
     return out
 
 
+def _plus_time(base: time, delta: timedelta) -> time:
+    anchor = datetime.combine(date(2000, 1, 3), base) + delta
+    return anchor.time()
+
+
+def meal_deadlines(profile: Profile | None) -> dict[str, time]:
+    """The meal-silence deadlines for a profile, in priority order per trigger: an explicit
+    check-in time wins, then the stated meal time plus ``MEAL_GRACE``, then the hardcoded
+    default (brief §7.1). One function so the scheduler's job table and the trigger
+    preconditions can never disagree about when a check fires."""
+    checkins = checkin_deadlines(profile)
+    wake = (profile.wake_time if profile is not None else None) or DEFAULT_WAKE
+    breakfast = profile.breakfast_time if profile is not None else None
+    lunch = profile.lunch_time if profile is not None else None
+    dinner = profile.dinner_time if profile is not None else None
+    first_default = (
+        _plus_time(breakfast, MEAL_GRACE)
+        if breakfast is not None
+        else _plus_time(wake, FIRST_MEAL_GRACE)
+    )
+    lunch_default = _plus_time(lunch, MEAL_GRACE) if lunch is not None else LUNCH_DEADLINE
+    dinner_default = _plus_time(dinner, MEAL_GRACE) if dinner is not None else DINNER_DEADLINE
+    return {
+        "no_first_meal": checkins.get("no_first_meal", first_default),
+        "no_lunch": checkins.get("no_lunch", lunch_default),
+        "no_dinner": checkins.get("no_dinner", dinner_default),
+        "day_not_closed": checkins.get("day_not_closed", CLOSE_DEADLINE),
+    }
+
+
+class MealWindows(TypedDict):
+    """The local-time windows a logged meal must fall in to count as that meal."""
+
+    breakfast: tuple[time, time] | None
+    lunch: tuple[time, time]
+    dinner: tuple[time, time]
+
+
+def meal_windows(profile: Profile | None) -> MealWindows:
+    """The local-time windows a logged meal must fall in to count as that meal.
+
+    The defaults are the hardcoded windows the triggers used before (11:00-16:00 for lunch,
+    from 17:00 for dinner); a stated meal time centers the window on it, so a 17:00 lunch
+    counts as lunch instead of dinner. Dinner runs until the coaching-day rollover, so a
+    01:00 meal still belongs to the evening. Breakfast is None when no breakfast time is set.
+    """
+    breakfast = profile.breakfast_time if profile is not None else None
+    lunch = profile.lunch_time if profile is not None else None
+    dinner = profile.dinner_time if profile is not None else None
+    bed = profile.bed_time if profile is not None else None
+    wake = profile.wake_time if profile is not None else None
+    return {
+        "breakfast": (
+            (_plus_time(breakfast, -MEAL_WINDOW_HALF), _plus_time(breakfast, MEAL_WINDOW_HALF))
+            if breakfast is not None
+            else None
+        ),
+        "lunch": (
+            (_plus_time(lunch, -MEAL_WINDOW_HALF), _plus_time(lunch, MEAL_WINDOW_HALF))
+            if lunch is not None
+            else (LUNCH_FROM, LUNCH_TO)
+        ),
+        "dinner": (
+            _plus_time(dinner, -MEAL_WINDOW_HALF) if dinner is not None else DINNER_FROM,
+            day_rollover(bed, wake),
+        ),
+    }
+
+
 # ---------------------------------------------------------------------------------- helpers
 
 
@@ -148,31 +217,45 @@ def _fire(
     window_key: str | None = None,
     facts: Mapping[str, Any] | None = None,
     payload: Mapping[str, Any] | None = None,
+    day: date | None = None,
 ) -> TriggerFire:
-    base: dict[str, Any] = {"local_time": ctx.clock, "date": ctx.day.isoformat()}
+    fire_day = day or ctx.day
+    base: dict[str, Any] = {"local_time": ctx.clock, "date": fire_day.isoformat()}
     base.update(facts or {})
     return TriggerFire(
         name=name,
         klass=klass,
-        window_key=window_key or f"{name}:{ctx.day.isoformat()}",
+        window_key=window_key or f"{name}:{fire_day.isoformat()}",
         local_now=ctx.local_now,
-        day=ctx.day,
+        day=fire_day,
         facts=base,
         payload=dict(payload or ctx.payload),
     )
+
+
+def _coaching_day(ctx: TriggerContext) -> date:
+    """The coaching day a fire belongs to: after midnight it is still the evening's day, so
+    a 00:30 dinner deadline is decided on the evening's state, not the empty new day."""
+    return coaching_day(ctx.local_now, ctx.profile.bed_time, ctx.profile.wake_time)
 
 
 def _meal_local(meal: MealView, tz: str) -> datetime:
     return to_local(ensure_utc(meal.eaten_at or meal.logged_at), tz)
 
 
-def _meals_between(state: DayState, tz: str, start: time, end: time | None) -> list[MealView]:
-    out: list[MealView] = []
-    for meal in state.meals:
-        local_t = _meal_local(meal, tz).time()
-        if local_t >= start and (end is None or local_t < end):
-            out.append(meal)
-    return out
+def _in_window(t: time, start: time, end: time) -> bool:
+    """True when local time ``t`` falls in [start, end), going forward past midnight:
+    a 20:00-00:00 lunch window holds a 21:00 meal, a 22:30-02:30 one a 00:30 meal."""
+    start_s = start.hour * 3600 + start.minute * 60 + start.second
+    end_s = end.hour * 3600 + end.minute * 60 + end.second
+    t_s = t.hour * 3600 + t.minute * 60 + t.second
+    length = (end_s - start_s) % 86400
+    return (t_s - start_s) % 86400 < length
+
+
+def _meals_between(state: DayState, tz: str, start: time, end: time) -> list[MealView]:
+    """Meals logged in the local-time window [start, end); the window may wrap past midnight."""
+    return [meal for meal in state.meals if _in_window(_meal_local(meal, tz).time(), start, end)]
 
 
 def _has_slot(state: DayState, slot: str) -> bool:
@@ -287,34 +370,39 @@ def check_morning_line(state: DayState | None, ctx: TriggerContext) -> TriggerFi
 
 
 def check_no_first_meal(state: DayState | None, ctx: TriggerContext) -> TriggerFire | None:
-    """Wake + 3 h and nothing logged."""
+    """The first-meal deadline (check-in, stated breakfast time + 1 h, else wake + 3 h)
+    and no breakfast logged: any meal counts when no breakfast time is set, otherwise only
+    a meal in the breakfast window (or tagged breakfast)."""
     day = _open_day(state)
-    if day is None or day.meals:
+    if day is None:
         return None
-    override = checkin_deadlines(ctx.profile).get("no_first_meal")
-    deadline = (
-        _combine(ctx.day, override, ctx)
-        if override is not None
-        else _combine(ctx.day, ctx.wake_time, ctx) + FIRST_MEAL_GRACE
-    )
+    breakfast_window = meal_windows(ctx.profile)["breakfast"]
+    if breakfast_window is None:
+        if day.meals:
+            return None
+    elif _has_slot(day, "breakfast") or _meals_between(day, ctx.tz, *breakfast_window):
+        return None
+    deadline = _combine(ctx.day, meal_deadlines(ctx.profile)["no_first_meal"], ctx)
     if ctx.local_now < deadline:
         return None
-    since_wake = ctx.local_now - _combine(ctx.day, ctx.wake_time, ctx)
+    since_wake = ctx.local_now - _combine(_coaching_day(ctx), ctx.wake_time, ctx)
     facts: dict[str, Any] = {
         "wake_time": _hhmm(ctx.wake_time),
         "hours_since_wake": round(since_wake.total_seconds() / 3600, 1),
         **_totals(day, ctx),
         **_skipped_lunch_facts(ctx),
     }
-    return _fire("no_first_meal", "time", ctx, facts=facts)
+    return _fire("no_first_meal", "time", ctx, day=_coaching_day(ctx), facts=facts)
 
 
 def check_no_lunch(state: DayState | None, ctx: TriggerContext) -> TriggerFire | None:
-    """15:00 and no meal in the 11:00-16:00 window (or tagged lunch)."""
+    """The lunch deadline (check-in, stated lunch time + 1 h, else 15:00) and no meal in the
+    lunch window (or tagged lunch)."""
     day = _open_day(state)
-    if day is None or not _at_or_after(ctx, ctx.deadline("no_lunch", LUNCH_DEADLINE)):
+    if day is None or not _at_or_after(ctx, meal_deadlines(ctx.profile)["no_lunch"]):
         return None
-    if _has_slot(day, "lunch") or _meals_between(day, ctx.tz, LUNCH_FROM, LUNCH_TO):
+    lunch_from, lunch_to = meal_windows(ctx.profile)["lunch"]
+    if _has_slot(day, "lunch") or _meals_between(day, ctx.tz, lunch_from, lunch_to):
         return None
     first = min((_meal_local(m, ctx.tz) for m in day.meals), default=None)
     facts: dict[str, Any] = {
@@ -323,7 +411,7 @@ def check_no_lunch(state: DayState | None, ctx: TriggerContext) -> TriggerFire |
         **_totals(day, ctx),
         **_skipped_lunch_facts(ctx),
     }
-    return _fire("no_lunch", "time", ctx, facts=facts)
+    return _fire("no_lunch", "time", ctx, day=_coaching_day(ctx), facts=facts)
 
 
 def check_fiber_check(state: DayState | None, ctx: TriggerContext) -> TriggerFire | None:
@@ -366,14 +454,16 @@ def check_protein_check(state: DayState | None, ctx: TriggerContext) -> TriggerF
 
 
 def check_no_dinner(state: DayState | None, ctx: TriggerContext) -> TriggerFire | None:
-    """21:00 and no meal since 17:00 (or tagged dinner)."""
+    """The dinner deadline (check-in, stated dinner time + 1 h, else 21:00) and no meal since
+    the dinner window opened (or tagged dinner)."""
     day = _open_day(state)
-    if day is None or not _at_or_after(ctx, ctx.deadline("no_dinner", DINNER_DEADLINE)):
+    if day is None or not _at_or_after(ctx, meal_deadlines(ctx.profile)["no_dinner"]):
         return None
-    if _has_slot(day, "dinner") or _meals_between(day, ctx.tz, DINNER_FROM, None):
+    dinner_from, dinner_to = meal_windows(ctx.profile)["dinner"]
+    if _has_slot(day, "dinner") or _meals_between(day, ctx.tz, dinner_from, dinner_to):
         return None
     facts = {"last_meal_at": _last_meal_time(day, ctx.tz), **_totals(day, ctx)}
-    return _fire("no_dinner", "time", ctx, facts=facts)
+    return _fire("no_dinner", "time", ctx, day=_coaching_day(ctx), facts=facts)
 
 
 def check_day_not_closed(state: DayState | None, ctx: TriggerContext) -> TriggerFire | None:
@@ -386,7 +476,7 @@ def check_day_not_closed(state: DayState | None, ctx: TriggerContext) -> Trigger
     no food in it at all, which is a different fact and worth one message.
     """
     day = _open_day(state)
-    if day is None or not _at_or_after(ctx, ctx.deadline("day_not_closed", CLOSE_DEADLINE)):
+    if day is None or not _at_or_after(ctx, meal_deadlines(ctx.profile)["day_not_closed"]):
         return None
     if day.meals:
         return None
@@ -396,7 +486,7 @@ def check_day_not_closed(state: DayState | None, ctx: TriggerContext) -> Trigger
         **_totals(day, ctx),
         **_skipped_lunch_facts(ctx),
     }
-    return _fire("day_not_closed", "time", ctx, facts=facts)
+    return _fire("day_not_closed", "time", ctx, day=_coaching_day(ctx), facts=facts)
 
 
 def check_bedtime_minus_30(state: DayState | None, ctx: TriggerContext) -> TriggerFire | None:

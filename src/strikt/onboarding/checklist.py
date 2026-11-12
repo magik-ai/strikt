@@ -73,10 +73,19 @@ STEPS: tuple[Step, ...] = (
     Step(
         4,
         "schedule",
-        ("wake_time", "bed_time", "work_pattern", "training_plan", "meal_sources"),
+        (
+            "wake_time",
+            "bed_time",
+            "breakfast_time",
+            "lunch_time",
+            "dinner_time",
+            "work_pattern",
+            "training_plan",
+            "meal_sources",
+        ),
         ("wake_time", "bed_time"),
-        "wake and bed times (wake is the anchor), work pattern, training days, where meals come from",
-        "подъём и отбой (подъём - якорь), режим работы, дни тренировок, откуда еда",
+        "wake and bed times (wake is the anchor), usual meal times, work pattern, training days, where meals come from",
+        "подъём и отбой (подъём - якорь), обычное время еды, режим работы, дни тренировок, откуда еда",
     ),
     Step(
         5,

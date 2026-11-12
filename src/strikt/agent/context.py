@@ -118,7 +118,7 @@ def load_prompt(name: str) -> str:
 def estimate_tokens(value: Any) -> int:
     """≈ 4 chars per token for ASCII and 2.5 for non-ASCII (Cyrillic) over the JSON rendering.
 
-    A budget, not a count: the Sonnet 5 tokenizer is not public. English prose lands near
+    A budget, not a count: the model's tokenizer is not public. English prose lands near
     4 chars/token; Russian near 2.5-3, so a flat 4 would undercount a Russian history by ~40 %.
     """
     if isinstance(value, str):

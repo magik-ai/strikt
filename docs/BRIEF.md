@@ -7,7 +7,7 @@ the message Claude Fable 5.1 received, unchanged except for two lines in section
 # Brief: One-Window AI Health & Fitness Coach (Telegram)
 
 **For:** Claude Fable 5.1 - you are the architect, researcher, designer and builder. This is a one-shot build in a fresh repository.
-**Runtime model of the bot:** Claude Sonnet 5 (`claude-sonnet-5`).
+**Runtime model of the bot:** Claude Opus 5.5 (`claude-opus-5-5`).
 **Owner / first user:** Ilya Chernyakov (COO, Praktika.ai, Dubai). He has been running this exact workflow for a month in a Claude chat; this brief transfers that working method to you so the bot feels like a continuation, not a restart.
 **Date:** 3 September 2026.
 
@@ -130,7 +130,7 @@ The first session with any user is an interview, conversational not form-like, 1
 1. Name, language, timezone, city (for food-safety and delivery context).
 2. Goal in the user's words; then the bot proposes one primary KPI (waist, weight, body-fat, performance) and a measurement cadence.
 3. Body: height, weight, waist, age, sex.
-4. Schedule: wake/sleep times, work pattern, training days and times, where meals usually come from (delivery / home / office / restaurants).
+4. Schedule: wake/sleep times, usual meal times (breakfast, lunch, dinner), work pattern, training days and times, where meals usually come from (delivery / home / office / restaurants).
 5. Training: what, how often, wearable (WHOOP / Garmin / Apple Watch / none). Offer to connect WHOOP right there via OAuth link.
 6. Food: likes, dislikes, allergies/intolerances, dietary rules (halal, vegetarian…), alcohol habits, sweet tooth, what "comfort food" means to them.
 7. Health context: known conditions, labs the user wants the coach to consider, medications, doctor's instructions. Accept photos of lab reports and parse them.
@@ -148,7 +148,7 @@ For Ilya specifically: allow an import path - he will paste or forward summaries
 
 ### 5.1 Agent
 
-- **ReAct agent** on Claude Sonnet 5 with tool use. Each user message → agent decides: call tools (log, query, research, parse), or answer directly, or both. Multi-step allowed (e.g. parse image → search food DB → web research fallback → log → compute totals → reply).
+- **ReAct agent** on Claude Opus 5.5 with tool use. Each user message → agent decides: call tools (log, query, research, parse), or answer directly, or both. Multi-step allowed (e.g. parse image → search food DB → web research fallback → log → compute totals → reply).
 - **Reflexion-style self-check** (from Shinn's work): after computing a day total or a macro estimate, a short verification step re-derives the number and flags inconsistencies before replying. This is what makes the "recalculate the day" behavior reliable.
 - **Structured outputs** for tool arguments; no free-text parsing of the model's own output.
 - **Prompt caching** for the static system prompt + profile block. Log token spend per user per day.
@@ -244,6 +244,7 @@ Triggers come in three classes:
 - `no_first_meal_by(T)` - default T = wake_time + 3h. Message: "It's 11:40. Nothing logged. Did you eat or did you skip?" If no reply in 45 min → second ping, sharper. If still nothing by 14:00 → the bot states the consequence it has seen in the data: "Last three times you skipped breakfast and lunch, the evening went to 2,600 kcal. What are you eating in the next hour?"
 - `no_lunch_by(T)` - default 15:00.
 - `no_dinner_by(T)` - default 21:00. Combined with `day_not_closed_by(23:00)`: "Day's still open. Dinner?"
+- When the user states their usual meal times, T follows them (meal time + 1 h); an explicit check-in time for a meal wins over both. A meal logged within 2 h either side of the stated time counts as that meal (dinner runs until the day rolls over), so a 17:00 lunch is lunch, not dinner.
 - `bedtime_minus_30` - "23:30. Laptop out of the room. What's still open that can't wait until morning?" If WHOOP later shows sleep onset after 01:00, next morning's message says so.
 - `wake_check` - if WHOOP shows the user awake past the agreed wake time by >30 min: "Alarm was 8:00, you got up 8:50. Third day. Tonight's bedtime moves to 00:00, not 00:30."
 - `measurement_overdue` - waist every 14 days, weight weekly. "Waist is 16 days overdue. Tomorrow morning, fasted, at the navel. I'll ask again at 8."

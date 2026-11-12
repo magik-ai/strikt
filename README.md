@@ -1,6 +1,6 @@
 # Strikt
 
-Strikt is a personal health coach that lives in one Telegram chat. You send it what you eat (a photo, a delivery-app screenshot, a label, a voice note, text), what you trained (a WHOOP screenshot, or a live WHOOP connection) and what you measured (a scale photo, "weighed 104.2"). It logs everything into Postgres, answers with the numbers first (kcal, protein, carbs, fat and fiber per item, the day so far, what is left), keeps a pinned "Today" card current, and writes first when you go quiet. It runs on Claude Sonnet 5 on each user's own Anthropic key (pasted once into the chat; the coach itself is free), remembers from day one, and starts every new user with a ten-step interview instead of a settings screen. Seven commands: `/start`, `/today`, `/week`, `/streak`, `/targets`, `/help`, `/forget_me`. Everything else is a message.
+Strikt is a personal health coach that lives in one Telegram chat. You send it what you eat (a photo, a delivery-app screenshot, a label, a voice note, text), what you trained (a WHOOP screenshot, or a live WHOOP connection) and what you measured (a scale photo, "weighed 104.2"). It logs everything into Postgres, answers with the numbers first (kcal, protein, carbs, fat and fiber per item, the day so far, what is left), keeps a pinned "Today" card current, and writes first when you go quiet. It runs on Claude Opus 5.5 on each user's own Anthropic key (pasted once into the chat; the coach itself is free), remembers from day one, and starts every new user with a ten-step interview instead of a settings screen. Seven commands: `/start`, `/today`, `/week`, `/streak`, `/targets`, `/help`, `/forget_me`. Everything else is a message.
 
 ## How it feels
 
@@ -55,7 +55,7 @@ One process, one event loop: Telegram, the HTTP server for OAuth and webhooks, t
 flowchart LR
   TG[Telegram] --> H[aiogram handlers]
   H --> Q[per-chat queue]
-  Q --> L[agent loop<br/>Claude Sonnet 5 · 27 tools · verify]
+  Q --> L[agent loop<br/>Claude Opus 5.5 · 27 tools · verify]
   L --> PG[(Postgres)]
   L --> C[Today card, pinned] --> TG
   L --> B[event bus]
@@ -97,9 +97,9 @@ A message: album parts are gathered for 1.2 s and merged; a pasted Anthropic key
 - **aiogram 3.31.** Tracks Bot API 10.3 (the main alternative stopped at 10.0); one dispatcher serves polling and the webhook.
 - **Postgres 18.** The memory is typed rows, not a vector store: numbers live in tables, summaries cite them. Tests run the same models on SQLite. Migrations from day one.
 - **APScheduler 3.11.** Per-user cron jobs in the user's timezone, in-process, recomputed when the profile changes. 4.x is still alpha.
-- **Claude Sonnet 5 for everything.** Effort `medium` for turns, `low` for verify, proactive decisions, summaries and `web_research`. A cheaper second model was rejected: its 4,096-token cache minimum would silently skip caching the system block (`RESEARCH.md` §7).
+- **Claude Opus 5.5 for everything.** Effort `medium` for turns, `low` for verify, proactive decisions, summaries and `web_research`. A cheaper second model was rejected: its 4,096-token cache minimum would silently skip caching the system block (`RESEARCH.md` §7).
 - **Bring your own key.** Each user's model calls run on that user's Anthropic key, pasted once into the chat; the operator pays for hosting, not for other people's tokens, and the "one window" rule holds - the key is a message, not a settings screen. A private deployment flips `LLM_KEY_MODE=server` and pays for everyone with one key.
-- **OpenAI `gpt-transcribe` for voice.** Sonnet 5 takes text and images only. Telegram's OGG goes to OpenAI as is, no ffmpeg; `whisper-1` is the fallback. Optional.
+- **OpenAI `gpt-transcribe` for voice.** Opus 5.5 takes text and images only. Telegram's OGG goes to OpenAI as is, no ffmpeg; `whisper-1` is the fallback. Optional.
 - **Server-side web search in a separate call.** `web_research` is its own model call carrying Anthropic's `web_search` and `web_fetch` tools, so the main tool list never changes and the cache holds. It costs money, so it is for restaurant dishes, not for eggs. The tool type strings are settings (`WEB_SEARCH_TOOL_TYPE`, `WEB_FETCH_TOOL_TYPE`), so a renamed version is a config change, not a deploy; what comes back is marked untrusted and used as data, never as instructions.
 
 **Caching layout.** Stable to volatile: tool definitions (sorted, byte-stable) → the coach prompt as `system[0]`, cached one hour → the profile block (profile, protocol, active notes, onboarding checklist) as `system[1]`, cached five minutes → the last 30 turns or 40K tokens, with a breakpoint on the last history block → the current message, which opens with a `<context>` block (local time, today's state, yesterday's close, the week summary, retrieved history for questions about the past, pending reminders) and ends with your text. Nothing in `system` depends on the clock.
@@ -206,7 +206,7 @@ The list from `.env.example`. Compose sets `DATABASE_URL` from `POSTGRES_PASSWOR
 | `TELEGRAM_WEBHOOK_SECRET` | in webhook mode | - | secret Telegram sends with each webhook |
 | `LLM_KEY_MODE` | no | `user` | `user`: each user pastes their own Anthropic key into the chat; `server`: `ANTHROPIC_API_KEY` pays for everyone |
 | `ANTHROPIC_API_KEY` | in server mode | - | the operator's Claude key: everyone's in `server` mode, the fallback for `ADMIN_TELEGRAM_IDS` in `user` mode |
-| `ANTHROPIC_MODEL` | no | `claude-sonnet-5` | model id for every call |
+| `ANTHROPIC_MODEL` | no | `claude-opus-5-5` | model id for every call |
 | `EFFORT_TURN` | no | `medium` | effort for chat turns |
 | `EFFORT_VERIFY` | no | `low` | effort for the verify rewrite |
 | `EFFORT_PROACTIVE` | no | `low` | effort for proactive decisions |
@@ -239,7 +239,7 @@ The list from `.env.example`. Compose sets `DATABASE_URL` from `POSTGRES_PASSWOR
 | `OFF_USER_AGENT` | no | `Strikt/0.1 (...)` | User-Agent Open Food Facts asks for |
 | `LOG_LEVEL` | no | `INFO` | `DEBUG | INFO | WARNING | ERROR | CRITICAL` |
 | `LOG_FORMAT` | no | `pretty` | `json` in production (Compose forces it) |
-| `PRICE_TABLE` | no | Sonnet 5 prices | JSON map model → USD per 1M tokens (`input`, `output`, `cache_read`, `cache_write`, optional `cache_write_1h`) and `web_search_per_1000` per 1,000 searches |
+| `PRICE_TABLE` | no | Opus 5.5 prices | JSON map model → USD per 1M tokens (`input`, `output`, `cache_read`, `cache_write`, optional `cache_write_1h`) and `web_search_per_1000` per 1,000 searches |
 | `PROACTIVE_DAILY_CAP` | no | `5` | proactive messages per user per local day (`gentle` mode is fixed at 2; user-set reminders do not count) |
 | `PROACTIVE_DAILY_CAP_DRILL_SERGEANT` | no | `8` | the cap in `drill_sergeant` mode |
 | `PROACTIVE_FOLLOWUP_MINUTES` | no | `45` | minutes before an unanswered nudge escalates |
@@ -298,9 +298,9 @@ Rules: everything is stored with `source=imported`; unknown values are omitted, 
 
 ## Costs
 
-Every model call runs on the key of the user it serves (`user` mode), so Anthropic bills each user directly and the operator pays for hosting only; in `server` mode the operator's key pays for everyone. Either way the call is priced from `PRICE_TABLE` and written to the `token_usage` table per user, day and purpose (`turn`, `verify`, `proactive`, `summary`, `research`); the `llm_call` and `turn_done` log lines carry `cost_usd`. The default table prices `claude-sonnet-5` at $2.00 per million input tokens, $10.00 output, $0.20 cache read, $2.50 cache write ($4.00 for the one-hour cache the coach prompt uses) and $10 per 1,000 web searches.
+Every model call runs on the key of the user it serves (`user` mode), so Anthropic bills each user directly and the operator pays for hosting only; in `server` mode the operator's key pays for everyone. Either way the call is priced from `PRICE_TABLE` and written to the `token_usage` table per user, day and purpose (`turn`, `verify`, `proactive`, `summary`, `research`); the `llm_call` and `turn_done` log lines carry `cost_usd`. The default table prices `claude-opus-5-5` at $4.00 per million input tokens, $20.00 output, $0.20 cache read, $5.00 cache write ($8.00 for the one-hour cache the coach prompt uses) and $10 per 1,000 web searches.
 
-The coach prompt and the profile block come from cache on almost every turn, so most of a turn's roughly 12,500 input tokens (`RESEARCH.md` §7) bill at the cache-read rate. At these prices 500 output tokens are half a cent and a fully uncached 12,500-token turn is 2.5 cents; images add input tokens. A day is a handful of turns, up to five proactive decisions at effort `low`, one nightly summary, and a verify rewrite only when a total was wrong. `web_research` adds $10 per 1,000 searches on top of its tokens (counted in the same rows, `RESEARCH.md` §2); voice bills at OpenAI's per-minute rate. The total depends on the day; `token_usage` has yours.
+The coach prompt and the profile block come from cache on almost every turn, so most of a turn's roughly 12,500 input tokens (`RESEARCH.md` §7) bill at the cache-read rate. At these prices 500 output tokens are one cent and a fully uncached 12,500-token turn is 5 cents; images add input tokens. A day is a handful of turns, up to five proactive decisions at effort `low`, one nightly summary, and a verify rewrite only when a total was wrong. `web_research` adds $10 per 1,000 searches on top of its tokens (counted in the same rows, `RESEARCH.md` §2); voice bills at OpenAI's per-minute rate. The total depends on the day; `token_usage` has yours.
 
 ## Security and privacy
 
